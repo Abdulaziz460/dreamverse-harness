@@ -75,7 +75,7 @@ A provider plugin implements one `ModelEntry` for each key. A `ModelEntry` has t
 
 | `RenderRequest` field | Meaning |
 | --- | --- |
-| `prompt` | The text prompt. |
+| `prompt` | The text prompt. It can cite assets as `@[<label>](dv:asset/<AssetId>)`, and the provider plugin replaces each citation with the syntax of its model. |
 | `references` | The reference assets as asset IDs, in input order. The list is empty for a task without references. |
 | `firstFrame` | The asset ID of the image that the video starts from, or `null`. |
 | `frameWidth`, `frameHeight` | The frame size in pixels. A consumer takes it from `frameSizes` in the facts. |

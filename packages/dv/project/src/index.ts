@@ -57,6 +57,7 @@ import type {
 
 export * from './types.ts'
 export { ProjectError } from './shared.ts'
+export { citedAsset, parsePromptCitations, promptAssets, replacePromptCitations, type PromptCitation } from './citations.ts'
 export { formatInputRef, sessionOf, toolNameOf, type OperationToolValue } from './agent-tools.ts'
 
 declare module '@deepseek-ai/cordis' {

@@ -75,7 +75,7 @@ DreamVerse bundle [`@dv/bundle`](../../bundle/dv/README.zh.md) 以行 `dv-models
 
 | `RenderRequest` 字段 | 含义 |
 | --- | --- |
-| `prompt` | 文本提示词。 |
+| `prompt` | 文本提示词。它可以以 `@[<label>](dv:asset/<AssetId>)` 引用素材，提供方插件把每个引用换成它的模型的写法。 |
 | `references` | 参考素材的素材 ID，按输入顺序排列。没有参考素材的任务中该列表为空。 |
 | `firstFrame` | 视频起始图像的素材 ID，或 `null`。 |
 | `frameWidth`、`frameHeight` | 以像素为单位的帧尺寸。消费方从 facts 的 `frameSizes` 中取得它。 |
