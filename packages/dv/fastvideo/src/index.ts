@@ -22,7 +22,8 @@ import z from '@deepseek-ai/schemastery'
 import { DvFastvideoGeneration, type ModelFacts } from '@dv/fastvideo-generation-client'
 import type {} from '@dv/asset-pool'
 import type { ModelEntry, RenderModelFacts, RenderRequest, RenderStreamEvent, TaskId } from '@dv/models'
-import { citedAsset, replacePromptCitations } from '@dv/project'
+import { fasth3ReferenceLabels } from './fasth3.ts'
+import { modelPrompt, type ReferenceLabels } from './reference-labels.ts'
 
 /** One task of one model: the streaming_v2 server that renders it and its GPU rate. */
 export interface TaskServer {
@@ -89,19 +90,10 @@ interface ServedTask {
   inputs: TaskInputs
   /** The model's own parameters for this task, passed in the request's `extra`; empty when it has none. */
   extra: ParameterSchemaSpec
-  /** The label that the model reads in its prompt for a reference that the prompt cites. */
-  referenceLabel: ReferenceLabel
+  /** How the model names the references in its prompt; a citation of a reference becomes its label. */
+  referenceLabels: ReferenceLabels
   skill: { name: string; description: string; file: string }
 }
-
-/**
- * The label of one reference in a model's prompt, from the reference's media type and its 1-based position among the
- * references of that media type in input order; null when the model has no label for the media type.
- */
-type ReferenceLabel = (mediaType: MediaType, position: number) => string | null
-
-/** MiniMax H3 labels the k-th reference image `<Picture k>`. */
-const h3ReferenceLabel: ReferenceLabel = (mediaType, position) => mediaType === 'image' ? `<Picture ${String(position)}>` : null
 
 /** The models this plugin can serve, with the tasks it can serve each for. */
 const SERVED: Record<string, { [T in TaskId]?: ServedTask }> = {
@@ -113,7 +105,7 @@ const SERVED: Record<string, { [T in TaskId]?: ServedTask }> = {
         + 'reference.',
       inputs: { reference: { min: 1, mediaTypes: ['image', 'video', 'audio'] }, first_frame: { min: 0, mediaTypes: ['image'] } },
       extra: {},
-      referenceLabel: h3ReferenceLabel,
+      referenceLabels: fasth3ReferenceLabels,
       skill: {
         name: 'fasth3-reference-prompting',
         description: 'Model limits and prompt rules for dv_shot_render with model fasth3 for task ref2v: reference images, '
@@ -127,7 +119,7 @@ const SERVED: Record<string, { [T in TaskId]?: ServedTask }> = {
         + 'an earlier shot\'s last still; a face that must stay the same needs fasth3 for task ref2v.',
       inputs: {},
       extra: {},
-      referenceLabel: h3ReferenceLabel,
+      referenceLabels: fasth3ReferenceLabels,
       skill: {
         name: 'fasth3-text-prompting',
         description: 'Model limits and prompt rules for dv_shot_render with model fasth3 for task t2v: the three prompt fields, '
@@ -270,32 +262,6 @@ function extraProblems(model: string, task: TaskId, schema: ParameterSchemaSpec,
 }
 
 /**
- * The prompt that a model reads: each citation of a reference replaced with the model's label of that reference. A
- * citation of anything other than a reference, or of a reference that the model has no label for, becomes its label.
- * @param request - the render request.
- * @param referenceLabel - the model's label of a reference.
- * @param mediaTypeOf - the media type of an asset, read from the asset pool.
- * @returns the prompt.
- */
-function modelPrompt(
-  request: RenderRequest, referenceLabel: ReferenceLabel, mediaTypeOf: (asset: RenderRequest['references'][number]) => MediaType,
-): string {
-  const counts = new Map<MediaType, number>()
-  const labels = new Map<RenderRequest['references'][number], string>()
-  for (const asset of request.references) {
-    const mediaType = mediaTypeOf(asset)
-    const position = (counts.get(mediaType) ?? 0) + 1
-    counts.set(mediaType, position)
-    const label = referenceLabel(mediaType, position)
-    if (label !== null) labels.set(asset, label)
-  }
-  return replacePromptCitations(request.prompt, (citation) => {
-    const asset = citedAsset(citation.uri)
-    return (asset === null ? undefined : labels.get(asset)) ?? citation.label
-  })
-}
-
-/**
  * A catalog entry for one configured model and task, rendered through one streaming_v2 client of the task's server.
  * @param ctx - the plugin context; the client lives in an isolated `dvFastvideoGeneration` scope, and `render` reads
  *   each input asset from `ctx.dvAssetPool`.
@@ -308,7 +274,7 @@ function modelEntry(ctx: Context, model: string, task: TaskId, server: TaskServe
   const served = SERVED[model]?.[task]
   /* v8 ignore next -- checkConfig refuses unknown models and tasks before any entry is built. */
   if (served === undefined) throw new Error(`dv-fastvideo serves no model "${model}" for task "${task}".`)
-  const { inputs, extra, referenceLabel } = served
+  const { inputs, extra, referenceLabels } = served
   const client = new DvFastvideoGeneration(ctx.isolate('dvFastvideoGeneration'), { baseUrl: server.baseUrl })
   return {
     modality: 'video',
@@ -346,7 +312,7 @@ function modelEntry(ctx: Context, model: string, task: TaskId, server: TaskServe
           mediaType: ctx.dvAssetPool.mediaType(id), bytes: await readFile(ctx.dvAssetPool.path(id)),
         })))
         yield* client.generateSegment({
-          prompt: modelPrompt(request, referenceLabel, asset => ctx.dvAssetPool.mediaType(asset)),
+          prompt: modelPrompt(request, referenceLabels, asset => ctx.dvAssetPool.mediaType(asset)),
           references,
           frameWidth: request.frameWidth,
           frameHeight: request.frameHeight,
