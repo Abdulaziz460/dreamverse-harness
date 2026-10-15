@@ -6,162 +6,92 @@ English | [中文](2026-10-15-prompt-media-citations.zh.md)
 
 ## Problem
 
-A render call that takes a `prompt` and a separate `reference` list has three problems when the prompt refers to each reference with a MiniMax H3 token, such as `<Picture 1>` or `<Video 1>`:
+A render call takes a `prompt` and a separate `reference` list. The prompt names each reference with a MiniMax H3 token, such as `<Picture 1>`. This design has three problems:
 
-1. The prompt and the `reference` list are two inputs. The agent can write two inputs that do not agree.
-2. The tokens are specific to MiniMax H3. Other video models use different syntax. For example, Seedance uses `图片1`, and Kling uses `@<name>`.
-3. A person who reads the prompt cannot see which image or video each token refers to.
+1. The agent writes two inputs, and the two inputs can disagree.
+2. The tokens work for one model only. Other video models use a different syntax.
+3. A person who reads the prompt cannot see which media each token names.
 
 ## Proposal
 
-Each prompt cites media directly. At render time, the harness and the model plugin change each citation to the syntax that the target model accepts. Existing prompts and projects do not need migration.
+The prompt cites media directly. The harness reads the send list from the citations. Each model plugin changes the citations to the syntax of its model. Existing prompts and projects do not need migration.
+
+### Terms
+
+- **Citation**: text in a prompt that names one project item, written as `@[<label>](dv:<kind>/<id>)`.
+- **Element**: a named group of reference media in a project, with versions. An element is a harness concept for people and the agent. A video model does not know elements.
+- **Send list**: the assets that one render sends to the model plugin.
+- **Reference area**: the list of media beside the prompt in the take editor.
+- **Staged item**: an item in the reference area that the prompt does not cite.
 
 ### Ownership
 
-Each step has one owner. The harness parses, extracts, expands, and checks citations. Each model plugin changes the expanded citations to the syntax of its model. The agent writes only citations.
+| Step                                                        | Owner                                                      |
+| ----------------------------------------------------------- | ---------------------------------------------------------- |
+| Define the citation syntax and parse citations              | `@dv/project`                                              |
+| Insert and show citations in the UI                         | `@dv/ui-composer` and `@dv/ui-canvas`, after `@dv/project` |
+| Read the send list, expand elements, and return warnings    | `@dv/shot-render`                                          |
+| Declare the reference limits and change the citation syntax | Each model plugin, for example `@dv/fastvideo`             |
 
-| Step                                                         | Owner                                                       |
-| ------------------------------------------------------------ | ----------------------------------------------------------- |
-| Define the citation syntax and parse citations on the server | `@dv/models`                                                |
-| Insert citations from the `@` menu                           | `@dv/ui-composer` (chat), `@dv/ui-canvas` (take editor)     |
-| Show citations as thumbnails in the client                   | `@dv/ui-kit`                                                |
-| Extract the send list from the prompt                        | `@dv/shot-render` (`shot.render`)                           |
-| Return the staged-item warning and the first-frame error     | `@dv/shot-render` (`shot.render`)                           |
-| Expand character and location citations                      | `@dv/shot-render` (`shot.render`)                           |
-| Check all shots of a plan before a render                    | `@dv/shot-plan` (`plan.approve`)                            |
-| Declare the maximum number of references                     | Each model plugin, for example `@dv/fastvideo`              |
-| Change citations to the syntax of the model                  | Each model plugin, for example `@dv/fastvideo`              |
-| Find if a cited video has sound                              | The model plugin that needs it, for example `@dv/fastvideo` |
+`@dv/project` owns the citation syntax because the project holds the records and the history that the citations name. `@dv/models` is only the catalog of the registered models.
 
-`@dv/models` owns the syntax because the syntax is part of the `RenderRequest` that the harness sends to each model plugin. In a `RenderRequest`, `prompt` holds the expanded citations, and `references` holds the cited assets in the order of their first citation.
+### Rules
 
-### Citation syntax
-
-A citation uses the chat syntax `@[<label>](dv:<target>)`. The target is one of these values:
-
-| Target                                  | Cites                                  |
-| --------------------------------------- | -------------------------------------- |
-| `dv:asset/<asset-id>`                   | One image, video, or audio asset.      |
-| `dv:first-frame`                        | The first frame of the take.           |
-| `dv:character/<character-id>@<version>` | One version of a character.            |
-| `dv:location/<location-id>@<version>`   | One version of a location.             |
-
-### Send list
-
-1. The harness extracts the send list from the citations in the prompt.
-2. `shot.render` has no separate `reference` parameter. The agent writes only the prompt.
-3. `shot.render` marks its `reference` input `fromParams`. For each caller, the runner of `@dv/project` reads the `reference` inputs from the prompt. The runner refuses a `reference` input from a caller.
-4. A shot of a plan uses the same citations in its prompt. A plan has no separate reference list.
-5. The UI shows a thumbnail and a list entry for each cited item.
-
-### Reference area
-
-The reference area of a take holds cited items and staged items. A staged item is an item in the reference area that the prompt does not cite.
-
-1. The "Add asset" button adds an item to the reference area as a staged item.
-2. The `@` menu shows the items of the reference area first.
-3. If a user deletes an item that the prompt cites, then the UI refuses the deletion. The UI highlights each citation of that item in the prompt.
-4. If a user deletes a citation from the prompt, then the item stays in the reference area as a staged item.
-
-### Staged items at render time
-
-The harness does not decide for the agent or the user. A person or the agent must make the decision.
-
-1. If the reference area holds staged items, then `shot.render` does not render. `shot.render` returns a warning that lists the staged items.
-2. The agent must call `shot.render` again with an explicit choice: send the staged items, or do not send them.
-3. The UI shows a dialog with two buttons: "一起发送" (send the staged items) and "不发送" (do not send them).
-
-### First frame
-
-1. The take keeps the first frame in the `continue_from` field.
-2. The prompt can cite the first frame with `@[首帧](dv:first-frame)`.
-3. If the prompt cites `dv:first-frame` and `continue_from` is empty, then the harness returns an error before the render.
-4. If `continue_from` has a value and the prompt does not cite the first frame, then the harness renders the take.
-5. The MiniMax H3 plugin changes the first-frame citation to the next `<Picture N>` token. If a model has a first-frame input, then its plugin puts the frame in that input and changes the citation to plain text.
-
-### Characters and locations
-
-A character is a harness concept for people and the agent. A character is a named group of reference images. The group tells people and the agent that the images show the same person. A location is a named group of reference images for one place, and it follows the same rules as a character. The video model does not know characters or locations. The model receives only specific images and videos.
-
-1. When a user selects a character in the `@` menu, the UI inserts one character citation. For example, the UI inserts `@[Jensen](dv:character/c1@1)`. The citation includes the character version.
-2. A user can open the submenu of a character and cite one image of that character.
-3. At render time, the harness expands each character citation into citations of its images. The harness keeps the image order of the character. For example, the harness replaces `@[Jensen](dv:character/c1@1)` with `Jensen (@[Jensen · front](dv:asset/a1) @[Jensen · side](dv:asset/a2))`.
-4. The harness does the expansion. The agent and the model plugins do not expand characters.
-5. Each take keeps two prompts: the source prompt with character citations, and the expanded prompt that the harness sends to the model plugin. Because each citation includes a version, a later change to the character does not change an earlier take.
-6. The `shot.render` result includes the expanded prompt. The agent can see the images that the model receives.
-
-### Model plugin translation
-
-1. After the expansion, a prompt contains only asset citations and first-frame citations.
-2. Each model plugin changes these citations to the syntax of its model. For example, `@dv/fastvideo` changes them to the MiniMax H3 tokens `<Picture N>`, `<Video N>`, and `<Audio N>`.
-3. MiniMax H3 gives the sound of a video its own `<Audio N>` token. The `Asset` type does not record sound. Thus the MiniMax H3 plugin must examine each cited video on the server to find if the video has sound.
-
-### Reference limits
-
-1. Each model plugin declares the maximum number of reference images that its model accepts.
-2. If the expanded prompt cites more images than this maximum, then `shot.render` does not render. `shot.render` returns a warning. The agent or the user decides how to change the prompt.
-
-### Plan approval
-
-`plan.approve` calls `shot.render` for each shot of an approved plan.
-
-1. Before it renders a shot, `plan.approve` checks all of the shots in the plan.
-2. If one or more shots have a warning or an error, then `plan.approve` renders no shot.
-3. `plan.approve` returns the warnings and errors of all of the shots together.
+1. A prompt can cite an asset, the first frame, or one version of an element.
+2. `shot.render` has no `reference` parameter. The send list is the cited assets in the order of their first citation. A plan shot uses the same rule.
+3. The reference area holds cited items and staged items. If a user deletes an item that the prompt cites, then the UI refuses the deletion and highlights each citation of the item. If a user deletes a citation, then the item stays as a staged item.
+4. If the reference area holds staged items, then `shot.render` does not render and returns a warning. The agent or the user must choose to send the staged items or not.
+5. The first frame stays in the `continue_from` field. If the prompt cites the first frame and the field is empty, then `shot.render` returns an error.
+6. An element citation includes the element version. At render time, the harness expands each element citation into citations of the element media. The agent and the model plugins do not expand elements.
+7. Each take keeps the source prompt and the expanded prompt. The `shot.render` result includes the expanded prompt.
+8. Each model plugin declares the maximum number of references. If the expanded prompt cites more references, then `shot.render` does not render and returns a warning.
+9. If `shot.render` refuses one shot of a plan, then `plan.approve` renders no shot and returns the reasons of all refused shots.
 
 ### Delivery
 
-Small pull requests deliver the proposal, so that a reviewer can read each pull request in one sitting.
-
-- Each pull request depends only on pull requests that are merged. Open the next pull request after its base merges.
+- Each pull request depends only on merged pull requests. Open the next pull request after its base merges.
 - Each pull request changes at most about 300 lines outside tests.
-- After each merge, `main` works: no caller sends an input that the harness refuses.
+- After each merge, `main` works.
 
 The pull requests come in this order:
 
-1. This Agent Note. The note records the design before any code changes.
-2. The citation parser in `@dv/models`, and the MiniMax H3 translation to `<Picture N>` in `@dv/fastvideo`. A prompt without citations renders as before.
-3. The send list from the prompt: the `fromParams` inputs of `@dv/project`, the `reference` inputs of `shot.render`, the plan shots without `references`, the tool descriptions, and the skills. The take editor stops sending `reference` inputs, so a new take from the canvas still renders.
-4. The citation thumbnails in the take editor and the plan view, and the citation that "Add asset" inserts.
-5. The reference area: staged items, the refused deletion, and the staged-item warning.
-6. The first frame: `dv:first-frame`.
-7. Characters and locations: the expansion, the versions, and the expanded prompt of each take.
-8. Video citations: `<Video N>`.
-9. Audio: the sound check and `<Audio N>`.
-10. The warnings of all shots in one `plan.approve` result. `plan.approve` refuses the whole plan when the precondition of `shot.render` refuses one shot, but it returns only the first reason.
+1. This Agent Note.
+2. The citation parser in `@dv/project`, and the change to `<Picture N>` in `@dv/fastvideo`. A prompt without citations renders as before.
+3. The send list from the prompt in `shot.render` and in plan shots, with the tool descriptions and the skills.
+4. The citation thumbnails in the take editor and the plan view.
+5. The reference area and the staged-item warning.
+6. The first-frame citation.
+7. Element citations and their expansion.
+8. Video citations.
+9. Audio citations.
+10. The reasons of all refused shots in the `plan.approve` result.
 
 ## Alternatives considered
 
-**Separate reference list.** The agent writes the prompt and the `reference` list. The two inputs can disagree. The prompt is the only source of the send list, so the agent cannot make this error.
+**Separate reference list.** The two inputs can disagree. A prompt that is the only source of the send list prevents this error.
 
-**Send staged items automatically.** Most video products send all items in the reference tray, cited or not. Cursor 2.0 had a defect: it sent an attachment that the user had removed. The harness does not make this decision for the agent or the user, so it returns a warning.
+**Model tokens in the prompt.** Each video model uses a different syntax. Positional tokens also change their numbers when the reference order changes.
 
-**Allow the deletion of a cited item with a warning.** IntelliJ Safe Delete warns and then deletes. The deletion leaves a citation that has no target. The UI refuses the deletion and shows each citation instead.
+**Send staged items automatically.** This decides for the agent or the user. The harness returns a warning instead.
 
-**Model tokens in the prompt.** `<Picture N>` is MiniMax H3 syntax. Seedance, Wan, and Kling use different syntax. Positional tokens also change number silently when the reference order changes.
+**Delete a cited item after a warning.** The deletion leaves a citation without a target.
 
-**Only single-image citations for a character.** The user opens the character submenu and selects one image each time. No product that we examined does this. Kling, Vidu, Google Flow, Luma, and Krea insert one citation for the group. Krea also expands the group into its images at render time.
+**Cite only single media of an element.** The user must select each medium every time. Video products that group reference media insert one citation for the group.
 
-**Expansion by the agent.** The agent must find the images of each character. This adds a possible error. The prompt also loses the information that the images are one character.
+**Expand elements in the agent.** The agent must find the media of each element, and the prompt loses the group.
 
-**Expansion by each model plugin.** Each plugin must know characters, but characters are a harness concept. Each plugin also repeats the same code.
+**Expand elements in each model plugin.** Each plugin must know elements, and each plugin repeats the same code.
 
-**Keep the first images when the count is more than the limit.** Krea keeps the first images in the image order. This removes images silently, so it decides for the agent or the user.
-
-**Render the shots that have no warning.** The plan stays partly rendered. If a change to one shot causes changes to the plan, then the rendered shots are wasted.
+**Drop the media over the limit.** The harness removes media silently and decides for the agent or the user.
 
 ## Acceptance criteria
 
-1. `shot.render` has no `reference` parameter. The harness extracts the send list from the prompt.
+1. `shot.render` has no `reference` parameter, and the send list comes from the prompt.
 2. For a prompt that cites one image, `@dv/fastvideo` sends `<Picture 1>` and that image.
-3. A prompt with staged items in the reference area returns a warning and does not render.
-4. A prompt that cites `dv:first-frame` with an empty `continue_from` field returns an error before the render.
-5. A character citation expands into the images of that character version. The take keeps the source prompt and the expanded prompt.
-6. An expanded prompt that cites more images than the model maximum returns a warning and does not render.
-7. `plan.approve` renders no shot when one or more shots have a warning or an error.
+3. A render with staged items, or with more references than the model maximum, returns a warning and does not render.
+4. An element citation expands into the media of that element version, and the take keeps both prompts.
 
 ## Risks
 
-1. The removal of the `reference` parameter changes the tool contract of the agent. Prompts that use `<Picture N>` tokens do not work after this change.
-2. The harness sets the text format of an expanded character. Some models can follow this format less well than a format that the model plugin writes.
-3. The sound check adds one server-side examination for each cited video.
+1. The agent tool contract changes. Prompts that use `<Picture N>` tokens do not work after the change.
+2. The harness sets the text of an expanded element. A model can follow this text less well than text that its plugin writes.
