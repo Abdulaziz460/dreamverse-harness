@@ -3,8 +3,8 @@
  * `ctx.dvModels` one entry per model that its `models` config names and per task the config gives a server for; a model
  * or task the config leaves out is not registered. Each task of a model is served by its own server: the streaming_v2
  * client of `@dv/fastvideo-generation-client` sends each render as one `POST /v1/streamv2/generate`, with the references
- * first and the first frame after them, each as its media type and bytes read from `dvAssetPool`, and with each image
- * citation of the prompt replaced by its MiniMax H3 label `<Picture N>`. Each entry describes
+ * first and the first frame after them, each as its media type and bytes read from `dvAssetPool`, and with each citation
+ * of a reference in the prompt replaced by the label that the served model gives the reference. Each entry describes
  * the inputs and `extra` parameters it accepts in `schema()` and checks both in `validateGenerationRequest`. While the
  * DSH skill registry is mounted, the plugin registers the prompt skill of every registered entry.
  *
@@ -89,8 +89,19 @@ interface ServedTask {
   inputs: TaskInputs
   /** The model's own parameters for this task, passed in the request's `extra`; empty when it has none. */
   extra: ParameterSchemaSpec
+  /** The label that the model reads in its prompt for a reference that the prompt cites. */
+  referenceLabel: ReferenceLabel
   skill: { name: string; description: string; file: string }
 }
+
+/**
+ * The label of one reference in a model's prompt, from the reference's media type and its 1-based position among the
+ * references of that media type in input order; null when the model has no label for the media type.
+ */
+type ReferenceLabel = (mediaType: MediaType, position: number) => string | null
+
+/** MiniMax H3 labels the k-th reference image `<Picture k>`. */
+const h3ReferenceLabel: ReferenceLabel = (mediaType, position) => mediaType === 'image' ? `<Picture ${String(position)}>` : null
 
 /** The models this plugin can serve, with the tasks it can serve each for. */
 const SERVED: Record<string, { [T in TaskId]?: ServedTask }> = {
@@ -102,6 +113,7 @@ const SERVED: Record<string, { [T in TaskId]?: ServedTask }> = {
         + 'reference.',
       inputs: { reference: { min: 1, mediaTypes: ['image', 'video', 'audio'] }, first_frame: { min: 0, mediaTypes: ['image'] } },
       extra: {},
+      referenceLabel: h3ReferenceLabel,
       skill: {
         name: 'fasth3-reference-prompting',
         description: 'Model limits and prompt rules for dv_shot_render with model fasth3 for task ref2v: reference images, '
@@ -115,6 +127,7 @@ const SERVED: Record<string, { [T in TaskId]?: ServedTask }> = {
         + 'an earlier shot\'s last still; a face that must stay the same needs fasth3 for task ref2v.',
       inputs: {},
       extra: {},
+      referenceLabel: h3ReferenceLabel,
       skill: {
         name: 'fasth3-text-prompting',
         description: 'Model limits and prompt rules for dv_shot_render with model fasth3 for task t2v: the three prompt fields, '
@@ -257,18 +270,28 @@ function extraProblems(model: string, task: TaskId, schema: ParameterSchemaSpec,
 }
 
 /**
- * The prompt that MiniMax H3 reads: each citation of a reference image replaced with `<Picture k>`, where k is the
- * 1-based position of the image among the image references, in input order. Any other citation becomes its label.
+ * The prompt that a model reads: each citation of a reference replaced with the model's label of that reference. A
+ * citation of anything other than a reference, or of a reference that the model has no label for, becomes its label.
  * @param request - the render request.
+ * @param referenceLabel - the model's label of a reference.
  * @param mediaTypeOf - the media type of an asset, read from the asset pool.
  * @returns the prompt.
  */
-function h3Prompt(request: RenderRequest, mediaTypeOf: (asset: RenderRequest['references'][number]) => string): string {
-  const pictures = new Map(request.references.filter(asset => mediaTypeOf(asset) === 'image').map((asset, index) => [asset, index + 1]))
+function modelPrompt(
+  request: RenderRequest, referenceLabel: ReferenceLabel, mediaTypeOf: (asset: RenderRequest['references'][number]) => MediaType,
+): string {
+  const counts = new Map<MediaType, number>()
+  const labels = new Map<RenderRequest['references'][number], string>()
+  for (const asset of request.references) {
+    const mediaType = mediaTypeOf(asset)
+    const position = (counts.get(mediaType) ?? 0) + 1
+    counts.set(mediaType, position)
+    const label = referenceLabel(mediaType, position)
+    if (label !== null) labels.set(asset, label)
+  }
   return replacePromptCitations(request.prompt, (citation) => {
     const asset = citedAsset(citation.uri)
-    const picture = asset === null ? undefined : pictures.get(asset)
-    return picture === undefined ? citation.label : `<Picture ${String(picture)}>`
+    return (asset === null ? undefined : labels.get(asset)) ?? citation.label
   })
 }
 
@@ -285,7 +308,7 @@ function modelEntry(ctx: Context, model: string, task: TaskId, server: TaskServe
   const served = SERVED[model]?.[task]
   /* v8 ignore next -- checkConfig refuses unknown models and tasks before any entry is built. */
   if (served === undefined) throw new Error(`dv-fastvideo serves no model "${model}" for task "${task}".`)
-  const { inputs, extra } = served
+  const { inputs, extra, referenceLabel } = served
   const client = new DvFastvideoGeneration(ctx.isolate('dvFastvideoGeneration'), { baseUrl: server.baseUrl })
   return {
     modality: 'video',
@@ -323,7 +346,7 @@ function modelEntry(ctx: Context, model: string, task: TaskId, server: TaskServe
           mediaType: ctx.dvAssetPool.mediaType(id), bytes: await readFile(ctx.dvAssetPool.path(id)),
         })))
         yield* client.generateSegment({
-          prompt: h3Prompt(request, asset => ctx.dvAssetPool.mediaType(asset)),
+          prompt: modelPrompt(request, referenceLabel, asset => ctx.dvAssetPool.mediaType(asset)),
           references,
           frameWidth: request.frameWidth,
           frameHeight: request.frameHeight,

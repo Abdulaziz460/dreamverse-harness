@@ -69,10 +69,6 @@ export interface RenderModelFacts {
  * Inputs are asset IDs; the provider plugin reads each asset's bytes and media type from `dvAssetPool`.
  */
 export interface RenderRequest {
-  /**
-   * The prompt. It can cite assets as `@[<label>](dv:asset/<AssetId>)` (see `parsePromptCitations` of `@dv/project`);
-   * the provider plugin replaces each citation with the syntax of its model.
-   */
   prompt: string
   /** The reference assets in input order; empty for a task without references. */
   references: AssetId[]
