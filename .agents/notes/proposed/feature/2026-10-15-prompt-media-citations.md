@@ -45,7 +45,6 @@ The prompt cites media directly. The harness reads the send list from the citati
 6. An element citation includes the element version. At render time, the harness expands each element citation into citations of the element media. The agent and the model plugins do not expand elements.
 7. Each take keeps the source prompt and the expanded prompt. The `shot.render` result includes the expanded prompt.
 8. Each model plugin declares the maximum number of references. If the expanded prompt cites more references, then `shot.render` does not render and returns a warning.
-9. If `shot.render` refuses one shot of a plan, then `plan.approve` renders no shot and returns the reasons of all refused shots.
 
 ### Delivery
 
@@ -64,7 +63,6 @@ The pull requests come in this order:
 7. Element citations and their expansion.
 8. Video citations.
 9. Audio citations.
-10. The reasons of all refused shots in the `plan.approve` result.
 
 ## Alternatives considered
 
