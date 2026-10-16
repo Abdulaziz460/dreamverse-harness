@@ -1,0 +1,41 @@
+/**
+ * Types of the `dv-fastvideo` plugin: what one served model accepts for one task, and how it names its references.
+ *
+ * @module @dv/fastvideo/types
+ */
+import type { ParameterSchemaSpec } from '@deepseek-ai/dsh-tools'
+import type { AssignReferenceLabels } from './reference-labels.ts'
+
+/**
+ * The top-level type of an asset's MIME type, such as `image`, `video` or `audio`, as `dvAssetPool.mediaType` returns
+ * it.
+ */
+export type MediaType = string
+
+/** An input of a render request: `reference` (the reference assets in input order) or `first_frame`. */
+export type InputRole = 'reference' | 'first_frame'
+
+/** One input that a task of a model accepts. */
+export interface InputDeclaration {
+  /** The fewest assets that a render needs in this input. */
+  min: number
+  /** The media types the input accepts; at least one. */
+  mediaTypes: readonly MediaType[]
+}
+
+/** The inputs one task of a model accepts, by role; a role left out takes no asset. */
+export type TaskInputs = Partial<Record<InputRole, InputDeclaration>>
+
+/**
+ * One task this plugin can serve a model for: the entry's description, what the model accepts for it, and its prompt
+ * skill. The GPU rate comes from the configured server of the task.
+ */
+export interface ServedTask {
+  description: string
+  inputs: TaskInputs
+  /** The model's own parameters for this task, passed in the request's `extra`; empty when it has none. */
+  extra: ParameterSchemaSpec
+  /** How the model names the references in its prompt; a citation of a reference becomes its label. */
+  assignReferenceLabels: AssignReferenceLabels
+  skill: { name: string; description: string; file: string }
+}
