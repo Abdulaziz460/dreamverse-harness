@@ -22,8 +22,9 @@ import z from '@deepseek-ai/schemastery'
 import { DvFastvideoGeneration, type ModelFacts } from '@dv/fastvideo-generation-client'
 import type {} from '@dv/asset-pool'
 import type { ModelEntry, RenderModelFacts, RenderRequest, RenderStreamEvent, TaskId } from '@dv/models'
-import { assignFasth3ReferenceLabels } from './fasth3.ts'
-import { modelPrompt, type AssignReferenceLabels } from './reference-labels.ts'
+import { FASTH3 } from './fasth3.ts'
+import { modelPrompt } from './reference-labels.ts'
+import type { InputRole, MediaType, ServedTask, TaskInputs } from './types.ts'
 
 /** One task of one model: the streaming_v2 server that renders it and its GPU rate. */
 export interface TaskServer {
@@ -50,26 +51,6 @@ export const Config: z<Config> = z.object({
 /** The provider name of every entry this plugin registers. */
 const PROVIDER = 'fastvideo'
 
-/**
- * The top-level type of an asset's MIME type, such as `image`, `video` or `audio`, as `dvAssetPool.mediaType` returns
- * it.
- */
-type MediaType = string
-
-/** An input of a render request: `reference` (the reference assets in input order) or `first_frame`. */
-type InputRole = 'reference' | 'first_frame'
-
-/** One input that a task of a model accepts. */
-interface InputDeclaration {
-  /** The fewest assets that a render needs in this input. */
-  min: number
-  /** The media types the input accepts; at least one. */
-  mediaTypes: readonly MediaType[]
-}
-
-/** The inputs one task of a model accepts, by role; a role left out takes no asset. */
-type TaskInputs = Partial<Record<InputRole, InputDeclaration>>
-
 /** The count limits of one input, read from the server. */
 interface InputLimits {
   /** The most assets in the input across all media types. */
@@ -81,53 +62,9 @@ interface InputLimits {
 /** The count limits by declared input; an input without an entry has no limit beyond its declaration. */
 type TaskInputLimits = Partial<Record<InputRole, InputLimits>>
 
-/**
- * One task this plugin can serve a model for: the entry's description, what the model accepts for it, and its prompt
- * skill. The GPU rate comes from the configured server of the task.
- */
-interface ServedTask {
-  description: string
-  inputs: TaskInputs
-  /** The model's own parameters for this task, passed in the request's `extra`; empty when it has none. */
-  extra: ParameterSchemaSpec
-  /** How the model names the references in its prompt; a citation of a reference becomes its label. */
-  assignReferenceLabels: AssignReferenceLabels
-  skill: { name: string; description: string; file: string }
-}
-
 /** The models this plugin can serve, with the tasks it can serve each for. */
 const SERVED: Record<string, { [T in TaskId]?: ServedTask }> = {
-  fasth3: {
-    ref2v: {
-      description: 'MiniMax H3 served as FastH3 Ref2VA: video with sound, dialogue and music written in the prompt, from '
-        + 'reference images, videos and audio and an optional first frame. Keeps a face, place or style the same across '
-        + 'shots through the references, and continues a shot from the previous shot\'s last still. Needs at least one '
-        + 'reference.',
-      inputs: { reference: { min: 1, mediaTypes: ['image', 'video', 'audio'] }, first_frame: { min: 0, mediaTypes: ['image'] } },
-      extra: {},
-      assignReferenceLabels: assignFasth3ReferenceLabels,
-      skill: {
-        name: 'fasth3-reference-prompting',
-        description: 'Model limits and prompt rules for dv_shot_render with model fasth3 for task ref2v: reference images, '
-          + 'videos and audio, how the prompt names them, and how a shot continues the previous one.',
-        file: 'fasth3-reference-prompting.md',
-      },
-    },
-    t2v: {
-      description: 'MiniMax H3 served as FastH3 8-Step V2: video with sound, dialogue and music written in the prompt, from '
-        + 'the prompt alone. A subject keeps its look only as far as the same words describe it, and no shot starts from '
-        + 'an earlier shot\'s last still; a face that must stay the same needs fasth3 for task ref2v.',
-      inputs: {},
-      extra: {},
-      assignReferenceLabels: assignFasth3ReferenceLabels,
-      skill: {
-        name: 'fasth3-text-prompting',
-        description: 'Model limits and prompt rules for dv_shot_render with model fasth3 for task t2v: the three prompt fields, '
-          + 'shot changes, camera motion, speakers and dialogue, sound and music.',
-        file: 'fasth3-text-prompting.md',
-      },
-    },
-  },
+  fasth3: FASTH3,
 }
 
 /** Plugin name. */

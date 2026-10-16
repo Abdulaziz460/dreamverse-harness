@@ -1,11 +1,47 @@
 /**
- * How MiniMax H3 (model `fasth3`) names the references in its prompt.
+ * MiniMax H3 (model `fasth3`) as this plugin serves it: the tasks, what each task accepts, how the model names the
+ * references in its prompt, and the prompt skill of each task.
  *
  * @module @dv/fastvideo/fasth3
  */
+import type { TaskId } from '@dv/models'
 import type { AssignReferenceLabels } from './reference-labels.ts'
+import type { ServedTask } from './types.ts'
 
 /** Assign the MiniMax H3 labels: the k-th reference image is `<Picture k>`, counting the images in input order. */
 export const assignFasth3ReferenceLabels: AssignReferenceLabels = references => new Map(references
   .filter(reference => reference.mediaType === 'image')
   .map((reference, index) => [reference.asset, `<Picture ${String(index + 1)}>`]))
+
+/** The tasks this plugin serves `fasth3` for. */
+export const FASTH3: { [T in TaskId]?: ServedTask } = {
+  ref2v: {
+    description: 'MiniMax H3 served as FastH3 Ref2VA: video with sound, dialogue and music written in the prompt, from '
+      + 'reference images, videos and audio and an optional first frame. Keeps a face, place or style the same across '
+      + 'shots through the references, and continues a shot from the previous shot\'s last still. Needs at least one '
+      + 'reference.',
+    inputs: { reference: { min: 1, mediaTypes: ['image', 'video', 'audio'] }, first_frame: { min: 0, mediaTypes: ['image'] } },
+    extra: {},
+    assignReferenceLabels: assignFasth3ReferenceLabels,
+    skill: {
+      name: 'fasth3-reference-prompting',
+      description: 'Model limits and prompt rules for dv_shot_render with model fasth3 for task ref2v: reference images, '
+        + 'videos and audio, how the prompt names them, and how a shot continues the previous one.',
+      file: 'fasth3-reference-prompting.md',
+    },
+  },
+  t2v: {
+    description: 'MiniMax H3 served as FastH3 8-Step V2: video with sound, dialogue and music written in the prompt, from '
+      + 'the prompt alone. A subject keeps its look only as far as the same words describe it, and no shot starts from '
+      + 'an earlier shot\'s last still; a face that must stay the same needs fasth3 for task ref2v.',
+    inputs: {},
+    extra: {},
+    assignReferenceLabels: assignFasth3ReferenceLabels,
+    skill: {
+      name: 'fasth3-text-prompting',
+      description: 'Model limits and prompt rules for dv_shot_render with model fasth3 for task t2v: the three prompt fields, '
+        + 'shot changes, camera motion, speakers and dialogue, sound and music.',
+      file: 'fasth3-text-prompting.md',
+    },
+  },
+}
