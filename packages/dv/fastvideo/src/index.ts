@@ -22,8 +22,8 @@ import z from '@deepseek-ai/schemastery'
 import { DvFastvideoGeneration, type ModelFacts } from '@dv/fastvideo-generation-client'
 import type {} from '@dv/asset-pool'
 import type { ModelEntry, RenderModelFacts, RenderRequest, RenderStreamEvent, TaskId } from '@dv/models'
-import { fasth3ReferenceLabels } from './fasth3.ts'
-import { modelPrompt, type ReferenceLabels } from './reference-labels.ts'
+import { assignFasth3ReferenceLabels } from './fasth3.ts'
+import { modelPrompt, type AssignReferenceLabels } from './reference-labels.ts'
 
 /** One task of one model: the streaming_v2 server that renders it and its GPU rate. */
 export interface TaskServer {
@@ -91,7 +91,7 @@ interface ServedTask {
   /** The model's own parameters for this task, passed in the request's `extra`; empty when it has none. */
   extra: ParameterSchemaSpec
   /** How the model names the references in its prompt; a citation of a reference becomes its label. */
-  referenceLabels: ReferenceLabels
+  assignReferenceLabels: AssignReferenceLabels
   skill: { name: string; description: string; file: string }
 }
 
@@ -105,7 +105,7 @@ const SERVED: Record<string, { [T in TaskId]?: ServedTask }> = {
         + 'reference.',
       inputs: { reference: { min: 1, mediaTypes: ['image', 'video', 'audio'] }, first_frame: { min: 0, mediaTypes: ['image'] } },
       extra: {},
-      referenceLabels: fasth3ReferenceLabels,
+      assignReferenceLabels: assignFasth3ReferenceLabels,
       skill: {
         name: 'fasth3-reference-prompting',
         description: 'Model limits and prompt rules for dv_shot_render with model fasth3 for task ref2v: reference images, '
@@ -119,7 +119,7 @@ const SERVED: Record<string, { [T in TaskId]?: ServedTask }> = {
         + 'an earlier shot\'s last still; a face that must stay the same needs fasth3 for task ref2v.',
       inputs: {},
       extra: {},
-      referenceLabels: fasth3ReferenceLabels,
+      assignReferenceLabels: assignFasth3ReferenceLabels,
       skill: {
         name: 'fasth3-text-prompting',
         description: 'Model limits and prompt rules for dv_shot_render with model fasth3 for task t2v: the three prompt fields, '
@@ -274,7 +274,7 @@ function modelEntry(ctx: Context, model: string, task: TaskId, server: TaskServe
   const served = SERVED[model]?.[task]
   /* v8 ignore next -- checkConfig refuses unknown models and tasks before any entry is built. */
   if (served === undefined) throw new Error(`dv-fastvideo serves no model "${model}" for task "${task}".`)
-  const { inputs, extra, referenceLabels } = served
+  const { inputs, extra, assignReferenceLabels } = served
   const client = new DvFastvideoGeneration(ctx.isolate('dvFastvideoGeneration'), { baseUrl: server.baseUrl })
   return {
     modality: 'video',
@@ -312,7 +312,7 @@ function modelEntry(ctx: Context, model: string, task: TaskId, server: TaskServe
           mediaType: ctx.dvAssetPool.mediaType(id), bytes: await readFile(ctx.dvAssetPool.path(id)),
         })))
         yield* client.generateSegment({
-          prompt: modelPrompt(request, referenceLabels, asset => ctx.dvAssetPool.mediaType(asset)),
+          prompt: modelPrompt(request, assignReferenceLabels, asset => ctx.dvAssetPool.mediaType(asset)),
           references,
           frameWidth: request.frameWidth,
           frameHeight: request.frameHeight,
