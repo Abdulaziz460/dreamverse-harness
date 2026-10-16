@@ -242,6 +242,19 @@ describe('dv-fastvideo', () => {
     expect(text.requests[0]?.['references']).toEqual([])
   })
 
+  it('replaces each image citation with the Picture label of its position among the image references', async () => {
+    const reference = await startFakeServer(REFERENCE_CAPABILITIES)
+    const ctx = await start({ ref2v: reference.url })
+    const video = importAsset(ctx, Buffer.from('VID1'), 'video/mp4')
+    const image = importAsset(ctx, Buffer.from('IMG1'), 'image/png')
+    const other = importAsset(ctx, Buffer.from('IMG2'), 'image/png')
+    // A citation of a video, of an asset outside the references, or of anything other than an asset becomes its label.
+    const prompt = `@[Mia](dv:asset/${other}) meets @[Bo](dv:asset/${image}) and @[Mia](dv:asset/${other}) in @[the walk](dv:asset/${video}), `
+      + '@[a cat](dv:asset/missing) and @[the lake](dv:element/e1@2)'
+    await collect(fasth3(ctx, 'ref2v').render({ ...request([video, image, other], null), prompt }))
+    expect(reference.requests[0]?.['prompt']).toBe('<Picture 2> meets <Picture 1> and <Picture 2> in the walk, a cat and the lake')
+  })
+
   it('registers only the configured tasks and their prompt skills, and removes them on disposal', async () => {
     const reference = await startFakeServer(REFERENCE_CAPABILITIES)
     const ctx = await start({ ref2v: reference.url })

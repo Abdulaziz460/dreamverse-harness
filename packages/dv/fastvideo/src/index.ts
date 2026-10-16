@@ -3,7 +3,8 @@
  * `ctx.dvModels` one entry per model that its `models` config names and per task the config gives a server for; a model
  * or task the config leaves out is not registered. Each task of a model is served by its own server: the streaming_v2
  * client of `@dv/fastvideo-generation-client` sends each render as one `POST /v1/streamv2/generate`, with the references
- * first and the first frame after them, each as its media type and bytes read from `dvAssetPool`. Each entry describes
+ * first and the first frame after them, each as its media type and bytes read from `dvAssetPool`, and with each citation
+ * of a reference in the prompt replaced by the label that the served model gives the reference. Each entry describes
  * the inputs and `extra` parameters it accepts in `schema()` and checks both in `validateGenerationRequest`. While the
  * DSH skill registry is mounted, the plugin registers the prompt skill of every registered entry.
  *
@@ -21,6 +22,8 @@ import z from '@deepseek-ai/schemastery'
 import { DvFastvideoGeneration, type ModelFacts } from '@dv/fastvideo-generation-client'
 import type {} from '@dv/asset-pool'
 import type { ModelEntry, RenderModelFacts, RenderRequest, RenderStreamEvent, TaskId } from '@dv/models'
+import { assignFasth3ReferenceLabels } from './fasth3.ts'
+import { modelPrompt, type AssignReferenceLabels } from './reference-labels.ts'
 
 /** One task of one model: the streaming_v2 server that renders it and its GPU rate. */
 export interface TaskServer {
@@ -87,6 +90,8 @@ interface ServedTask {
   inputs: TaskInputs
   /** The model's own parameters for this task, passed in the request's `extra`; empty when it has none. */
   extra: ParameterSchemaSpec
+  /** How the model names the references in its prompt; a citation of a reference becomes its label. */
+  assignReferenceLabels: AssignReferenceLabels
   skill: { name: string; description: string; file: string }
 }
 
@@ -100,6 +105,7 @@ const SERVED: Record<string, { [T in TaskId]?: ServedTask }> = {
         + 'reference.',
       inputs: { reference: { min: 1, mediaTypes: ['image', 'video', 'audio'] }, first_frame: { min: 0, mediaTypes: ['image'] } },
       extra: {},
+      assignReferenceLabels: assignFasth3ReferenceLabels,
       skill: {
         name: 'fasth3-reference-prompting',
         description: 'Model limits and prompt rules for dv_shot_render with model fasth3 for task ref2v: reference images, '
@@ -113,6 +119,7 @@ const SERVED: Record<string, { [T in TaskId]?: ServedTask }> = {
         + 'an earlier shot\'s last still; a face that must stay the same needs fasth3 for task ref2v.',
       inputs: {},
       extra: {},
+      assignReferenceLabels: assignFasth3ReferenceLabels,
       skill: {
         name: 'fasth3-text-prompting',
         description: 'Model limits and prompt rules for dv_shot_render with model fasth3 for task t2v: the three prompt fields, '
@@ -267,7 +274,7 @@ function modelEntry(ctx: Context, model: string, task: TaskId, server: TaskServe
   const served = SERVED[model]?.[task]
   /* v8 ignore next -- checkConfig refuses unknown models and tasks before any entry is built. */
   if (served === undefined) throw new Error(`dv-fastvideo serves no model "${model}" for task "${task}".`)
-  const { inputs, extra } = served
+  const { inputs, extra, assignReferenceLabels } = served
   const client = new DvFastvideoGeneration(ctx.isolate('dvFastvideoGeneration'), { baseUrl: server.baseUrl })
   return {
     modality: 'video',
@@ -305,7 +312,7 @@ function modelEntry(ctx: Context, model: string, task: TaskId, server: TaskServe
           mediaType: ctx.dvAssetPool.mediaType(id), bytes: await readFile(ctx.dvAssetPool.path(id)),
         })))
         yield* client.generateSegment({
-          prompt: request.prompt,
+          prompt: modelPrompt(request, assignReferenceLabels, asset => ctx.dvAssetPool.mediaType(asset)),
           references,
           frameWidth: request.frameWidth,
           frameHeight: request.frameHeight,
