@@ -28,6 +28,7 @@
     "@deepseek-ai/schemastery": "workspace:~",
     "@dv/asset-pool": "workspace:*",
     "@dv/ffmpeg": "workspace:*",
+    "@dv/shot-render": "workspace:*",
     "@types/node": "^22.20.0"
   }
 }

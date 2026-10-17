@@ -396,7 +396,8 @@ export default class DvShotPlan extends Service {
    * Refuse a `plan.approve` call before its record when the plan or version is unknown, when a shot names a model the
    * catalog does not serve (see `checkPlan`), or when a shot it would render breaks the precondition of `shot.render`
    * (such as the reference count of its model, or a first frame the model cannot take): every rendered shot is
-   * checked, and one error names all refused shots, so the plan can be fixed at once.
+   * checked, a continuing shot after a kept take with that take's last still as its `first_frame` input, and one error
+   * names all refused shots, so the plan can be fixed at once.
    * @param request - the `plan.approve` call.
    * @param state - the project's current state, which the call writes after.
    * @throws Error naming the unknown plan or version, the shots and their problems, or the refused shots followed by the
@@ -411,10 +412,14 @@ export default class DvShotPlan extends Service {
     const render = project.listOperations().find(spec => spec.name === RENDER_OPERATION)
     const refused: number[] = []
     let reason = ''
-    for (const shot of approvalShots(version, plan, project, state)) {
+    const shots = approvalShots(version, plan, project, state)
+    for (const [index, shot] of shots.entries()) {
       if (shot.reuse !== null || render?.precondition === undefined) continue
+      // A continuing shot after a kept take starts from that take's last still, as `approvePlan` adds it at execute.
+      const kept = shot.continuePrevious ? shots[index - 1]?.reuse ?? null : null
+      const inputs = kept === null ? shot.inputs : [...shot.inputs, { role: 'first_frame', ref: { record: kept, output: 1 } }]
       try {
-        await render.precondition({ ...request, operation: RENDER_OPERATION, params: shot.params, inputs: shot.inputs }, state)
+        await render.precondition({ ...request, operation: RENDER_OPERATION, params: shot.params, inputs }, state)
       } catch (error: unknown) {
         refused.push(Number(shot.params['shot']))
         if (reason === '') reason = error instanceof Error ? error.message : String(error)

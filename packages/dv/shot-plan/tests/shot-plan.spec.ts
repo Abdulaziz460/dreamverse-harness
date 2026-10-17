@@ -4,7 +4,8 @@
  * catalog holds the stand-in model `fake` of provider `test`, whose tasks each test chooses. `plan.approve` schedules
  * other components' operations by name: the timeline operations of the real `dvTimeline`, and a stand-in for the Shot
  * render operation `shot.render` registered with `dvProject`, which imports a small video and a last still without a
- * generation backend. The browser stories run the approval against the real components.
+ * generation backend. The browser stories run the approval against the real components. One test boots the real Shot
+ * render component `dvShotRender` in place of the stand-in, with a model `fake` that streams placeholder bytes.
  */
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -19,11 +20,12 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import DvAssetPool from '@dv/asset-pool'
 import DvFfmpeg from '@dv/ffmpeg'
-import DvModels, { type ModelEntry, type TaskId } from '@dv/models'
+import DvModels, { type ModelEntry, type RenderModelFacts, type RenderStreamEvent, type TaskId } from '@dv/models'
 import DvProject, {
   type AssetId, type OperationSpec, type OperationToolValue, type ProjectId, type ProjectRecord, type RecordId, type RunRequest,
   type SessionId,
 } from '@dv/project'
+import DvShotRender from '@dv/shot-render'
 import DvTimeline from '@dv/timeline'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import DvShotPlan, { type PlanId } from '../src/index.ts'
@@ -32,7 +34,7 @@ const FFMPEG = process.env['DV_FFMPEG'] ?? '/mnt/lustre/vlm-d1su/opt/ffmpeg-nati
 const FFPROBE = process.env['DV_FFPROBE'] ?? 'ffprobe'
 
 /** The plugin classes the fixture rows resolve through `globalThis`, because Node imports the rows outside Vite. */
-const PLUGINS = { SystemPrompt, ToolRuntime, DvProject, DvFfmpeg, DvAssetPool, DvTimeline, DvModels, DvShotPlan }
+const PLUGINS = { SystemPrompt, ToolRuntime, DvProject, DvFfmpeg, DvAssetPool, DvTimeline, DvModels, DvShotPlan, DvShotRender }
 
 /** A user action outside any chat session: it lands on `main` directly. */
 const USER = { actor: 'user' as const, surface: 'canvas' as const, session: null, turn: null, tool_call: null }
@@ -64,6 +66,8 @@ interface StartOptions {
   before?: (prompt: string) => Promise<void>
   /** The tasks the catalog model `fake` serves, one entry each; both by default. */
   tasks?: TaskId[]
+  /** Boot the real `dvShotRender` with a rendering model `fake` in place of the stand-in render. */
+  shotRender?: boolean
 }
 
 /** The GPU seconds the stand-in render estimates per video second. */
@@ -84,6 +88,30 @@ function model(name: string, task: TaskId): ModelEntry {
     validateGenerationRequest: () => Promise.resolve([]),
     render: () => { throw new Error(`${name} has no backend.`) },
   }
+}
+
+/** The facts of the rendering model `fake`: 16:9 at 720p, 1 or 2 seconds. */
+const RENDER_FACTS: RenderModelFacts = {
+  modelId: 'fake', aspectRatios: ['16:9'], resolutions: ['720p'], frameSizes: { '16:9': { '720p': [192, 112] } },
+  minDurationSec: 1, maxDurationSec: 2, numFramesByDurationSec: { '1': 25, '2': 49 },
+}
+
+/** A render stream of placeholder bytes: a last still, then the video in one chunk. */
+async function* placeholderStream(): AsyncIterable<RenderStreamEvent> {
+  yield { kind: 'last_frame', png: Buffer.from('frame') }
+  yield { kind: 'video_start', mime: 'video/mp4' }
+  yield { kind: 'chunk', bytes: Buffer.from('video') }
+  yield { kind: 'done', timings: {} }
+}
+
+/**
+ * A catalog entry of the model `fake` that the real Shot render component renders with: it accepts every request and
+ * streams placeholder bytes.
+ * @param task - the task the entry serves.
+ * @returns the entry.
+ */
+function renderingModel(task: TaskId): ModelEntry {
+  return { ...model('fake', task), facts: () => Promise.resolve(RENDER_FACTS), render: placeholderStream }
 }
 
 /**
@@ -143,6 +171,7 @@ async function start(options: StartOptions = {}): Promise<Fixture> {
   row('dv-timeline', 'DvTimeline', [])
   row('dv-models', 'DvModels', [])
   row('dv-shot-plan', 'DvShotPlan', [])
+  if (options.shotRender === true) row('dv-shot-render', 'DvShotRender', [])
   writeFileSync(join(dir, 'cordis.yml'), `${rows.join('\n')}\n`)
 
   const ctx = new Context()
@@ -151,7 +180,9 @@ async function start(options: StartOptions = {}): Promise<Fixture> {
   await ctx.loader.create({ name: 'cordis:include', config: { path: pathToFileURL(join(dir, 'cordis.yml')).href } })
   await ctx.loader.await()
   const tasks: TaskId[] = options.tasks ?? ['ref2v', 't2v']
-  const removers = [ctx.dvProject.registerOperation(standIn(options)), ...tasks.map(task => ctx.dvModels.register(model('fake', task)))]
+  const removers = options.shotRender === true
+    ? tasks.map(task => ctx.dvModels.register(renderingModel(task)))
+    : [ctx.dvProject.registerOperation(standIn(options)), ...tasks.map(task => ctx.dvModels.register(model('fake', task)))]
   disposers.push(async () => {
     for (const remove of removers) remove()
     await ctx.fiber.dispose()
@@ -545,6 +576,22 @@ describe('dvShotPlan', () => {
     await expect(fixture.record('plan.approve', { plan: 'ghost' })).rejects.toThrow("Unknown plan 'ghost'")
     await expect(fixture.record('plan.approve', { plan: 'p3', version: 2 })).rejects.toThrow("Plan 'p3' has no version 2; it has 1.")
     await fixture.ctx.dvProject.wait(fixture.project)
+  })
+
+  it('checks a continuing shot after a kept take with that take\'s last still, so the real render accepts its first-frame citation', async () => {
+    const fixture = await start({ shotRender: true, tasks: ['ref2v'] })
+    const shots = [ref('one', { duration_sec: 1 }), ref('two', { duration_sec: 1 })]
+    await fixture.record('plan.create', { shots })
+    await fixture.record('plan.approve', { plan: 'p1' })
+    await fixture.ctx.dvProject.wait(fixture.project)
+    // Version 2 adds shot 3, which continues shot 2 and cites the first frame; shot 2 keeps its take.
+    const three = ref('three from @[首帧](dv:input/first_frame)', { duration_sec: 1, continue_previous: true })
+    await fixture.record('plan.update', { plan: 'p1', shots: [...shots, three] })
+    expect((await fixture.record('plan.approve', { plan: 'p1' })).status).toBe('done')
+    await fixture.ctx.dvProject.wait(fixture.project)
+    const renders = fixture.recordsOf('shot.render')
+    expect(renders.map(render => [render.params['shot'], render.status])).toEqual([[1, 'done'], [2, 'done'], [3, 'done']])
+    expect(renders[2]?.inputs.map(input => [input.role, input.ref])).toEqual([['first_frame', { record: renders[1]?.id, output: 1 }]])
   })
 
   it('fails plans without shots, and refuses updates of unknown plans and unknown references', async () => {
