@@ -158,6 +158,12 @@ export type ModelEntry<T extends TaskId = TaskId> = ModelKey<T> & PrimitiveTypes
    * @returns the result of the task's primitive, such as the render stream of a `video` entry.
    */
   render(request: PrimitiveTypes[TaskMap[T]]['request'], signal?: AbortSignal): PrimitiveTypes[TaskMap[T]]['result']
+  /**
+   * The prompt skill of this model and task, when the model has its own prompt rules: the skill name, a description
+   * that names the model and the task and no tool, and the skill body. While the entry is registered and the DSH skill
+   * registry is mounted, the catalog registers it as a runtime skill that only the agent loads.
+   */
+  promptSkill?: { name: string; description: string; content: string }
 }
 
 /** A filter of `dvModels.list`: an entry matches when it equals every given field. */

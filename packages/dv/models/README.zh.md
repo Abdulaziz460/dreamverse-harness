@@ -68,6 +68,7 @@ DreamVerse bundle [`@dv/bundle`](../../bundle/dv/README.zh.md) 以行 `dv-models
 | `schema()` | resolve 为描述模型所接受请求的 JSON：agent 需要的限制（例如时长、宽高比和分辨率）、各输入及其媒体类型和数量，以及 `extra` 中的参数。提供方插件定义该 JSON。模型目录把它原样交给 agent。后端无法连接时 reject。 |
 | `validateGenerationRequest(request)` | resolve 为模型无法渲染某个 `RenderRequest` 的每个原因，每个原因一句面向 agent 的话。原因包括无效的 `extra` 值。模型能渲染该请求时 resolve 为空列表。后端无法连接时 reject。 |
 | `render(request, signal)` | 渲染一个镜头，返回 `RenderStreamEvent` 值的流。通过 `dvAssetPool` 读取每个输入素材。产生一个 `video_start` 事件、若干 `chunk` 事件，然后是一个 `done` 事件。在 `video_start` 之前或最后一个 `chunk` 之后恰好产生一个 `last_frame` 事件。任何后端失败都会 reject。`signal` 中止时，取消渲染并以中止原因 reject。 |
+| `promptSkill` | 可选。该模型在此任务上的提示词 skill：`name`、`description` 和 `content`。描述写明模型和任务，不提及任何工具。条目已注册且 DSH skill 注册表挂载期间，模型目录为 agent 注册该 skill。 |
 
 ### 渲染请求与渲染流
 
@@ -107,14 +108,14 @@ DreamVerse bundle [`@dv/bundle`](../../bundle/dv/README.zh.md) 以行 `dv-models
 
 | 方法 | 返回值 | 语义 |
 | --- | --- | --- |
-| `register(entry)` | `() => void` | 添加一个条目。返回的函数移除该条目。第二次调用该函数不做任何事。已存在同键条目时抛出错误。在 `ctx.effect` 内调用 `register`，这样销毁提供方插件会移除它的条目。 |
+| `register(entry)` | `() => void` | 添加一个条目。返回的函数移除该条目。第二次调用该函数不做任何事。已存在同键条目时抛出错误。在 `ctx.effect` 内调用 `register`，这样销毁提供方插件会移除它的条目。DSH skill 注册表挂载期间，条目的 `promptSkill` 是一个运行时 skill，直到条目被移除。 |
 | `get(key)` | `ModelEntry \| undefined` | 具有该键的条目，或 `undefined`。 |
 | `resolve(tasks, params)` | `ModelEntry<T>` | `modelKey(params)` 读出的键所对应的条目，且其任务在 `tasks` 中。没有属于 `tasks` 之一的条目具有该键时，抛出 `Unknown model "<key>"; call dv_models_list for the models.`。 |
 | `whileServing(tasks, start)` | `() => void` | 目录获得第一个属于 `tasks` 之一的条目时调用 `start`，失去最后一个这样的条目时调用 `start` 返回的处置函数。返回的函数停止监听并调用该处置函数。把它传给 `ctx.effect`，如 `@dv/shot-render` 对其操作的做法。 |
 | `list(filter?)` | `ModelEntry[]` | 与 `modality`、`task` 和 `provider` 中每个给定字段都匹配的条目，按注册顺序。未给出的字段匹配所有条目。 |
 | `onChanged(listener)` | `() => void` | 每次注册和每次移除后调用 `listener`。返回的函数移除该监听器。 |
 
-本服务还为 agent 注册工具 `dv_models_list` 和 `dv_models_get` 以及 skill `video-model-selection`。它不向系统提示词添加任何内容。
+本服务还为 agent 注册工具 `dv_models_list` 和 `dv_models_get`、skill `video-model-selection`，以及每个条目的提示词 skill。它不向系统提示词添加任何内容。
 
 ### 提供方插件负责的部分
 
@@ -124,7 +125,7 @@ DreamVerse bundle [`@dv/bundle`](../../bundle/dv/README.zh.md) 以行 `dv-models
 - 其 `Config` 中的部署值，如每个模型和任务的服务器 URL 和 GPU 费率。
 - 它注册的每个条目的所有成员。
 - 把 `RenderRequest` 翻译成后端请求。插件从 `dvAssetPool` 读取每个素材的字节和媒体类型。插件以后端的格式发送它们。
-- 其模型的可选提示词 skill。
+- 每个条目可选的 `promptSkill`。模型目录注册它，提供方插件不注册任何 skill。
 
 本包负责键、条目约定、请求和流类型、`dvModels` 服务、两个工具和选择 skill。它不包含任何特定模型的数据。
 
@@ -153,9 +154,9 @@ DreamVerse bundle [`@dv/bundle`](../../bundle/dv/README.zh.md) 以行 `dv-models
 
 本服务把条目按格式化后的键存在一个 `Map` 中。`register` 拒绝 map 中已有的键。每次注册和每次移除都在 map 改变后调用所有 `onChanged` 监听器。`register` 返回的函数只在 map 仍持有同一个条目时移除该条目。
 
-DSH 工具注册表（`tools`）挂载期间，本服务以 effect 注册 `dv_models_list` 和 `dv_models_get`。`dv_models_list` 用其参数筛选条目，返回每个条目的键和描述。`dv_models_get` 用全部四个键字段查找条目，返回它的键、描述和 `schema()` 的 JSON。它不读取 `facts()`。`@dv/shot-render` 读取 facts 构建请求。
+DSH 工具注册表（`tools`）挂载期间，本服务以 effect 注册 `dv_models_list` 和 `dv_models_get`。`dv_models_list` 用其参数筛选条目，返回每个条目的键和描述；条目有提示词 skill 时，还返回 `prompt_skill`，即该 skill 的名称。`dv_models_get` 用全部四个键字段查找条目，返回它的键、描述和 `schema()` 的 JSON。它不读取 `facts()`。`@dv/shot-render` 读取 facts 构建请求。
 
-DSH skill 注册表（`skills`）挂载期间，本服务从 `skills/video-model-selection.md` 注册运行时 skill `video-model-selection`。agent 可以加载该 skill。用户不能从输入框调用它。
+DSH skill 注册表（`skills`）挂载期间，本服务从 `skills/video-model-selection.md` 注册运行时 skill `video-model-selection`。agent 可以加载该 skill。用户不能从输入框调用它。在同一个注册表中，本服务按同样的调用规则注册每个条目的 `promptSkill`。条目或注册表到达时它注册该 skill，条目或注册表离开时它移除该 skill。
 
 [`@dv/shot-render`](../shot-render/README.zh.md) 用 `whileServing(['t2v', 'ref2v'], ...)` 注册 `shot.render`，并用 `resolve(['t2v', 'ref2v'], params)` 获取 `dv_shot_render` 调用所指定的条目。它用条目的 facts 构建 `RenderRequest`。它用 `validateGenerationRequest` 检查请求，然后渲染该请求。[`@dv/shot-plan`](../shot-plan/README.zh.md) 拒绝键不对应任何条目的计划镜头。
 
@@ -188,12 +189,12 @@ DSH skill 注册表（`skills`）挂载期间，本服务从 `skills/video-model
 
 #### 模型看到什么
 
-DSH 工具注册表挂载期间，agent 看到工具 `dv_models_list`，带下面的描述。该工具有三个可选字符串参数：`modality`、`task` 和 `provider`。生成的工具目录不列出 DreamVerse 工具，所以本节引用工具描述和参数描述。一次调用返回一个文本块，内容是缩进的 JSON：一个数组，每个匹配条目一项，包含 `modality`、`task`、`provider`、`model` 和 `description`。本包不向系统提示词添加任何内容。agent 只通过这两个工具和 `video-model-selection` skill 读取模型目录。
+DSH 工具注册表挂载期间，agent 看到工具 `dv_models_list`，带下面的描述。该工具有三个可选字符串参数：`modality`、`task` 和 `provider`。生成的工具目录不列出 DreamVerse 工具，所以本节引用工具描述和参数描述。一次调用返回一个文本块，内容是缩进的 JSON：一个数组，每个匹配条目一项，包含 `modality`、`task`、`provider`、`model` 和 `description`；条目有提示词 skill 时，还包含 `prompt_skill`，即该 skill 的名称。本包不向系统提示词添加任何内容。agent 只通过这两个工具和 `video-model-selection` skill 读取模型目录。
 
 ##### dv_models_list 描述
 
 ```markdown
-List the models you can generate with, each with its key (modality, task, provider, model) and its description.
+List the models you can generate with, each with its key (modality, task, provider, model), its description and the name of its prompt skill, if it has one.
 ```
 
 ##### dv_models_list 参数描述
@@ -206,7 +207,7 @@ List the models you can generate with, each with its key (modality, task, provid
 
 #### Token 影响
 
-工具注册表挂载期间，每次请求中定义约 85 个 token。每个条目的结果约 30 个 token，再加上该条目描述的 token。
+工具注册表挂载期间，每次请求中定义约 95 个 token。每个条目的结果约 30 个 token，再加上该条目描述的 token。
 
 #### KV Cache 影响
 

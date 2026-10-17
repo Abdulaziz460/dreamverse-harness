@@ -75,7 +75,7 @@ kind: "package-reference"
 
 #### 模型看到什么
 
-模型目录中有任务 `t2v` 或 `ref2v` 的模型时，有一个工具 `dv_shot_render`，格式与 `@dv/project` 给每个操作工具的一样，带提示 "Uses the GPU."，以及 Project 因 `confirm: over_gpu_budget` 加上的参数 `user_requested`。描述说明 `modality`、`task`、`provider` 和 `model` 指定 `dv_models_list` 中的一个模型且必填，任务 `ref2v` 根据参考素材（`c1@1`）渲染，提示词以 `@[<label>](dv:asset/<asset ID>)` 引用它们，其接受的输入、媒体类型和数量由 `dv_models_get` 列出，模型接受首帧时 `continue_from` 从更早镜头的最后静帧开始，模型自己的参数放在 `extra` 中（见 `dv_models_get`）；它还说明两个输出，以及每次调用都是新版本、修改提示词时传 `based_on`。四个键参数是字符串，其说明指向 `dv_models_list`。`reference` 输入的类型是 `any`，`prompt` 参数说明提示词在提到参考输入中的每张参考图片的地方以 `@[<label>](dv:asset/<asset ID>)` 引用它。
+模型目录中有任务 `t2v` 或 `ref2v` 的模型时，有一个工具 `dv_shot_render`，格式与 `@dv/project` 给每个操作工具的一样，带提示 "Uses the GPU."，以及 Project 因 `confirm: over_gpu_budget` 加上的参数 `user_requested`。描述说明 `modality`、`task`、`provider` 和 `model` 指定 `dv_models_list` 中的一个模型且必填，任务 `ref2v` 根据参考素材（`c1@1`）渲染，提示词以 `@[<label>](dv:asset/<asset ID>)` 引用它们，其接受的输入、媒体类型和数量由 `dv_models_get` 列出，模型接受首帧时 `continue_from` 从更早镜头的最后静帧开始，模型自己的参数放在 `extra` 中（见 `dv_models_get`）；它还说明两个输出，以及每次调用都是新版本、修改提示词时传 `based_on`。四个键参数是字符串，其说明指向 `dv_models_list`。`reference` 输入的类型是 `any`，`prompt` 参数要求遵循 `dv_models_list` 为该模型列出的提示词 skill（如果有）。
 
 #### Token 影响
 

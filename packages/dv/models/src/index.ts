@@ -4,7 +4,8 @@
  * Shot render register their operation while the catalog serves one of their tasks, and render with the entry that a
  * call's key names among those tasks. The catalog knows no specific model and adds
  * nothing to the system prompt: the agent reads entries through the `dv_models_list` and `dv_models_get` tools and
- * chooses one for each shot with the `video-model-selection` skill.
+ * chooses one for each shot with the `video-model-selection` skill. The catalog registers the prompt skill that an
+ * entry carries while the entry lives.
  *
  * @module @dv/models
  */
@@ -79,7 +80,7 @@ function servesTask<T extends TaskId>(entry: ModelEntry, tasks: readonly T[]): e
   return (tasks as readonly TaskId[]).includes(entry.task)
 }
 
-/** Convert an entry to one item of the `dv_models_list` result: its key and its description. */
+/** Convert an entry to its key and its description, as `dv_models_list` and `dv_models_get` return them. */
 function toModelListItem(entry: ModelEntry): Record<string, JsonValue> {
   return { modality: entry.modality, task: entry.task, provider: entry.provider, model: entry.model, description: entry.description }
 }
@@ -90,7 +91,10 @@ const JSON_TOOL_OUTPUT = {
   render: (_args: unknown, value: JsonValue): ContentBlock[] => [{ type: 'text', text: JSON.stringify(value, null, 1) }],
 } as const
 
-/** The model catalog service: entries by key, the `dv_models_list` and `dv_models_get` tools, and the selection skill. */
+/**
+ * The model catalog service: entries by key, the `dv_models_list` and `dv_models_get` tools, the selection skill, and
+ * the prompt skills of the entries.
+ */
 export default class DvModels extends Service {
   static Config = Config
 
@@ -114,7 +118,39 @@ export default class DvModels extends Service {
     }
     ctx.inject(['skills'], (child) => {
       child.effect(() => child.skills.register(skill), `dvModels ${skill.name}`)
+      child.effect(() => this.registerPromptSkills(child), 'dvModels prompt skills')
     })
+  }
+
+  /**
+   * Keep the prompt skill of each registered entry in the skill registry while the entry lives.
+   * @param child - the context in which the DSH skill registry is mounted.
+   * @returns a function that stops listening and removes the prompt skills; pass it to `ctx.effect`.
+   */
+  private registerPromptSkills(child: Context): () => void {
+    const registered = new Map<ModelEntry, () => void>()
+    // Each change removes the skills of removed entries and registers the skills of added entries.
+    const sync = (): void => {
+      const live = new Set(this.entries.values())
+      for (const [entry, remove] of registered) {
+        if (live.has(entry)) continue
+        remove()
+        registered.delete(entry)
+      }
+      for (const entry of live) {
+        if (entry.promptSkill === undefined || registered.has(entry)) continue
+        // Like the selection skill, a prompt skill is for the agent only.
+        const invocation = { modelInvocable: true, userInvocable: false }
+        registered.set(entry, child.skills.register({ ...entry.promptSkill, source: 'runtime', invocation }))
+      }
+    }
+    sync()
+    const unlisten = this.onChanged(sync)
+    return () => {
+      unlisten()
+      for (const remove of registered.values()) remove()
+      registered.clear()
+    }
   }
 
   /**
@@ -211,14 +247,17 @@ export default class DvModels extends Service {
   private defineModelsListTool() {
     return defineTool({
       name: 'dv_models_list',
-      description: 'List the models you can generate with, each with its key (modality, task, provider, model) and its description.',
+      description: 'List the models you can generate with, each with its key (modality, task, provider, model), its description '
+        + 'and the name of its prompt skill, if it has one.',
       parameters: {
         modality: { type: 'string', description: 'Only models of this modality.' },
         task: { type: 'string', description: 'Only models for this task.' },
         provider: { type: 'string', description: 'Only models of this provider.' },
       },
       output: JSON_TOOL_OUTPUT,
-      execute: args => Promise.resolve(this.list().filter(entry => entryMatchesFilter(entry, args)).map(toModelListItem)),
+      execute: args => Promise.resolve(this.list().filter(entry => entryMatchesFilter(entry, args)).map(entry => ({
+        ...toModelListItem(entry), ...entry.promptSkill === undefined ? {} : { prompt_skill: entry.promptSkill.name },
+      }))),
     })
   }
 

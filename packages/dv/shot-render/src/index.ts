@@ -90,8 +90,7 @@ const RENDER_PARAMS: OperationSpec['params'] = {
   model: { type: 'string', required: true, description: 'The model name, as dv_models_list lists it.' },
   prompt: {
     type: 'string', required: true,
-    description: 'The complete shot prompt, written with the prompt skill of its model and task; it cites each reference image '
-      + 'of the reference input as @[<label>](dv:asset/<asset ID>) where it names it.',
+    description: 'The complete prompt; follow the prompt skill that dv_models_list names for the model, if any.',
   },
   duration_sec: { type: 'integer', description: 'Whole seconds within the model range; default the model minimum.' },
   aspect_ratio: { type: 'string', description: 'One of the model aspect ratios; default the first.' },

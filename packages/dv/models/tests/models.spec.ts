@@ -34,6 +34,9 @@ function entry(task: TaskId, provider: string, model: string): ModelEntry {
   }
 }
 
+/** The prompt skill of the fake model `gamma` for task t2v. */
+const GAMMA_SKILL = { name: 'gamma-prompting', description: 'Prompt rules for model gamma for task t2v.', content: '# Gamma' }
+
 /** The test provider plugin: registers `alpha` of provider `test` for t2v and ref2v, and `beta` of provider `other` for t2v. */
 const Provider = {
   name: 'test-provider',
@@ -207,6 +210,30 @@ describe('dvModels', () => {
     expect(skill?.content).toContain('Call `dv_models_list` with the task of the shot.')
   })
 
+  it('registers the prompt skill of an entry for the agent while the entry lives, and names it in dv_models_list', async () => {
+    const ctx = await start()
+    const remove = ctx.dvModels.register({ ...entry('t2v', 'extra', 'gamma'), promptSkill: GAMMA_SKILL })
+    const skill = await ctx.skills.get('gamma-prompting')
+    expect(skill?.invocation).toEqual({ modelInvocable: true, userInvocable: false })
+    expect(skill?.description).toBe('Prompt rules for model gamma for task t2v.')
+    expect(skill?.content).toBe('# Gamma')
+    const listed = await call(ctx, 'dv_models_list', { provider: 'extra' })
+    if (listed.isError) throw new Error(listed.error.message)
+    expect(listed.value).toEqual([
+      { modality: 'video', task: 't2v', provider: 'extra', model: 'gamma', description: 'gamma for t2v', prompt_skill: 'gamma-prompting' },
+    ])
+    remove()
+    expect(await ctx.skills.get('gamma-prompting')).toBeUndefined()
+  })
+
+  it('registers the prompt skills of the entries when the skill registry mounts after them', async () => {
+    const ctx = await start()
+    await unload(ctx, 'skills')
+    ctx.dvModels.register({ ...entry('t2v', 'extra', 'gamma'), promptSkill: GAMMA_SKILL })
+    await ctx.plugin(SkillRegistry)
+    expect((await ctx.skills.get('gamma-prompting'))?.content).toBe('# Gamma')
+  })
+
   it('adds nothing to the system prompt', async () => {
     const ctx = await start()
     const loaded = await ctx.systemPrompt.assemble({ agent: { id: 's1' } as never })
@@ -216,13 +243,16 @@ describe('dvModels', () => {
     expect(loaded.contexts).toEqual(unloaded.contexts)
   })
 
-  it('removes its tools and skill when the catalog unloads', async () => {
+  it('removes its tools and skills when the catalog unloads', async () => {
     const ctx = await start()
+    ctx.dvModels.register({ ...entry('t2v', 'extra', 'gamma'), promptSkill: GAMMA_SKILL })
     expect(ctx.tools.get('dv_models_list')).toBeDefined()
     expect(ctx.tools.get('dv_models_get')).toBeDefined()
+    expect(await ctx.skills.get('gamma-prompting')).toBeDefined()
     await unload(ctx, 'dv-models')
     expect(ctx.tools.get('dv_models_list')).toBeUndefined()
     expect(ctx.tools.get('dv_models_get')).toBeUndefined()
     expect(await ctx.skills.get('video-model-selection')).toBeUndefined()
+    expect(await ctx.skills.get('gamma-prompting')).toBeUndefined()
   })
 })

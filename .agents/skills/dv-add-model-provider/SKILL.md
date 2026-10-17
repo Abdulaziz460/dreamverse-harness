@@ -125,8 +125,8 @@ When you dispose the plugin, the effect removes the entry. `register` throws whe
 
 1. Write a prompt skill when the model needs its own prompt rules.
 2. Put the skill file in `packages/dv/<provider>/skills/`.
-3. Inside `ctx.inject(['skills'], (child) => …)`, register the skill with `child.effect(() => child.skills.register(skill), '<label>')`.
-4. Set `source: 'runtime'` and `invocation: { modelInvocable: true, userInvocable: false }`.
+3. Set `promptSkill` on the entry of the model and task: `name`, `description`, and `content` with the text of the skill file. `dvModels.register` registers the skill for the agent while the entry lives. Do not register the skill in the provider plugin.
+4. In `description`, name the model and the task. Do not name a tool.
 5. Do not copy limits into the skill. The `@dv/fastvideo` prompt skills state fixed limits. Do not copy that part of the example. Tell the agent to read the limits with `dv_models_get`.
 
 ### Complete the package

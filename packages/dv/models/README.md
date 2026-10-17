@@ -68,6 +68,7 @@ A provider plugin implements one `ModelEntry` for each key. `ModelEntry<T>` take
 | `schema()` | Resolves with a JSON description of the requests that the model accepts: the limits that the agent needs, such as durations, aspect ratios and resolutions, the inputs with their media types and counts, and the parameters in `extra`. The provider plugin defines this JSON. The catalog gives it to the agent unchanged. Rejects when the backend cannot be reached. |
 | `validateGenerationRequest(request)` | Resolves with each reason that the model cannot render a `RenderRequest`, one agent-facing sentence for each reason. The reasons include invalid `extra` values. Resolves with an empty list when the model can render the request. Rejects when the backend cannot be reached. |
 | `render(request, signal)` | Renders one shot and returns a stream of `RenderStreamEvent` values. Reads each input asset through `dvAssetPool`. Yields one `video_start` event, the `chunk` events, and then one `done` event. Yields exactly one `last_frame` event before `video_start` or after the last `chunk`. Rejects for each backend failure. When `signal` aborts, cancels the render and rejects with the abort reason. |
+| `promptSkill` | Optional. The prompt skill of the model for this task: `name`, `description` and `content`. The description names the model and the task and no tool. While the entry is registered and the DSH skill registry is mounted, the catalog registers the skill for the agent. |
 
 ### Render requests and render streams
 
@@ -107,14 +108,14 @@ A provider plugin calls `register`. A consumer calls the other methods.
 
 | Method | Returns | Semantics |
 | --- | --- | --- |
-| `register(entry)` | `() => void` | Adds an entry. The returned function removes the entry. A second call of that function does nothing. Throws when an entry with the same key exists. Call `register` inside `ctx.effect`, so that disposal of the provider plugin removes its entries. |
+| `register(entry)` | `() => void` | Adds an entry. The returned function removes the entry. A second call of that function does nothing. Throws when an entry with the same key exists. Call `register` inside `ctx.effect`, so that disposal of the provider plugin removes its entries. While the DSH skill registry is mounted, the entry's `promptSkill` is a runtime skill until the entry is removed. |
 | `get(key)` | `ModelEntry \| undefined` | The entry with the key, or `undefined`. |
 | `resolve(tasks, params)` | `ModelEntry<T>` | The entry with the key that `modelKey(params)` reads, when its task is in `tasks`. Throws `Unknown model "<key>"; call dv_models_list for the models.` when no entry of one of `tasks` has the key. |
 | `whileServing(tasks, start)` | `() => void` | Calls `start` when the catalog gains its first entry of one of `tasks`, and calls the disposer that `start` returned when the catalog loses its last such entry. The returned function stops listening and calls that disposer. Pass it to `ctx.effect`, as `@dv/shot-render` does for its operation. |
 | `list(filter?)` | `ModelEntry[]` | The entries that match each given field of `modality`, `task` and `provider`, in registration order. An absent field matches all entries. |
 | `onChanged(listener)` | `() => void` | Calls `listener` after each registration and each removal. The returned function removes the listener. |
 
-The service also registers the tools `dv_models_list` and `dv_models_get` and the skill `video-model-selection` for the agent. It adds nothing to the system prompt.
+The service also registers the tools `dv_models_list` and `dv_models_get`, the skill `video-model-selection`, and the prompt skill of each entry for the agent. It adds nothing to the system prompt.
 
 ### What a provider plugin owns
 
@@ -124,7 +125,7 @@ A provider plugin connects one provider to the catalog. [`@dv/fastvideo`](../fas
 - The deployment values in its `Config`, such as the server URL and the GPU rate of each model and task.
 - All members of each entry that it registers.
 - The translation of a `RenderRequest` into a backend request. The plugin reads the bytes and the media type of each asset from `dvAssetPool`. The plugin sends them in the format of the backend.
-- Optional prompt skills for its models.
+- The optional `promptSkill` of each entry. The catalog registers it, and the provider plugin registers no skill.
 
 This package owns the key, the entry contract, the request and stream types, the `dvModels` service, the two tools, and the selection skill. It contains no data about a specific model.
 
@@ -153,9 +154,9 @@ The repository skill [`dv-add-model-provider`](../../../.agents/skills/dv-add-mo
 
 The service keeps the entries in a `Map` by the formatted key. `register` refuses a key that the map contains. Each registration and each removal calls every `onChanged` listener after the map changes. The function that `register` returns removes the entry only while the map holds that same entry.
 
-While the DSH tool registry (`tools`) is mounted, the service registers `dv_models_list` and `dv_models_get` as effects. `dv_models_list` filters the entries with its arguments and returns the key and the description of each entry. `dv_models_get` finds the entry with all four key fields and returns its key, its description and the JSON of its `schema()`. It does not read `facts()`. `@dv/shot-render` reads the facts to build the request.
+While the DSH tool registry (`tools`) is mounted, the service registers `dv_models_list` and `dv_models_get` as effects. `dv_models_list` filters the entries with its arguments and returns the key and the description of each entry, and `prompt_skill`, the name of its prompt skill, for an entry that has one. `dv_models_get` finds the entry with all four key fields and returns its key, its description and the JSON of its `schema()`. It does not read `facts()`. `@dv/shot-render` reads the facts to build the request.
 
-While the DSH skill registry (`skills`) is mounted, the service registers the runtime skill `video-model-selection` from `skills/video-model-selection.md`. The agent can load the skill. Users cannot call it from the composer.
+While the DSH skill registry (`skills`) is mounted, the service registers the runtime skill `video-model-selection` from `skills/video-model-selection.md`. The agent can load the skill. Users cannot call it from the composer. In the same registry, the service registers the `promptSkill` of each entry with the same invocation rule. It registers the skill when the entry or the registry arrives, and removes it when the entry or the registry leaves.
 
 [`@dv/shot-render`](../shot-render/README.md) registers `shot.render` with `whileServing(['t2v', 'ref2v'], ...)` and gets the entry that a `dv_shot_render` call names with `resolve(['t2v', 'ref2v'], params)`. It builds a `RenderRequest` from the facts of the entry. It checks the request with `validateGenerationRequest`, and then renders the request. [`@dv/shot-plan`](../shot-plan/README.md) refuses a plan shot whose key names no entry.
 
@@ -188,12 +189,12 @@ While the DSH skill registry (`skills`) is mounted, the service registers the ru
 
 #### What the model sees
 
-While the DSH tool registry is mounted, the agent sees the tool `dv_models_list` with the description below. The tool has three optional string arguments: `modality`, `task` and `provider`. The generated tool catalog does not list DreamVerse tools, so this section quotes the description and the argument descriptions. A call returns one text block with indented JSON: an array of `modality`, `task`, `provider`, `model` and `description` for each matching entry. This package adds nothing to the system prompt. The agent reads the catalog only through the two tools and the `video-model-selection` skill.
+While the DSH tool registry is mounted, the agent sees the tool `dv_models_list` with the description below. The tool has three optional string arguments: `modality`, `task` and `provider`. The generated tool catalog does not list DreamVerse tools, so this section quotes the description and the argument descriptions. A call returns one text block with indented JSON: an array of `modality`, `task`, `provider`, `model` and `description` for each matching entry, with `prompt_skill`, the name of the entry's prompt skill, when the entry has one. This package adds nothing to the system prompt. The agent reads the catalog only through the two tools and the `video-model-selection` skill.
 
 ##### dv_models_list description
 
 ```markdown
-List the models you can generate with, each with its key (modality, task, provider, model) and its description.
+List the models you can generate with, each with its key (modality, task, provider, model), its description and the name of its prompt skill, if it has one.
 ```
 
 ##### dv_models_list argument descriptions
@@ -206,7 +207,7 @@ List the models you can generate with, each with its key (modality, task, provid
 
 #### Token effect
 
-About 85 tokens for the definition, in every request while the tool registry is mounted. A result costs about 30 tokens for each entry, plus the tokens of the entry's description.
+About 95 tokens for the definition, in every request while the tool registry is mounted. A result costs about 30 tokens for each entry, plus the tokens of the entry's description.
 
 #### KV Cache effect
 
