@@ -97,8 +97,8 @@ When you dispose the plugin, the effect removes the entry. `register` throws whe
 2. **`gpuSecondsPerVideoSecond`**: Read the value from the `Config` of the task.
 3. **`facts()`**: Read the limits from the server. Return all `RenderModelFacts` fields. Put the default aspect ratio and the default resolution first.
 4. **`facts()`**: Give a frame count for each whole second from `minDurationSec` to `maxDurationSec`. Reject when the server cannot be reached.
-5. **`schema()`**: Return JSON with `inputs` and `extra`. Use the `dv_shot_render` input roles `reference` and `first_frame` as the keys of `inputs`. `@dv/models` does not check this JSON.
-6. **`schema()`**: Give each input its minimum count, its maximum count, and its media types with their limits.
+5. **`schema()`**: Return JSON with the limits, `inputs` and `extra`. Use the `dv_shot_render` input roles `reference` and `first_frame` as the keys of `inputs`. `@dv/models` does not check this JSON. `dv_models_get` returns this JSON to the agent and does not read `facts()`.
+6. **`schema()`**: Give the limits as `duration_sec` with `min` and `max`, `aspect_ratios`, and `resolutions`. Give each input its minimum count, its maximum count, and its media types with their limits.
 7. **`schema()`**: Describe each `extra` parameter with its type and range. Reject when the server cannot be reached.
 8. **`validateGenerationRequest(request)`**: Return every problem of the request as one agent-facing sentence. Return an empty list for a valid request.
 9. **`validateGenerationRequest(request)`**: Check the count of each input against the limits. Read the media type of each asset with `ctx.dvAssetPool.mediaType(id)`.
@@ -153,7 +153,7 @@ When you dispose the plugin, the effect removes the entry. `register` throws whe
 2. In the `config` of the row, add or change the server URL of the model and task.
 3. Set the GPU seconds for one second of video on that server.
 4. Do not change the plugin code.
-5. If you can start the composition, call `dv_models_get` for the key. Make sure that the facts come from the server.
+5. If you can start the composition, call `dv_models_get` for the key. Make sure that the limits in the schema come from the server.
 
 ## Verify
 

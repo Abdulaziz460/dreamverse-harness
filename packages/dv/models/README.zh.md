@@ -65,7 +65,7 @@ DreamVerse bundle [`@dv/bundle`](../../bundle/dv/README.zh.md) 以行 `dv-models
 | `description` | 模型的长处和短处。agent 和用户比较描述，在相似的模型之间选择。 |
 | `gpuSecondsPerVideoSecond` | `video` 行的一个 `entry` 字段。渲染一秒视频所用的 GPU 秒数。消费方把它乘以镜头时长，在渲染开始前估算渲染的 GPU 时间。 |
 | `facts()` | resolve 为后端报告的 `RenderModelFacts`。后端无法连接时 reject。 |
-| `schema()` | resolve 为描述模型所接受请求的 JSON：各输入及其媒体类型和数量，以及 `extra` 中的参数。提供方插件定义该 JSON。模型目录把它原样交给 agent。后端无法连接时 reject。 |
+| `schema()` | resolve 为描述模型所接受请求的 JSON：agent 需要的限制（例如时长、宽高比和分辨率）、各输入及其媒体类型和数量，以及 `extra` 中的参数。提供方插件定义该 JSON。模型目录把它原样交给 agent。后端无法连接时 reject。 |
 | `validateGenerationRequest(request)` | resolve 为模型无法渲染某个 `RenderRequest` 的每个原因，每个原因一句面向 agent 的话。原因包括无效的 `extra` 值。模型能渲染该请求时 resolve 为空列表。后端无法连接时 reject。 |
 | `render(request, signal)` | 渲染一个镜头，返回 `RenderStreamEvent` 值的流。通过 `dvAssetPool` 读取每个输入素材。产生一个 `video_start` 事件、若干 `chunk` 事件，然后是一个 `done` 事件。在 `video_start` 之前或最后一个 `chunk` 之后恰好产生一个 `last_frame` 事件。任何后端失败都会 reject。`signal` 中止时，取消渲染并以中止原因 reject。 |
 
@@ -153,7 +153,7 @@ DreamVerse bundle [`@dv/bundle`](../../bundle/dv/README.zh.md) 以行 `dv-models
 
 本服务把条目按格式化后的键存在一个 `Map` 中。`register` 拒绝 map 中已有的键。每次注册和每次移除都在 map 改变后调用所有 `onChanged` 监听器。`register` 返回的函数只在 map 仍持有同一个条目时移除该条目。
 
-DSH 工具注册表（`tools`）挂载期间，本服务以 effect 注册 `dv_models_list` 和 `dv_models_get`。`dv_models_list` 用其参数筛选条目，返回每个条目的键和描述。`dv_models_get` 用全部四个键字段查找条目，并同时读取 `facts()` 和 `schema()`。`dv_models_get` 只从 facts 中返回时长范围、宽高比和分辨率。`@dv/shot-render` 用其他 facts 构建请求。
+DSH 工具注册表（`tools`）挂载期间，本服务以 effect 注册 `dv_models_list` 和 `dv_models_get`。`dv_models_list` 用其参数筛选条目，返回每个条目的键和描述。`dv_models_get` 用全部四个键字段查找条目，返回它的键、描述和 `schema()` 的 JSON。它不读取 `facts()`。`@dv/shot-render` 读取 facts 构建请求。
 
 DSH skill 注册表（`skills`）挂载期间，本服务从 `skills/video-model-selection.md` 注册运行时 skill `video-model-selection`。agent 可以加载该 skill。用户不能从输入框调用它。
 
@@ -216,12 +216,12 @@ List the video models you can render with, each with its key (modality, task, pr
 
 #### 模型看到什么
 
-DSH 工具注册表挂载期间，agent 看到工具 `dv_models_get`，带下面的描述。该工具有四个必填字符串参数：`modality`、`task`、`provider` 和 `model`。一次调用返回一个文本块，内容是缩进的 JSON：四个键字段、`description`、`facts` 和提供方的 `schema` JSON。`facts` 包含带 `min` 和 `max` 的 `duration_sec`、`aspect_ratios` 和 `resolutions`。键不对应任何条目时，调用以 `No video model has the key <modality>/<task>/<provider>/<model>; call dv_models_list for the models you can use.` 失败。后端无法连接时，调用以后端的错误失败。
+DSH 工具注册表挂载期间，agent 看到工具 `dv_models_get`，带下面的描述。该工具有四个必填字符串参数：`modality`、`task`、`provider` 和 `model`。一次调用返回一个文本块，内容是缩进的 JSON：四个键字段、`description` 和提供方的 `schema` JSON，其中包含模型的限制。键不对应任何条目时，调用以 `No video model has the key <modality>/<task>/<provider>/<model>; call dv_models_list for the models you can use.` 失败。后端无法连接时，调用以后端的错误失败。
 
 ##### dv_models_get 描述
 
 ```markdown
-Read one video model by its key from dv_models_list: its description; its facts (durations, aspect ratios and resolutions); and its schema (the inputs it accepts with their media types and counts, and the parameters it takes in `extra`).
+Read one video model by its key from dv_models_list: its description and its schema (its limits, such as durations, aspect ratios and resolutions; the inputs it accepts with their media types and counts; and the parameters it takes in `extra`).
 ```
 
 ##### dv_models_get 参数描述

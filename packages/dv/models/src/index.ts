@@ -227,9 +227,9 @@ export default class DvModels extends Service {
   private defineModelsGetTool() {
     return defineTool({
       name: 'dv_models_get',
-      description: 'Read one video model by its key from dv_models_list: its description; its facts (durations, aspect '
-        + 'ratios and resolutions); and its schema (the inputs it accepts with their media types and counts, and the '
-        + 'parameters it takes in `extra`).',
+      description: 'Read one video model by its key from dv_models_list: its description and its schema (its limits, '
+        + 'such as durations, aspect ratios and resolutions; the inputs it accepts with their media types and counts; '
+        + 'and the parameters it takes in `extra`).',
       parameters: {
         modality: { type: 'string', required: true, description: 'The modality of the model, as dv_models_list lists it.' },
         task: { type: 'string', required: true, description: 'The task of the model, as dv_models_list lists it.' },
@@ -243,16 +243,7 @@ export default class DvModels extends Service {
           throw new Error(`No video model has the key ${args.modality}/${args.task}/${args.provider}/${args.model}; `
             + 'call dv_models_list for the models you can use.')
         }
-        const [facts, schema] = await Promise.all([entry.facts(), entry.schema()])
-        return {
-          ...toModelListItem(entry),
-          facts: {
-            duration_sec: { min: facts.minDurationSec, max: facts.maxDurationSec },
-            aspect_ratios: facts.aspectRatios,
-            resolutions: facts.resolutions,
-          },
-          schema,
-        }
+        return { ...toModelListItem(entry), schema: await entry.schema() }
       },
     })
   }

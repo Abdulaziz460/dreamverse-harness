@@ -65,7 +65,7 @@ A provider plugin implements one `ModelEntry` for each key. `ModelEntry<T>` take
 | `description` | The strengths and weaknesses of the model. The agent and the user compare descriptions to choose between similar models. |
 | `gpuSecondsPerVideoSecond` | An `entry` field of the `video` row. The GPU seconds for one second of rendered video. A consumer multiplies it by the shot duration to estimate the GPU time of a render before the render starts. |
 | `facts()` | Resolves with the `RenderModelFacts` that the backend reports. Rejects when the backend cannot be reached. |
-| `schema()` | Resolves with a JSON description of the requests that the model accepts: the inputs with their media types and counts, and the parameters in `extra`. The provider plugin defines this JSON. The catalog gives it to the agent unchanged. Rejects when the backend cannot be reached. |
+| `schema()` | Resolves with a JSON description of the requests that the model accepts: the limits that the agent needs, such as durations, aspect ratios and resolutions, the inputs with their media types and counts, and the parameters in `extra`. The provider plugin defines this JSON. The catalog gives it to the agent unchanged. Rejects when the backend cannot be reached. |
 | `validateGenerationRequest(request)` | Resolves with each reason that the model cannot render a `RenderRequest`, one agent-facing sentence for each reason. The reasons include invalid `extra` values. Resolves with an empty list when the model can render the request. Rejects when the backend cannot be reached. |
 | `render(request, signal)` | Renders one shot and returns a stream of `RenderStreamEvent` values. Reads each input asset through `dvAssetPool`. Yields one `video_start` event, the `chunk` events, and then one `done` event. Yields exactly one `last_frame` event before `video_start` or after the last `chunk`. Rejects for each backend failure. When `signal` aborts, cancels the render and rejects with the abort reason. |
 
@@ -153,7 +153,7 @@ The repository skill [`dv-add-model-provider`](../../../.agents/skills/dv-add-mo
 
 The service keeps the entries in a `Map` by the formatted key. `register` refuses a key that the map contains. Each registration and each removal calls every `onChanged` listener after the map changes. The function that `register` returns removes the entry only while the map holds that same entry.
 
-While the DSH tool registry (`tools`) is mounted, the service registers `dv_models_list` and `dv_models_get` as effects. `dv_models_list` filters the entries with its arguments and returns the key and the description of each entry. `dv_models_get` finds the entry with all four key fields and reads `facts()` and `schema()` at the same time. From the facts, `dv_models_get` returns only the duration range, the aspect ratios, and the resolutions. `@dv/shot-render` uses the other facts to build the request.
+While the DSH tool registry (`tools`) is mounted, the service registers `dv_models_list` and `dv_models_get` as effects. `dv_models_list` filters the entries with its arguments and returns the key and the description of each entry. `dv_models_get` finds the entry with all four key fields and returns its key, its description and the JSON of its `schema()`. It does not read `facts()`. `@dv/shot-render` reads the facts to build the request.
 
 While the DSH skill registry (`skills`) is mounted, the service registers the runtime skill `video-model-selection` from `skills/video-model-selection.md`. The agent can load the skill. Users cannot call it from the composer.
 
@@ -216,12 +216,12 @@ The definition is fixed text in the stable tool section. Registration or removal
 
 #### What the model sees
 
-While the DSH tool registry is mounted, the agent sees the tool `dv_models_get` with the description below. The tool has four required string arguments: `modality`, `task`, `provider` and `model`. A call returns one text block with indented JSON: the four key fields, `description`, `facts`, and the `schema` JSON of the provider. `facts` holds `duration_sec` with `min` and `max`, `aspect_ratios`, and `resolutions`. A key that names no entry fails the call with `No video model has the key <modality>/<task>/<provider>/<model>; call dv_models_list for the models you can use.` A backend that cannot be reached fails the call with the error of the backend.
+While the DSH tool registry is mounted, the agent sees the tool `dv_models_get` with the description below. The tool has four required string arguments: `modality`, `task`, `provider` and `model`. A call returns one text block with indented JSON: the four key fields, `description`, and the `schema` JSON of the provider, which holds the limits of the model. A key that names no entry fails the call with `No video model has the key <modality>/<task>/<provider>/<model>; call dv_models_list for the models you can use.` A backend that cannot be reached fails the call with the error of the backend.
 
 ##### dv_models_get description
 
 ```markdown
-Read one video model by its key from dv_models_list: its description; its facts (durations, aspect ratios and resolutions); and its schema (the inputs it accepts with their media types and counts, and the parameters it takes in `extra`).
+Read one video model by its key from dv_models_list: its description and its schema (its limits, such as durations, aspect ratios and resolutions; the inputs it accepts with their media types and counts; and the parameters it takes in `extra`).
 ```
 
 ##### dv_models_get argument descriptions

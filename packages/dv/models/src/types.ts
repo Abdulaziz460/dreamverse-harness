@@ -137,8 +137,9 @@ export type ModelEntry<T extends TaskId = TaskId> = ModelKey<T> & PrimitiveTypes
    */
   facts(): Promise<PrimitiveTypes[TaskMap[T]]['facts']>
   /**
-   * Read the model's own description of the requests it accepts: the inputs it takes with their media types and counts,
-   * and the parameters it takes in `extra`. The catalog returns it to the agent unchanged.
+   * Read the model's own description of the requests it accepts: the limits that the agent needs, such as durations,
+   * aspect ratios and resolutions; the inputs it takes with their media types and counts; and the parameters it
+   * takes in `extra`. The catalog returns it to the agent unchanged.
    * @returns the description.
    * @throws Error when the backend cannot be reached.
    */

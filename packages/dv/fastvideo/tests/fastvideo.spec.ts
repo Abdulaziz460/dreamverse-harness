@@ -207,13 +207,16 @@ describe('dv-fastvideo', () => {
     expect(await fasth3(ctx, 't2v').facts()).toMatchObject({ modelId: 'fake-t2va' })
     // The first image frame takes one of the server's references and one of its images; audio the server does not accept.
     expect(await fasth3(ctx, 'ref2v').schema()).toEqual({
+      duration_sec: { min: 5, max: 6 }, aspect_ratios: ['16:9'], resolutions: ['720p'],
       inputs: {
         reference: { min: 1, max: 3, media_types: { image: { max: 2 }, video: { max: 2 }, audio: { max: 0 } } },
         first_frame: { min: 0, max: 1, media_types: { image: {} } },
       },
       extra: {},
     })
-    expect(await fasth3(ctx, 't2v').schema()).toEqual({ inputs: {}, extra: {} })
+    expect(await fasth3(ctx, 't2v').schema()).toEqual({
+      duration_sec: { min: 5, max: 6 }, aspect_ratios: ['16:9'], resolutions: ['720p'], inputs: {}, extra: {},
+    })
     // The streaming_v2 clients stay private to the plugin.
     expect(ctx.get('dvFastvideoGeneration')).toBeUndefined()
   })

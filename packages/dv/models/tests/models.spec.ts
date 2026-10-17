@@ -142,13 +142,12 @@ describe('dvModels', () => {
     expect(refs.value).toEqual([{ modality: 'video', task: 'ref2v', provider: 'test', model: 'alpha', description: 'alpha for ref2v' }])
   })
 
-  it('answers dv_models_get with one entry\'s durations, aspect ratios, resolutions and schema, and names an unknown key', async () => {
+  it('answers dv_models_get with one entry\'s key, description and schema, and names an unknown key', async () => {
     const ctx = await start()
     const result = await call(ctx, 'dv_models_get', { modality: 'video', task: 'ref2v', provider: 'test', model: 'alpha' })
     if (result.isError) throw new Error(result.error.message)
     expect(result.value).toEqual({
       modality: 'video', task: 'ref2v', provider: 'test', model: 'alpha', description: 'alpha for ref2v',
-      facts: { duration_sec: { min: 4, max: 8 }, aspect_ratios: ['16:9'], resolutions: ['720p'] },
       schema: { inputs: { reference: { media_types: ['image'] } }, extra: {} },
     })
     const unknown = await call(ctx, 'dv_models_get', { modality: 'video', task: 'ref2v', provider: 'other', model: 'beta' })

@@ -5,8 +5,9 @@
  * client of `@dv/fastvideo-generation-client` sends each render as one `POST /v1/streamv2/generate`, with the references
  * first and the first frame after them, each as its media type and bytes read from `dvAssetPool`, and with each citation
  * of a reference in the prompt replaced by the label that the served model gives the reference. Each entry describes
- * the inputs and `extra` parameters it accepts in `schema()` and checks both in `validateGenerationRequest`. While the
- * DSH skill registry is mounted, the plugin registers the prompt skill of every registered entry.
+ * in `schema()` the durations, aspect ratios and resolutions of its server and the inputs and `extra` parameters it
+ * accepts, and checks the inputs and `extra` in `validateGenerationRequest`. While the DSH skill registry is mounted,
+ * the plugin registers the prompt skill of every registered entry.
  *
  * Served models: `fasth3` (MiniMax H3 as FastH3), for task `ref2v` (FastH3 Ref2VA) and task `t2v` (FastH3 8-Step V2).
  *
@@ -229,8 +230,12 @@ function modelEntry(ctx: Context, model: string, task: TaskId, server: TaskServe
       }
     },
     async schema(): Promise<JsonValue> {
+      const capabilities = await client.model()
       return {
-        inputs: describeInputs(inputs, deriveInputLimits(inputs, await client.model())),
+        duration_sec: { min: capabilities.minSegmentDurationSec, max: capabilities.maxSegmentDurationSec },
+        aspect_ratios: capabilities.aspectRatios,
+        resolutions: capabilities.resolutions,
+        inputs: describeInputs(inputs, deriveInputLimits(inputs, capabilities)),
         extra: JSON.parse(JSON.stringify(extra)) as JsonValue,
       }
     },
