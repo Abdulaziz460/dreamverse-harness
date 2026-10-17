@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-使用本包渲染镜头。它是 [`@dv/models`](../models/README.zh.md) 模型目录的使用者：它唯一的操作 `shot.render`（工具 `dv_shot_render`）用必填参数 `modality`、`task`、`provider` 和 `model` 指定的模型目录条目渲染一个镜头的一个版本。任务 `ref2v` 根据提示词、参考素材和可选的首帧渲染；任务 `t2v` 只根据提示词渲染。模型自己的参数放在 `extra` 参数中。模型目录中有模型时，该操作才存在。每个版本的输出都是视频和它的最后静帧；归约函数按镜头归组版本。
+使用本包渲染镜头。它是 [`@dv/models`](../models/README.zh.md) 模型目录的使用者：它唯一的操作 `shot.render`（工具 `dv_shot_render`）用必填参数 `modality`、`task`、`provider` 和 `model` 指定的模型目录条目渲染一个镜头的一个版本。任务 `ref2v` 根据提示词、参考素材和可选的首帧渲染；任务 `t2v` 只根据提示词渲染。模型自己的参数放在 `extra` 参数中。模型目录服务其任务时，该操作才存在。每个版本的输出都是视频和它的最后静帧；归约函数按镜头归组版本。
 
 ## 目录
 
@@ -24,7 +24,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-在 `@dv/project` 和 `@dv/models` 之后挂载插件，并挂载一个向模型目录注册模型的提供方插件，例如 [`@dv/fastvideo`](../fastvideo/README.zh.md)。`shot` 归约函数总会注册；模型目录中至少有一个模型时注册 `shot.render`。
+在 `@dv/project` 和 `@dv/models` 之后挂载插件，并挂载一个向模型目录注册模型的提供方插件，例如 [`@dv/fastvideo`](../fastvideo/README.zh.md)。`shot` 归约函数总会注册；模型目录中至少有一个任务 `t2v` 或 `ref2v` 的模型时注册 `shot.render`（`dvModels.whileServing`）。
 
 ```yaml
 - id: dv-shot-render
@@ -44,7 +44,7 @@ kind: "package-reference"
 <a id="understand-the-implementation"></a>
 ## 理解实现
 
-`renderShot` 用 `dvModels.get` 查找指定键的模型目录条目，用 `facts()` 读取它的模型事实，然后组装渲染请求：提示词、参考输入按输入顺序的素材 ID、唯一首帧的素材 ID、按参数解析的帧尺寸和帧数、种子，以及 `extra` 值。它把每个输入都放进请求，由模型判断：请求发给条目的 `render(request, signal)` 之前，再运行一次条目的 `validateGenerationRequest(request)`，因为前置条件运行时尚未完成的记录的输出此时已是素材。提示词中的每个引用（`@[<label>](dv:asset/<AssetId>)`）都必须指向参考输入中的素材，按角色引用输入（`dv:input/<role>`，例如 `dv:input/first_frame`）的调用必须有该角色的输入；引用其他内容会被拒绝，提示词没有引用的参考素材照常发送。对参考输入中角色、场景或风格版本的引用（`dv:character/<id>`、`dv:location/<id>` 或 `dv:style/<id>`，不带版本）在检查之前展开成它的标签和它的参考素材的引用，例如 `Mia (@[Mia · 1](dv:asset/a1) @[Mia · 2](dv:asset/a2))`；记录的 `prompt` 参数保留原样写的提示词。模型从素材库读取每个素材的字节和媒体类型，模型插件把每个引用换成模型读取的标签。`renderShot` 把流写入临时文件，然后经 `context.importAsset` 导入视频和 PNG 最后静帧。挂载了 `@video-harness/stream` 的可选实时流服务时，视频分块到达时也送到它的 `openSegment`，以计划的 `shot` 序号作为片段索引。
+`renderShot` 用 `dvModels.resolve` 在任务 `t2v` 和 `ref2v` 中查找指定键的模型目录条目，用 `facts()` 读取它的模型事实，然后组装渲染请求：提示词、参考输入按输入顺序的素材 ID、唯一首帧的素材 ID、按参数解析的帧尺寸和帧数、种子，以及 `extra` 值。它把每个输入都放进请求，由模型判断：请求发给条目的 `render(request, signal)` 之前，再运行一次条目的 `validateGenerationRequest(request)`，因为前置条件运行时尚未完成的记录的输出此时已是素材。提示词中的每个引用（`@[<label>](dv:asset/<AssetId>)`）都必须指向参考输入中的素材，按角色引用输入（`dv:input/<role>`，例如 `dv:input/first_frame`）的调用必须有该角色的输入；引用其他内容会被拒绝，提示词没有引用的参考素材照常发送。对参考输入中角色、场景或风格版本的引用（`dv:character/<id>`、`dv:location/<id>` 或 `dv:style/<id>`，不带版本）在检查之前展开成它的标签和它的参考素材的引用，例如 `Mia (@[Mia · 1](dv:asset/a1) @[Mia · 2](dv:asset/a2))`；记录的 `prompt` 参数保留原样写的提示词。模型从素材库读取每个素材的字节和媒体类型，模型插件把每个引用换成模型读取的标签。`renderShot` 把流写入临时文件，然后经 `context.importAsset` 导入视频和 PNG 最后静帧。挂载了 `@video-harness/stream` 的可选实时流服务时，视频分块到达时也送到它的 `openSegment`，以计划的 `shot` 序号作为片段索引。
 
 对任何调用方，在写下任何记录之前，`shot.render` 的 `precondition` 拒绝以下调用：键不对应任何模型目录条目（以 `modality/task/provider/model` 写出该键，并让智能体调用 `dv_models_list`）、缺少提示词或参数超出模型事实、`first_frame` 输入多于一个，或者条目的 `validateGenerationRequest` 拒绝其渲染请求（含 `extra` 值）。前置条件把每个输入解析为素材：素材就是它自己，记录输出是已完成记录的该输出（经 `dvProject.getRecord` 读取），角色、场景或风格版本代表 `dvProject.assetsOf` 为它返回的素材。它组装与 `renderShot` 相同的渲染请求（调用没有给种子时自取一个种子），交给条目的 `validateGenerationRequest`。输入为尚未完成的记录的输出的调用，由 `renderShot` 在渲染之前校验（含 `extra` 值）。拒绝消息以“Model <modality>/<task>/<provider>/<model> cannot render this shot:”开头，列出模型给出的问题，并让智能体修改输入、向用户要镜头需要的素材；分镜计划调度的调用（参数 `plan`）会被告知用 `dv_plan_update` 更新分镜计划。智能体调用之前，`prepareToolCall` 把 `continue_from` 变成 `first_frame` 输入 `{record, output: 1}`，并运行同一个前置条件，由其中对模型 `validateGenerationRequest` 的调用决定模型是否接受该首帧，所以智能体在 Project 请求用户同意之前就被拒绝。
 
@@ -75,11 +75,11 @@ kind: "package-reference"
 
 #### 模型看到什么
 
-模型目录中有模型时，有一个工具 `dv_shot_render`，格式与 `@dv/project` 给每个操作工具的一样，带提示 "Uses the GPU."，以及 Project 因 `confirm: over_gpu_budget` 加上的参数 `user_requested`。描述说明 `modality`、`task`、`provider` 和 `model` 指定 `dv_models_list` 中的一个模型且必填，任务 `ref2v` 根据参考素材（`c1@1`）渲染，提示词以 `@[<label>](dv:asset/<asset ID>)` 引用它们，其接受的输入、媒体类型和数量由 `dv_models_get` 列出，模型接受首帧时 `continue_from` 从更早镜头的最后静帧开始，模型自己的参数放在 `extra` 中（见 `dv_models_get`）；它还说明两个输出，以及每次调用都是新版本、修改提示词时传 `based_on`。四个键参数是字符串，其说明指向 `dv_models_list`。`reference` 输入的类型是 `any`，`prompt` 参数说明提示词在提到参考输入中的每张参考图片的地方以 `@[<label>](dv:asset/<asset ID>)` 引用它。
+模型目录中有任务 `t2v` 或 `ref2v` 的模型时，有一个工具 `dv_shot_render`，格式与 `@dv/project` 给每个操作工具的一样，带提示 "Uses the GPU."，以及 Project 因 `confirm: over_gpu_budget` 加上的参数 `user_requested`。描述说明 `modality`、`task`、`provider` 和 `model` 指定 `dv_models_list` 中的一个模型且必填，任务 `ref2v` 根据参考素材（`c1@1`）渲染，提示词以 `@[<label>](dv:asset/<asset ID>)` 引用它们，其接受的输入、媒体类型和数量由 `dv_models_get` 列出，模型接受首帧时 `continue_from` 从更早镜头的最后静帧开始，模型自己的参数放在 `extra` 中（见 `dv_models_get`）；它还说明两个输出，以及每次调用都是新版本、修改提示词时传 `based_on`。四个键参数是字符串，其说明指向 `dv_models_list`。`reference` 输入的类型是 `any`，`prompt` 参数说明提示词在提到参考输入中的每张参考图片的地方以 `@[<label>](dv:asset/<asset ID>)` 引用它。
 
 #### Token 影响
 
-插件和至少一个模型挂载期间，定义固定约 700 个 token；`@dv/project` 的共享参数最多增加约 200 个 token。
+插件和至少一个任务 `t2v` 或 `ref2v` 的模型挂载期间，定义固定约 700 个 token；`@dv/project` 的共享参数最多增加约 200 个 token。
 
 #### KV Cache 影响
 

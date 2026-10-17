@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-使用本包列出部署可以用来渲染的视频模型。提供方插件（如 [`@dv/fastvideo`](../fastvideo/README.zh.md)）为它提供的每个模型和任务注册一个条目。消费方（如 [`@dv/shot-render`](../shot-render/README.zh.md)）按键获取条目，并用一种请求类型渲染。agent（智能体）用两个工具读取条目，并用一个 skill（技能）为每个镜头选择模型。添加提供方时，添加一个提供方插件。添加模型时，修改一个提供方插件。添加服务器时，修改该提供方插件的 `Config` 行。
+使用本包列出部署可以用来渲染的视频模型。提供方插件（如 [`@dv/fastvideo`](../fastvideo/README.zh.md)）为它提供的每个模型和任务注册一个条目。消费方（如 [`@dv/shot-render`](../shot-render/README.zh.md)）在它自己的任务中解析键所指定的条目，并用一种请求类型渲染。agent（智能体）用两个工具读取条目，并用一个 skill（技能）为每个镜头选择模型。添加提供方时，添加一个提供方插件。添加模型时，修改一个提供方插件。添加服务器时，修改该提供方插件的 `Config` 行。
 
 ## 目录
 
@@ -45,7 +45,7 @@ DreamVerse bundle [`@dv/bundle`](../../bundle/dv/README.zh.md) 以行 `dv-models
 <a id="model-keys"></a>
 ### 模型键
 
-提供方是一个视频生成系统，如 FastVideo、fal 或 SGLang。服务器是提供方的一个运行中的后端。每个条目有一个由四个字段组成的键。`formatModelKey(key)` 把键写成一个字符串，如 `video/ref2v/fastvideo/fasth3`。
+提供方是一个视频生成系统，如 FastVideo、fal 或 SGLang。服务器是提供方的一个运行中的后端。每个条目有一个由四个字段组成的键。`formatModelKey(key)` 把键写成一个字符串，如 `video/ref2v/fastvideo/fasth3`。`modelKey(params)` 从调用的 `modality`、`task`、`provider` 和 `model` 参数读取键；不是字符串的字段读作空字符串。
 
 | 字段 | 含义 | 本包中的值 |
 | --- | --- | --- |
@@ -109,6 +109,8 @@ DreamVerse bundle [`@dv/bundle`](../../bundle/dv/README.zh.md) 以行 `dv-models
 | --- | --- | --- |
 | `register(entry)` | `() => void` | 添加一个条目。返回的函数移除该条目。第二次调用该函数不做任何事。已存在同键条目时抛出错误。在 `ctx.effect` 内调用 `register`，这样销毁提供方插件会移除它的条目。 |
 | `get(key)` | `ModelEntry \| undefined` | 具有该键的条目，或 `undefined`。 |
+| `resolve(tasks, params)` | `ModelEntry<T>` | `modelKey(params)` 读出的键所对应的条目，且其任务在 `tasks` 中。没有属于 `tasks` 之一的条目具有该键时，抛出 `Unknown model "<key>"; call dv_models_list for the models.`。 |
+| `whileServing(tasks, start)` | `() => void` | 目录获得第一个属于 `tasks` 之一的条目时调用 `start`，失去最后一个这样的条目时调用 `start` 返回的处置函数。返回的函数停止监听并调用该处置函数。把它传给 `ctx.effect`，如 `@dv/shot-render` 对其操作的做法。 |
 | `list(filter?)` | `ModelEntry[]` | 与 `modality`、`task` 和 `provider` 中每个给定字段都匹配的条目，按注册顺序。未给出的字段匹配所有条目。 |
 | `onChanged(listener)` | `() => void` | 每次注册和每次移除后调用 `listener`。返回的函数移除该监听器。 |
 
@@ -155,11 +157,11 @@ DSH 工具注册表（`tools`）挂载期间，本服务以 effect 注册 `dv_mo
 
 DSH skill 注册表（`skills`）挂载期间，本服务从 `skills/video-model-selection.md` 注册运行时 skill `video-model-selection`。agent 可以加载该 skill。用户不能从输入框调用它。
 
-[`@dv/shot-render`](../shot-render/README.zh.md) 获取 `dv_shot_render` 调用所指定的条目。它用条目的 facts 构建 `RenderRequest`。它用 `validateGenerationRequest` 检查请求，然后渲染该请求。[`@dv/shot-plan`](../shot-plan/README.zh.md) 拒绝键不对应任何条目的计划镜头。
+[`@dv/shot-render`](../shot-render/README.zh.md) 用 `whileServing(['t2v', 'ref2v'], ...)` 注册 `shot.render`，并用 `resolve(['t2v', 'ref2v'], params)` 获取 `dv_shot_render` 调用所指定的条目。它用条目的 facts 构建 `RenderRequest`。它用 `validateGenerationRequest` 检查请求，然后渲染该请求。[`@dv/shot-plan`](../shot-plan/README.zh.md) 拒绝键不对应任何条目的计划镜头。
 
 | 文件 | 内容 |
 | --- | --- |
-| [`src/index.ts`](src/index.ts) | `Config`、`formatModelKey`、`DvModels` 服务和两个工具 |
+| [`src/index.ts`](src/index.ts) | `Config`、`formatModelKey`、`modelKey`、`DvModels` 服务和两个工具 |
 | [`src/types.ts`](src/types.ts) | `PrimitiveTypes`、`PrimitiveId`、`TaskMap`、`ModalityId`、`TaskOfPrimitive`、`ModelKey`、`RenderModelFacts`、`RenderRequest`、`RenderStreamEvent`、`ModelEntry`、`ModelFilter` |
 | [`skills/video-model-selection.md`](skills/video-model-selection.md) | 模型选择 skill |
 | [`tests/models.spec.ts`](tests/models.spec.ts) | Loader 组合中的模型目录、工具、skill 和系统提示词 |

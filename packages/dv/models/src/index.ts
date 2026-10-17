@@ -1,7 +1,8 @@
 /**
  * The DreamVerse model catalog as the `dvModels` Cordis service: a provider-neutral registry of model entries. Provider
  * plugins register one entry per task a model serves, keyed by modality, task, provider and model; consumers such as
- * Shot render list the entries and render with the entry a key names. The catalog knows no specific model and adds
+ * Shot render register their operation while the catalog serves one of their tasks, and render with the entry that a
+ * call's key names among those tasks. The catalog knows no specific model and adds
  * nothing to the system prompt: the agent reads entries through the `dv_models_list` and `dv_models_get` tools and
  * chooses one for each shot with the `video-model-selection` skill.
  *
@@ -14,7 +15,7 @@ import type {} from '@deepseek-ai/dsh-skill'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import z from '@deepseek-ai/schemastery'
-import type { ModelEntry, ModelFilter, ModelKey } from './types.ts'
+import type { ModalityId, ModelEntry, ModelFilter, ModelKey, TaskId } from './types.ts'
 
 export type * from './types.ts'
 
@@ -51,6 +52,31 @@ export function formatModelKey(key: ModelKey): string {
  */
 function entryMatchesFilter(entry: ModelKey, filter: Partial<Record<typeof MODEL_KEY_FIELDS[number], string>>): boolean {
   return MODEL_KEY_FIELDS.every(field => filter[field] === undefined || entry[field] === filter[field])
+}
+
+/**
+ * The catalog key that the params of a consumer's call name in their `modality`, `task`, `provider` and `model` fields.
+ * A field that is not a string reads as an empty string, and a modality or task outside the vocabulary names no entry,
+ * so `get` finds none for it.
+ * @param params - the call's params.
+ * @returns the key.
+ */
+export function modelKey(params: Record<string, unknown>): ModelKey {
+  const field = (name: typeof MODEL_KEY_FIELDS[number]): string => {
+    const value = params[name]
+    return typeof value === 'string' ? value : ''
+  }
+  return { modality: field('modality') as ModalityId, task: field('task') as TaskId, provider: field('provider'), model: field('model') }
+}
+
+/**
+ * Whether an entry serves one of the given tasks.
+ * @param entry - the entry.
+ * @param tasks - the tasks.
+ * @returns true when the entry's task is in `tasks`.
+ */
+function servesTask<T extends TaskId>(entry: ModelEntry, tasks: readonly T[]): entry is ModelEntry<T> {
+  return (tasks as readonly TaskId[]).includes(entry.task)
 }
 
 /** Convert an entry to one item of the `dv_models_list` result: its key and its description. */
@@ -116,6 +142,46 @@ export default class DvModels extends Service {
    */
   get(key: ModelKey): ModelEntry | undefined {
     return this.entries.get(formatModelKey(key))
+  }
+
+  /**
+   * Read the entry that the params of a consumer's call name, among the entries of the consumer's tasks.
+   * @param tasks - the tasks that the consumer runs, such as `['t2v', 'ref2v']`.
+   * @param params - the call's params, with the key in `modality`, `task`, `provider` and `model`.
+   * @returns the entry.
+   * @throws Error naming the key and `dv_models_list` when no entry of one of `tasks` has the key.
+   */
+  resolve<T extends TaskId>(tasks: readonly T[], params: Record<string, unknown>): ModelEntry<T> {
+    const key = modelKey(params)
+    const entry = this.get(key)
+    if (entry === undefined || !servesTask(entry, tasks)) {
+      throw new Error(`Unknown model "${formatModelKey(key)}"; call dv_models_list for the models.`)
+    }
+    return entry
+  }
+
+  /**
+   * Keep a registration of a consumer, such as its operation, while the catalog holds an entry of one of its tasks.
+   * @param tasks - the tasks that the consumer runs.
+   * @param start - registers the consumer's part when the first entry of one of `tasks` arrives; returns its disposer.
+   * @returns a function that stops listening and disposes the registration; pass it to `ctx.effect`.
+   */
+  whileServing(tasks: readonly TaskId[], start: () => () => void): () => void {
+    let stop: (() => void) | null = null
+    // The registration starts with the first entry of one of the tasks and stops when the last one is removed.
+    const sync = (): void => {
+      const serving = this.list().some(entry => servesTask(entry, tasks))
+      if (serving === (stop !== null)) return
+      stop?.()
+      stop = serving ? start() : null
+    }
+    sync()
+    const unlisten = this.onChanged(sync)
+    return () => {
+      unlisten()
+      stop?.()
+      stop = null
+    }
   }
 
   /**

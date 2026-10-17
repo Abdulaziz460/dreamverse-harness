@@ -15,7 +15,7 @@ import SkillRegistry from '@deepseek-ai/dsh-skill'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import { afterEach, describe, expect, it } from 'vitest'
-import DvModels, { formatModelKey, type ModelEntry, type RenderModelFacts, type TaskId } from '../src/index.ts'
+import DvModels, { formatModelKey, modelKey, type ModelEntry, type RenderModelFacts, type TaskId } from '../src/index.ts'
 
 /** The facts every fake entry reports. */
 const FACTS: RenderModelFacts = {
@@ -154,6 +154,42 @@ describe('dvModels', () => {
     const unknown = await call(ctx, 'dv_models_get', { modality: 'video', task: 'ref2v', provider: 'other', model: 'beta' })
     expect(unknown.isError && unknown.error.message)
       .toContain('No video model has the key video/ref2v/other/beta; call dv_models_list for the models you can use.')
+  })
+
+  it('reads the key of a call from its params, and resolves the entry among the given tasks or names the unknown key', async () => {
+    const ctx = await start()
+    expect(modelKey({ modality: 'video', task: 'ref2v', provider: 'test', model: 'alpha', prompt: 'a cat' }))
+      .toEqual({ modality: 'video', task: 'ref2v', provider: 'test', model: 'alpha' })
+    expect(formatModelKey(modelKey({ modality: 'video', task: 7 }))).toBe('video///')
+    const alpha = { modality: 'video', task: 'ref2v', provider: 'test', model: 'alpha' }
+    expect(ctx.dvModels.resolve(['t2v', 'ref2v'], alpha).description).toBe('alpha for ref2v')
+    expect(() => ctx.dvModels.resolve(['t2v'], alpha)).toThrow('Unknown model "video/ref2v/test/alpha"; call dv_models_list for the models.')
+    expect(() => ctx.dvModels.resolve(['t2v', 'ref2v'], { ...alpha, provider: 'other' }))
+      .toThrow('Unknown model "video/ref2v/other/alpha"; call dv_models_list for the models.')
+  })
+
+  it('keeps a registration while the catalog holds an entry of one of the tasks, and disposes it with the last one', async () => {
+    const ctx = await start()
+    const events: string[] = []
+    const stop = ctx.dvModels.whileServing(['ref2v'], () => {
+      events.push('start')
+      return () => { events.push('stop') }
+    })
+    const none = ctx.dvModels.whileServing([], () => { throw new Error('no entry serves an empty task list') })
+    expect(events).toEqual(['start'])
+    ctx.dvModels.register(entry('t2v', 'extra', 'gamma'))()
+    ctx.dvModels.register(entry('ref2v', 'extra', 'gamma'))()
+    expect(events).toEqual(['start'])
+    await unload(ctx, 'test-provider')
+    expect(events).toEqual(['start', 'stop'])
+    ctx.dvModels.register(entry('t2v', 'extra', 'delta'))
+    expect(events).toEqual(['start', 'stop'])
+    const remove = ctx.dvModels.register(entry('ref2v', 'extra', 'delta'))
+    expect(events).toEqual(['start', 'stop', 'start'])
+    stop()
+    none()
+    remove()
+    expect(events).toEqual(['start', 'stop', 'start', 'stop'])
   })
 
   it('registers the video-model-selection skill for the agent only', async () => {

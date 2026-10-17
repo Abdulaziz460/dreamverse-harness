@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to list the video models that a deployment can render with. A provider plugin, such as [`@dv/fastvideo`](../fastvideo/README.md), registers one entry for each model and task that it serves. A consumer, such as [`@dv/shot-render`](../shot-render/README.md), gets an entry by its key and renders with one request type. The agent reads the entries with two tools and chooses a model for each shot with one skill. To add a provider, add a provider plugin. To add a model, change one provider plugin. To add a server, change the `Config` row of the provider plugin.
+Use this package to list the video models that a deployment can render with. A provider plugin, such as [`@dv/fastvideo`](../fastvideo/README.md), registers one entry for each model and task that it serves. A consumer, such as [`@dv/shot-render`](../shot-render/README.md), resolves the entry that a key names among its own tasks and renders with one request type. The agent reads the entries with two tools and chooses a model for each shot with one skill. To add a provider, add a provider plugin. To add a model, change one provider plugin. To add a server, change the `Config` row of the provider plugin.
 
 ## Table of Contents
 
@@ -45,7 +45,7 @@ The plugin has no configuration fields.
 <a id="model-keys"></a>
 ### Model keys
 
-A provider is a video generation system, such as FastVideo, fal, or SGLang. A server is one running backend of a provider. Each entry has a key of four fields. `formatModelKey(key)` writes a key as one string, such as `video/ref2v/fastvideo/fasth3`.
+A provider is a video generation system, such as FastVideo, fal, or SGLang. A server is one running backend of a provider. Each entry has a key of four fields. `formatModelKey(key)` writes a key as one string, such as `video/ref2v/fastvideo/fasth3`. `modelKey(params)` reads a key from the `modality`, `task`, `provider` and `model` params of a call; a field that is not a string reads as an empty string.
 
 | Field | Meaning | Values in this package |
 | --- | --- | --- |
@@ -109,6 +109,8 @@ A provider plugin calls `register`. A consumer calls the other methods.
 | --- | --- | --- |
 | `register(entry)` | `() => void` | Adds an entry. The returned function removes the entry. A second call of that function does nothing. Throws when an entry with the same key exists. Call `register` inside `ctx.effect`, so that disposal of the provider plugin removes its entries. |
 | `get(key)` | `ModelEntry \| undefined` | The entry with the key, or `undefined`. |
+| `resolve(tasks, params)` | `ModelEntry<T>` | The entry with the key that `modelKey(params)` reads, when its task is in `tasks`. Throws `Unknown model "<key>"; call dv_models_list for the models.` when no entry of one of `tasks` has the key. |
+| `whileServing(tasks, start)` | `() => void` | Calls `start` when the catalog gains its first entry of one of `tasks`, and calls the disposer that `start` returned when the catalog loses its last such entry. The returned function stops listening and calls that disposer. Pass it to `ctx.effect`, as `@dv/shot-render` does for its operation. |
 | `list(filter?)` | `ModelEntry[]` | The entries that match each given field of `modality`, `task` and `provider`, in registration order. An absent field matches all entries. |
 | `onChanged(listener)` | `() => void` | Calls `listener` after each registration and each removal. The returned function removes the listener. |
 
@@ -155,11 +157,11 @@ While the DSH tool registry (`tools`) is mounted, the service registers `dv_mode
 
 While the DSH skill registry (`skills`) is mounted, the service registers the runtime skill `video-model-selection` from `skills/video-model-selection.md`. The agent can load the skill. Users cannot call it from the composer.
 
-[`@dv/shot-render`](../shot-render/README.md) gets the entry that a `dv_shot_render` call names. It builds a `RenderRequest` from the facts of the entry. It checks the request with `validateGenerationRequest`, and then renders the request. [`@dv/shot-plan`](../shot-plan/README.md) refuses a plan shot whose key names no entry.
+[`@dv/shot-render`](../shot-render/README.md) registers `shot.render` with `whileServing(['t2v', 'ref2v'], ...)` and gets the entry that a `dv_shot_render` call names with `resolve(['t2v', 'ref2v'], params)`. It builds a `RenderRequest` from the facts of the entry. It checks the request with `validateGenerationRequest`, and then renders the request. [`@dv/shot-plan`](../shot-plan/README.md) refuses a plan shot whose key names no entry.
 
 | File | Content |
 | --- | --- |
-| [`src/index.ts`](src/index.ts) | `Config`, `formatModelKey`, the `DvModels` service, and the two tools |
+| [`src/index.ts`](src/index.ts) | `Config`, `formatModelKey`, `modelKey`, the `DvModels` service, and the two tools |
 | [`src/types.ts`](src/types.ts) | `PrimitiveTypes`, `PrimitiveId`, `TaskMap`, `ModalityId`, `TaskOfPrimitive`, `ModelKey`, `RenderModelFacts`, `RenderRequest`, `RenderStreamEvent`, `ModelEntry`, `ModelFilter` |
 | [`skills/video-model-selection.md`](skills/video-model-selection.md) | The model selection skill |
 | [`tests/models.spec.ts`](tests/models.spec.ts) | The catalog, the tools, the skill, and the system prompt in a Loader composition |
