@@ -12,6 +12,7 @@ import type { ConnectionFetchRoute } from '@deepseek-ai/dsh-client-connection'
 import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
 import { afterEach, describe, expect, it } from 'vitest'
 import { importedAssets } from '@dv/asset-pool'
+import DvModels from '@dv/models'
 import type { AssetId, OperationSpec, ProjectEvent, ProjectId, ProjectRecord, RecordId, RecordOrigin, SessionId, TurnId } from '@dv/project'
 import { FFMPEG, startBase, type BaseFixture } from './support.ts'
 import { answer } from '../src/api.ts'
@@ -323,7 +324,7 @@ describe('dvApi', () => {
     expect(Array.isArray(operations.json)).toBe(true)
     expect(await call(fixture, ROUTES.operation, { method: 'POST', body: { project: projectId, operation: 'no.such', surface: 'canvas' } }))
       .toMatchObject({ status: 404, json: { code: 'unknown_operation' } })
-    expect(Object.keys(ROUTES)).toEqual(['projects', 'projectSummaries', 'state', 'operations', 'operation', 'undo', 'redo', 'acceptStale', 'history'])
+    expect(Object.keys(ROUTES)).toEqual(['projects', 'projectSummaries', 'state', 'operations', 'tasks', 'operation', 'undo', 'redo', 'acceptStale', 'history'])
     for (const gone of ['/api/dv/branches/create', '/api/dv/branches/switch', '/api/dv/branches/rename']) {
       expect(fixture.connection.routes.has(gone)).toBe(false)
     }
@@ -340,6 +341,15 @@ describe('dvApi', () => {
     expect(await keep('nope')).toMatchObject({ status: 404, json: { code: 'unknown_record' } })
     const kept = await keep(importId)
     expect(kept).toMatchObject({ status: 200, json: { operation: 'proj.stale_accept', actor: 'user' } })
+  })
+
+  it('serves the task labels of the model catalog, and no label while the catalog is not loaded', async () => {
+    const fixture = await start()
+    expect(await call(fixture, ROUTES.tasks)).toEqual({ status: 200, json: {} })
+    fixture.context.effect(() => fixture.context.dvModels.labelTasks({ t2v: { zh: '文字生成', en: 'From text' } }))
+    expect(await call(fixture, ROUTES.tasks)).toEqual({ status: 200, json: { t2v: { zh: '文字生成', en: 'From text' } } })
+    for (const fiber of fixture.context.registry.get(DvModels)?.fibers ?? []) await fiber.dispose()
+    expect(await call(fixture, ROUTES.tasks)).toEqual({ status: 200, json: {} })
   })
 
   it('answers every refusal of the project routes with the body {error, code}', async () => {

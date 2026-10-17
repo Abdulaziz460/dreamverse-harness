@@ -6976,6 +6976,9 @@ importers:
       '@dv/asset-pool':
         specifier: workspace:*
         version: link:../asset-pool
+      '@dv/models':
+        specifier: workspace:*
+        version: link:../models
       '@dv/project':
         specifier: workspace:*
         version: link:../project
@@ -7013,9 +7016,6 @@ importers:
       '@dv/ffmpeg':
         specifier: workspace:*
         version: link:../ffmpeg
-      '@dv/models':
-        specifier: workspace:*
-        version: link:../models
       '@types/node':
         specifier: ^22.20.0
         version: 22.20.0

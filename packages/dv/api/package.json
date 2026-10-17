@@ -11,6 +11,7 @@
   "dependencies": {
     "@deepseek-ai/dsh-brand": "workspace:*",
     "@dv/asset-pool": "workspace:*",
+    "@dv/models": "workspace:*",
     "@dv/project": "workspace:*",
     "@dv/shot-plan": "workspace:*",
     "@dv/shot-render": "workspace:*",
@@ -30,7 +31,6 @@
     "@deepseek-ai/dsh-tools": "workspace:*",
     "@deepseek-ai/schemastery": "workspace:~",
     "@dv/ffmpeg": "workspace:*",
-    "@dv/models": "workspace:*",
     "@types/node": "^22.20.0"
   }
 }

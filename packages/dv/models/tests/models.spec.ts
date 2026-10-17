@@ -203,6 +203,25 @@ describe('dvModels', () => {
     expect(events).toEqual(['start', 'stop', 'start', 'stop'])
   })
 
+  it('keeps the labels of tasks until their disposer runs, and refuses a second label of one task', async () => {
+    const ctx = await start()
+    expect(ctx.dvModels.taskLabels()).toEqual({})
+    const t2v = { zh: '文字生成', en: 'From text' }
+    const ref2v = { zh: '参考图生成', en: 'From references' }
+    const remove = ctx.dvModels.labelTasks({ t2v, ref2v })
+    expect(ctx.dvModels.taskLabels()).toEqual({ t2v, ref2v })
+    expect(() => ctx.dvModels.labelTasks({ t2i: { zh: '图片', en: 'Image' }, ref2v: { zh: '另一个', en: 'Another' } }))
+      .toThrow('dvModels: task "ref2v" already has a label.')
+    expect(ctx.dvModels.taskLabels()).toEqual({ t2v, ref2v })
+    remove()
+    expect(ctx.dvModels.taskLabels()).toEqual({})
+    const again = ctx.dvModels.labelTasks({ ref2v })
+    remove()
+    expect(ctx.dvModels.taskLabels()).toEqual({ ref2v })
+    again()
+    expect(ctx.dvModels.taskLabels()).toEqual({})
+  })
+
   it('registers the video-model-selection skill for the agent only', async () => {
     const ctx = await start()
     const skill = await ctx.skills.get('video-model-selection')

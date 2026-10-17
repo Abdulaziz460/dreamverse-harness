@@ -112,6 +112,8 @@ A provider plugin calls `register`. A consumer calls the other methods.
 | `get(key)` | `ModelEntry \| undefined` | The entry with the key, or `undefined`. |
 | `resolve(tasks, params)` | `ModelEntry<T>` | The entry with the key that `modelKey(params)` reads, when its task is in `tasks`. Throws `Unknown model "<key>"; call dv_models_list for the models.` when no entry of one of `tasks` has the key. |
 | `whileServing(tasks, start)` | `() => void` | Calls `start` when the catalog gains its first entry of one of `tasks`, and calls the disposer that `start` returned when the catalog loses its last such entry. The returned function stops listening and calls that disposer. Pass it to `ctx.effect`, as `@dv/shot-render` does for its operation. |
+| `labelTasks(labels)` | `() => void` | Adds the Chinese and English label `{zh, en}` of each task in `labels`, by task name. A primitive declaration labels the tasks that it lists. The returned function removes these labels. A second call of that function does nothing. Throws when one of the tasks has a label, and then adds no label. |
+| `taskLabels()` | `Record<string, {zh, en}>` | Every label that `labelTasks` added and that is not removed, by task name. [`@dv/api`](../api/README.md) serves it at `GET /api/dv/tasks`. |
 | `list(filter?)` | `ModelEntry[]` | The entries that match each given field of `modality`, `task` and `provider`, in registration order. An absent field matches all entries. |
 | `onChanged(listener)` | `() => void` | Calls `listener` after each registration and each removal. The returned function removes the listener. |
 
@@ -152,7 +154,7 @@ The repository skill [`dv-add-model-provider`](../../../.agents/skills/dv-add-mo
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-The service keeps the entries in a `Map` by the formatted key. `register` refuses a key that the map contains. Each registration and each removal calls every `onChanged` listener after the map changes. The function that `register` returns removes the entry only while the map holds that same entry.
+The service keeps the entries in a `Map` by the formatted key. `register` refuses a key that the map contains. Each registration and each removal calls every `onChanged` listener after the map changes. The function that `register` returns removes the entry only while the map holds that same entry. `labelTasks` keeps the labels in a second `Map` by task name and refuses a task that this map contains. A label change calls no `onChanged` listener.
 
 While the DSH tool registry (`tools`) is mounted, the service registers `dv_models_list` and `dv_models_get` as effects. `dv_models_list` filters the entries with its arguments and returns the key and the description of each entry, and `prompt_skill`, the name of its prompt skill, for an entry that has one. `dv_models_get` finds the entry with all four key fields and returns its key, its description and the JSON of its `schema()`. It does not read `facts()`. `@dv/shot-render` reads the facts to build the request.
 

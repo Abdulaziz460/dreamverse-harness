@@ -30,6 +30,9 @@
       "path": "../../dv/asset-pool"
     },
     {
+      "path": "../../dv/models"
+    },
+    {
       "path": "../../dv/project"
     },
     {

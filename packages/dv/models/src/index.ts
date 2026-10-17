@@ -5,7 +5,8 @@
  * call's key names among those tasks. The catalog knows no specific model and adds
  * nothing to the system prompt: the agent reads entries through the `dv_models_list` and `dv_models_get` tools and
  * chooses one for each shot with the `video-model-selection` skill. The catalog registers the prompt skill that an
- * entry carries while the entry lives.
+ * entry carries while the entry lives, and keeps the label of each task that a primitive declaration labels, for the
+ * views.
  *
  * @module @dv/models
  */
@@ -92,13 +93,14 @@ const JSON_TOOL_OUTPUT = {
 } as const
 
 /**
- * The model catalog service: entries by key, the `dv_models_list` and `dv_models_get` tools, the selection skill, and
- * the prompt skills of the entries.
+ * The model catalog service: entries by key, the `dv_models_list` and `dv_models_get` tools, the selection skill, the
+ * prompt skills of the entries, and the task labels.
  */
 export default class DvModels extends Service {
   static Config = Config
 
   private readonly entries = new Map<string, ModelEntry>()
+  private readonly labels = new Map<string, { zh: string; en: string }>()
   private readonly listeners = new Set<() => void>()
 
   constructor(ctx: Context) {
@@ -218,6 +220,34 @@ export default class DvModels extends Service {
       stop?.()
       stop = null
     }
+  }
+
+  /**
+   * Register the labels of tasks, as a primitive declaration lists them, for the views that show a task.
+   * @param labels - the Chinese and the English label of each task, by task name.
+   * @returns a function that removes these labels; a second call does nothing.
+   * @throws Error when one of the tasks already has a label; then no label of `labels` is registered.
+   */
+  labelTasks(labels: Readonly<Record<string, { zh: string; en: string }>>): () => void {
+    const added = Object.entries(labels)
+    for (const [task] of added) {
+      if (this.labels.has(task)) throw new Error(`dvModels: task "${task}" already has a label.`)
+    }
+    for (const [task, label] of added) this.labels.set(task, label)
+    let live = true
+    return () => {
+      if (!live) return
+      live = false
+      for (const [task] of added) this.labels.delete(task)
+    }
+  }
+
+  /**
+   * Read the label of every task that a declaration labeled.
+   * @returns the labels by task name; `@dv/api` serves them at `GET /api/dv/tasks`.
+   */
+  taskLabels(): Readonly<Record<string, { zh: string; en: string }>> {
+    return Object.fromEntries(this.labels)
   }
 
   /**

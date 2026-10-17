@@ -112,6 +112,8 @@ DreamVerse bundle [`@dv/bundle`](../../bundle/dv/README.zh.md) 以行 `dv-models
 | `get(key)` | `ModelEntry \| undefined` | 具有该键的条目，或 `undefined`。 |
 | `resolve(tasks, params)` | `ModelEntry<T>` | `modelKey(params)` 读出的键所对应的条目，且其任务在 `tasks` 中。没有属于 `tasks` 之一的条目具有该键时，抛出 `Unknown model "<key>"; call dv_models_list for the models.`。 |
 | `whileServing(tasks, start)` | `() => void` | 目录获得第一个属于 `tasks` 之一的条目时调用 `start`，失去最后一个这样的条目时调用 `start` 返回的处置函数。返回的函数停止监听并调用该处置函数。把它传给 `ctx.effect`，如 `@dv/shot-render` 对其操作的做法。 |
+| `labelTasks(labels)` | `() => void` | 按任务名添加 `labels` 中每个任务的中文和英文标签 `{zh, en}`。原语声明为它列出的任务添加标签。返回的函数移除这些标签。第二次调用该函数不做任何事。某个任务已有标签时抛出错误，此时不添加任何标签。 |
+| `taskLabels()` | `Record<string, {zh, en}>` | `labelTasks` 添加且尚未移除的每个标签，按任务名。[`@dv/api`](../api/README.zh.md) 在 `GET /api/dv/tasks` 提供它。 |
 | `list(filter?)` | `ModelEntry[]` | 与 `modality`、`task` 和 `provider` 中每个给定字段都匹配的条目，按注册顺序。未给出的字段匹配所有条目。 |
 | `onChanged(listener)` | `() => void` | 每次注册和每次移除后调用 `listener`。返回的函数移除该监听器。 |
 
@@ -152,7 +154,7 @@ DreamVerse bundle [`@dv/bundle`](../../bundle/dv/README.zh.md) 以行 `dv-models
 <details>
 <summary>实现内部——点击展开</summary>
 
-本服务把条目按格式化后的键存在一个 `Map` 中。`register` 拒绝 map 中已有的键。每次注册和每次移除都在 map 改变后调用所有 `onChanged` 监听器。`register` 返回的函数只在 map 仍持有同一个条目时移除该条目。
+本服务把条目按格式化后的键存在一个 `Map` 中。`register` 拒绝 map 中已有的键。每次注册和每次移除都在 map 改变后调用所有 `onChanged` 监听器。`register` 返回的函数只在 map 仍持有同一个条目时移除该条目。`labelTasks` 把标签按任务名存在第二个 `Map` 中，并拒绝这个 map 中已有的任务。标签的变化不调用任何 `onChanged` 监听器。
 
 DSH 工具注册表（`tools`）挂载期间，本服务以 effect 注册 `dv_models_list` 和 `dv_models_get`。`dv_models_list` 用其参数筛选条目，返回每个条目的键和描述；条目有提示词 skill 时，还返回 `prompt_skill`，即该 skill 的名称。`dv_models_get` 用全部四个键字段查找条目，返回它的键、描述和 `schema()` 的 JSON。它不读取 `facts()`。`@dv/shot-render` 读取 facts 构建请求。
 

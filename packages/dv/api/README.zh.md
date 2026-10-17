@@ -26,7 +26,7 @@ kind: "package-reference"
 
 在 `@dv/project` 和 `@dv/asset-pool` 之后挂载插件，并且 profile 还要挂载 `dsh-web-app`（提供 `connection` 和 `webServer` 服务）。没有 `connection` 时 Fetch 路由不会注册；没有 `webServer` 时事件流不会注册。
 
-这些 Fetch 路由列出、新建、重命名、删除和汇总项目，把项目的当前状态读成 JSON，列出操作声明，以人的身份运行一个操作，把文件导入素材库，撤销和重做，接受一条过期记录，列出历史，保存画布布局，以及把项目关联到 DSH Workspace。事件流用同一个 Connection cookie 放行浏览器。
+这些 Fetch 路由列出、新建、重命名、删除和汇总项目，把项目的当前状态读成 JSON，列出操作声明，读取任务标签，以人的身份运行一个操作，把文件导入素材库，撤销和重做，接受一条过期记录，列出历史，保存画布布局，以及把项目关联到 DSH Workspace。事件流用同一个 Connection cookie 放行浏览器。
 
 ```yaml
 - id: dv-api
@@ -50,6 +50,7 @@ kind: "package-reference"
 | `/api/dv/projects/delete` | POST | `{project}` | `{ok, workspace_id}`；项目移进 Project 存储的回收目录，它的画布布局文件被删除 |
 | `/api/dv/state` | GET | `project` | `WireState`：`{project, head, tip, components, assets}`：当前位置（`head`）、历史列表的最后一步（`tip`）、当前状态中与 Project 算出的一致的每个组件状态切片，以及 `ProjectAsset` 条目：当前状态中的每个素材，加上项目任何 `asset.import` 记录产出的每个素材，包括被丢弃的记录（当前位置之后的步骤或被丢弃的步骤生成的素材不列出），每个条目带本项目自己的导入 `name` 和 `created_at`，以及 `made_by`（当前状态中创建它的记录的操作，否则为 `asset.import`，否则为 null） |
 | `/api/dv/operations` | GET | — | `WireOperation[]`：每个不是 `readOnly` 的已注册操作，不含执行器，声明了 `label` 时带上它 |
+| `/api/dv/tasks` | GET | — | 每个任务的标签 `{zh, en}`，按任务名：[`@dv/models`](../models/README.zh.md) 的 `dvModels.taskLabels()`；模型目录未挂载时为 `{}` |
 | `/api/dv/operation` | POST | `OperationRequest` `{project, operation, inputs?, params?, intent?, surface, session?, based_on?, supersedes?}`；`inputs` = `[{role, ref}]`，`ref` 是引用文本 | `ProjectRecord`，已完成或 `pending` |
 | `/api/dv/assets/import` | POST | 原始文件作为请求体；查询参数 `project`、`name`、`mime`、`surface`（`canvas \| asset_pool`，其他值回 `400` `invalid_params`）、`session?` | `{asset, record}`：`AssetId` 和 `asset.import` 记录；从画布导入时带 `place: true` 运行，因此素材也会放到画布上 |
 | `/api/dv/undo` | POST | `{project, to?}`：把当前位置往回移一步，或移到历史列表中的步骤 `to`，可在当前位置之前或之后；不写记录 | `{tip, at}`：最后一步和当前位置 |
@@ -82,7 +83,7 @@ kind: "package-reference"
 <details>
 <summary>实现内部——点击展开</summary>
 
-`DvApi` 在 `dvProject` 和 `dvAssetPool` 之上构造一个 `ApiHandlers`；操作列表和一次运行的操作来自 `dvProject.listOperations()`，运行的 `inputs` 由 `dvProject.parseInputs` 解析，工作区路由用 `dvProject.bindSession` 把对话绑定到项目，并为列表读回绑定文件（`{"project": <ProjectId>}`）。在 `ctx.inject(['connection'])` 里它用 `connection.fetch.register` 注册各条 Fetch 路由，包括素材导入、布局、工作区和项目管理路由在内的每条路由都经过 `src/api.ts` 中同一个 `answer` 包装，把 `ApiRequestError` 或 `ProjectError` 映射成它的状态码和错误码，其他错误映射成 500 `internal_error`；同一文件中的 `requireProject` 检查每条路由指定的项目。`/dv/events` 写出同样的错误体。在 `ctx.inject(['webServer'])` 里它注册 `/dv/events` 前缀路由，通过 `requestRejection` 询问 Connection 请求是否带有效 cookie，再把响应交给 `serveEventStream`；后者订阅 `dvProject.subscribe(projectId)`，每次变化写一帧 `event:`/`data:`，直到请求关闭。`toWireState` 原样发送 `ProjectState` 及其 `components`，再加上素材列表：已创建的素材、整个历史中每条记录的输出和已解析输入、每个角色、场景和风格版本的参考图，以及每个时间线片段的并集。
+`DvApi` 在 `dvProject` 和 `dvAssetPool` 之上构造一个 `ApiHandlers`；操作列表和一次运行的操作来自 `dvProject.listOperations()`，运行的 `inputs` 由 `dvProject.parseInputs` 解析，工作区路由用 `dvProject.bindSession` 把对话绑定到项目，并为列表读回绑定文件（`{"project": <ProjectId>}`）。任务路由在每次请求时用 `ctx.get` 读取可选的 `dvModels`。在 `ctx.inject(['connection'])` 里它用 `connection.fetch.register` 注册各条 Fetch 路由，包括素材导入、布局、工作区和项目管理路由在内的每条路由都经过 `src/api.ts` 中同一个 `answer` 包装，把 `ApiRequestError` 或 `ProjectError` 映射成它的状态码和错误码，其他错误映射成 500 `internal_error`；同一文件中的 `requireProject` 检查每条路由指定的项目。`/dv/events` 写出同样的错误体。在 `ctx.inject(['webServer'])` 里它注册 `/dv/events` 前缀路由，通过 `requestRejection` 询问 Connection 请求是否带有效 cookie，再把响应交给 `serveEventStream`；后者订阅 `dvProject.subscribe(projectId)`，每次变化写一帧 `event:`/`data:`，直到请求关闭。`toWireState` 原样发送 `ProjectState` 及其 `components`，再加上素材列表：已创建的素材、整个历史中每条记录的输出和已解析输入、每个角色、场景和风格版本的参考图，以及每个时间线片段的并集。
 
 | 文件 | 内容 |
 | --- | --- |
