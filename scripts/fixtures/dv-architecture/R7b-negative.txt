@@ -1,0 +1,6 @@
+--- packages/dv/timeline/package.json
+{ "exports": { ".": "./src/index.ts", "./types": "./src/types.ts" } }
+--- packages/dv/timeline/src/types.ts
+declare module '@dv/project' { interface ComponentStates { timeline: TimelineState } }
+--- packages/dv/project/src/index.ts
+import { randomUUID } from 'node:crypto'

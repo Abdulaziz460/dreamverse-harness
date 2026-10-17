@@ -1,0 +1,6 @@
+--- packages/dv/fastvideo/src/index.ts
+import { DvFastvideoGeneration } from '@dv/fastvideo-generation-client'
+ctx.dvModels.register(entry)
+--- packages/dv/sglang/src/index.ts
+import { DvFastvideoGeneration } from '@dv/fastvideo-generation-client'
+ctx.dvModels.register(entry)

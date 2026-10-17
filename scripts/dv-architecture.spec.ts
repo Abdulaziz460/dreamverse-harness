@@ -1,0 +1,210 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { describe, expect, it } from 'vitest'
+import { compareBaseline, parseFixture, readScanFiles, RULE_STATEMENTS, scan, type Baseline, type ScanFile, type Violation } from './dv-architecture.ts'
+
+const root = resolve(import.meta.dirname, '..')
+
+function fixture(name: string): ScanFile[] {
+  return parseFixture(readFileSync(resolve(import.meta.dirname, 'fixtures/dv-architecture', name), 'utf8'))
+}
+
+function rules(files: ScanFile[]): string[] {
+  return scan(files).map(violation => violation.rule)
+}
+
+describe('DreamVerse architecture fitness test', () => {
+  it('matches the ratchet baseline', () => {
+    const baseline = JSON.parse(readFileSync(resolve(root, 'scripts/dv-architecture.baseline.json'), 'utf8')) as Baseline
+    expect(compareBaseline(scan(readScanFiles(root)), baseline)).toEqual([])
+  })
+
+  it.each<[string, string[]]>([
+    ['R1-negative.txt', ['R1b']],
+    ['R2-negative.txt', ['R2a']],
+    ['R2b-negative.txt', ['R2b', 'R4']],
+    ['R3-negative.txt', ['R3', 'R3']],
+    ['R3-component-negative.txt', ['R3', 'R3']],
+    ['R3-name-negative.txt', ['R3', 'R4']],
+    ['R3-generation-negative.txt', ['R3', 'R4']],
+    ['R4-negative.txt', ['R4']],
+    ['R5-negative.txt', ['R5c', 'R5c']],
+    ['R5c-create-element-negative.txt', ['R5c']],
+    ['R6-negative.txt', ['R6', 'R7a']],
+    ['R7-negative.txt', ['R7a']],
+    ['R7a-client-negative.txt', ['R7a']],
+    ['R7a-slot-negative.txt', ['R7a']],
+    ['R7b-negative.txt', ['R7b']],
+    ['R8-negative.txt', ['R8c']],
+    ['R8d-negative.txt', ['R8d', 'R8d']],
+    ['R8e-negative.txt', ['R8e']],
+  ])('rejects the fixture %s with %j', (name, expected) => {
+    expect(rules(fixture(name)).sort()).toEqual(expected)
+  })
+
+  it('accepts a value-type union member and a content block type in the kernel', () => {
+    expect(scan(fixture('R1-positive.txt'))).toEqual([])
+  })
+})
+
+describe('rule clauses', () => {
+  const owner = (pkg: string, key: string): ScanFile => ({ path: `packages/dv/${pkg}/src/index.ts`, text: `x = { component: '${key}' }\n` })
+  const source = (pkg: string, text: string, file = 'index.ts'): ScanFile => ({ path: `packages/dv/${pkg}/src/${file}`, text })
+  const manifest = (pkg: string): ScanFile => ({ path: `packages/dv/${pkg}/package.json`, text: '{ "exports": { "./types": "./src/types.ts" } }\n' })
+
+  it.each<[string, ScanFile[], string[]]>([
+    ['R1a kernel import of a plugin', [source('project', "import type {} from '@dv/timeline'\n")], ['R1a', 'R1d', 'R7a']],
+    ['R1b key literal', [owner('timeline', 'timeline'), source('project', "keys = ['timeline']\n")], ['R1b', 'R1d']],
+    ['R1b exempts the left operand of in', [owner('story-bible', 'bible'), source('project', "if ('bible' in ref) {}\n")], []],
+    ['R1b exempts only proj', [owner('asset-pool', 'asset'), source('project', "keys = ['proj', 'asset']\n")], ['R1b']],
+    ['R1b and R1d skip the Surface union', [owner('timeline', 'timeline'), source('project', "type Surface = 'chat' | 'timeline'\n")], []],
+    ['R1c bible property', [source('project', 'interface OperationInput { bible?: boolean }\n')], ['R1c']],
+    ['R1c kind ID type', [source('project', 'type Ref = { character: CharacterId }\n')], ['R1c']],
+    ['R1d noun in agent text', [source('project', "text = 'Lists the shots and clips.'\n")], ['R1d', 'R1d']],
+    ['R1e started_by outside the record files', [source('project', 'chain = record.started_by\n', 'history.ts')], ['R1e']],
+    ['R1e allows started_by in the runner', [source('project', 'chain = request.started_by\n', 'runner.ts')], []],
+    ['R2a media literal in generation', [source('generation', "kind = 'video'\n")], ['R2a']],
+    ['R2a primitive key declared outside models', [
+      source('image-generate', "declare module '@dv/models' { interface PrimitiveTypes { image: Row } }\n"),
+      source('models', 'interface Rows { image: Row }\n'),
+    ], ['R2a']],
+    ['R2b workflow key in workflow-kit', [owner('workflow-story', 'story'), source('workflow-kit', "starter = 'story'\n")], ['R2b']],
+    ['R2b allows domain keys in workflow-kit', [owner('shot-plan', 'plan'), source('workflow-kit', "key = 'plan'\n")], []],
+    ['R2b workflow-kit over 300 lines', [source('workflow-kit', 'x()\n'.repeat(301))], ['R2b']],
+    ['R2b workflow-kit at 300 lines', [source('workflow-kit', 'x()\n\n'.repeat(300))], []],
+    ['R3 name beside component outside its key owner', [
+      owner('timeline', 'timeline'), source('shot-plan', "op = { name: 'timeline.create', component: 'plan' }\n"),
+    ], ['R3', 'R4']],
+    ['R3 name without component is no operation', [owner('timeline', 'timeline'), source('shot-plan', "file = { name: 'timeline.json' }\n")], ['R4']],
+    ['R3 component key claimed in two packages', [owner('timeline', 'timeline'), owner('ui-timeline', 'timeline')], ['R3', 'R3']],
+    ['R3 operation in a defineGeneration declaration', [
+      owner('shot-render', 'shot'), source('image-generate', "d = defineGeneration({ component: 'image', operation: 'shot.render' })\n"),
+    ], ['R3', 'R4']],
+    ['R3 operation outside a defineGeneration declaration', [
+      owner('shot-render', 'shot'), source('image-generate', "r = { component: 'image', operation: 'shot.render' }\n"),
+    ], ['R4']],
+    ['R3 leaves reference kinds to the runtime', [
+      source('story-bible', "p.registerReferenceKind({ kind: 'prop' })\n"), source('prop', "p.registerReferenceKind({ kind: 'prop' })\n"),
+    ], []],
+    ['R4 surface may name asset.import', [owner('asset-pool', 'asset'), source('api', "run('asset.import')\n")], []],
+    ['R5a operation prefix in UI core', [owner('timeline', 'timeline'), source('ui-canvas', "prefix = 'timeline.'\n")], ['R5a']],
+    ['R5b slice read in UI core', [source('ui-history', 'clips = state.components.timeline\n')], ['R5b']],
+    ['R5b allows the asset slice', [source('ui-history', 'assets = state.components.asset\n')], []],
+    ['R5c skips a DOM tag name', [source('ui-shell', "el = document.createElement('style')\n")], []],
+    ['R5d plan param read', [source('ui-canvas', "plan = record.params['plan']\n")], ['R5c', 'R5d']],
+    ['R5e plugin tool label', [source('ui-kit', 'const DV_TOOL_LABELS = { dv_proj_undo: x, dv_plan_create: y }\n')], ['R5e']],
+    ['R5f plugin tool name', [source('ui-composer', "card = 'dv_shot_render'\n")], ['R5f']],
+    ['R6 deep import', [source('ui-canvas', "import { A } from '@dv/ui-asset-pool/src/client/A.tsx'\n")], ['R6', 'R7a']],
+    ['R7a domain imports a domain value', [source('shot-plan', "import { layout } from '@dv/timeline'\n")], ['R7a']],
+    ['R7a workflow imports a domain value', [source('workflow-story', "import { layout } from '@dv/timeline'\n")], []],
+    ['R7a UI package imports the client face of its host', [source('ui-timeline', "import type { Clip } from '@dv/timeline/types'\n")], []],
+    ['R7a UI package imports the host entry', [source('ui-timeline', "import type { Clip } from '@dv/timeline'\n")], ['R7a']],
+    ['R7a UI package imports host values', [source('ui-timeline', "import { clips } from '@dv/timeline/types'\n")], ['R7a']],
+    ['R7a UI package imports the face of another host', [source('ui-timeline', "import type { Plan } from '@dv/shot-plan/types'\n")], ['R7a']],
+    ['R7a UI package merges the slots of a slot owner', [
+      source('ui-shell', "declare module '@deepseek-ai/dsh-client-ui-slots' { interface SlotMap { 'dv.explore': Slot } }\n"),
+      source('ui-skills', "import type {} from '@dv/ui-shell'\n", 'client/index.ts'),
+    ], []],
+    ['R7a UI package merges a UI core package without slots', [source('ui-skills', "import type {} from '@dv/ui-canvas'\n", 'client/index.ts')], ['R7a']],
+    ['R7a provider imports its own client package', [
+      source('fastvideo', "import { Client } from '@dv/fastvideo-generation-client'\nctx.dvModels.register(entry)\n"),
+    ], []],
+    ['R7a provider imports its primitive types', [
+      source('sglang', "import type { ImageRequest } from '@dv/image-generate'\nctx.dvModels.register(entry)\n"),
+      source('image-generate', "declare module '@dv/models' { interface PrimitiveTypes { image: Row } }\n"),
+    ], []],
+    ['R7a provider imports other domain types', [
+      source('sglang', "import type { Clip } from '@dv/timeline'\nctx.dvModels.register(entry)\n"),
+    ], ['R7a']],
+    ['R7b face reaches a node import through an import', [
+      manifest('project'), source('project', "import type { RecordId } from './ids.ts'\n", 'types.ts'),
+      source('project', "import { randomUUID } from 'node:crypto'\n", 'ids.ts'),
+    ], ['R7b']],
+    ['R7b face reaches cordis through a declare module target', [
+      manifest('timeline'), source('timeline', "declare module '@dv/project/types' { interface ComponentStates { timeline: T } }\n", 'types.ts'),
+      source('project', "export * from './shared.ts'\n", 'types.ts'), source('project', "import type { Context } from '@deepseek-ai/cordis'\n", 'shared.ts'),
+    ], ['R7b']],
+    ['R7b host-free face passes', [
+      manifest('timeline'), source('timeline', "import type { RecordId } from '@dv/project/types'\n", 'types.ts'),
+      source('project', 'export type RecordId = string\n', 'types.ts'), source('project', "import { randomUUID } from 'node:crypto'\n"),
+    ], []],
+    ['R7b needs a ./types entry', [source('timeline', "import type { Context } from '@deepseek-ai/cordis'\n", 'types.ts')], []],
+    ['R8a and R8b in provider text', [
+      owner('shot-render', 'shot'), source('fastvideo', "ctx.dvModels.register(e)\nd = 'Rules for dv_shot_render in a plan'\n"),
+    ], ['R8a', 'R8b']],
+    ['R8a provider skill names a domain tool', [owner('shot-render', 'shot'), source('fastvideo', 'ctx.dvModels.register(e)\n'), {
+      path: 'packages/dv/fastvideo/skills/prompting.md', text: 'Write the prompt of `dv_shot_render`.\n',
+    }], ['R8a']],
+    ['R8c workflow skill names its own tool', [owner('workflow-story', 'story'), {
+      path: 'packages/dv/workflow-story/skills/story-directing/SKILL.md', text: 'Call `dv_story_approve`.\n',
+    }], []],
+    ['R8d catalog skill names only catalog tools', [owner('asset-pool', 'asset'), {
+      path: 'packages/dv/models/skills/selection.md', text: 'Call `dv_models_list`, not `dv_asset_import`.\n',
+    }], ['R8d']],
+    ['R8d skill object description in a base package', [
+      source('models', "const skill = { name: 's', description: 'Choose a model with ' + 'dv_models_list.' }\n"),
+    ], ['R8d']],
+    ['R8d other descriptions of a base package', [source('models', "const tool = { description: 'Lists models for dv_models_get.' }\n")], []],
+    ['R8e skill names its own workflow skill', [{
+      path: 'packages/dv/workflow-story/skills/story-directing/SKILL.md', text: 'This is story-directing.\n',
+    }], []],
+    ['R8e bundle skill names a workflow skill', [
+      { path: 'packages/dv/workflow-story/skills/story-directing/SKILL.md', text: 'Story flow.\n' },
+      { path: 'packages/bundle/dv/skills/video-directing/SKILL.md', text: 'Then follow story-directing.\n' },
+    ], ['R8e']],
+  ])('%s', (_name, files, expected) => {
+    expect(rules(files).sort()).toEqual(expected)
+  })
+
+  it('reads src, skills and package manifests but never a tests folder', () => {
+    const paths = readScanFiles(root).map(file => file.path)
+    expect(paths.some(path => path.startsWith('packages/dv/ui-kit/src/client/'))).toBe(true)
+    expect(paths).toContain('packages/bundle/dv/skills/video-directing/SKILL.md')
+    expect(paths).toContain('packages/dv/project/package.json')
+    expect(paths.filter(path => path.includes('/tests/'))).toEqual([])
+  })
+})
+
+describe('exception markers', () => {
+  const transition = (line: string): ScanFile[] => [
+    { path: 'packages/dv/shot-plan/src/index.ts', text: "x = { component: 'plan' }\n" },
+    { path: 'packages/dv/ui-canvas/src/client/anchor.ts', text: `${line}\n` },
+  ]
+
+  it('suppress a violation of the named rule on their line', () => {
+    expect(scan(transition("const starter = 'plan.approve' // dv-arch-allow R5: transition until W4"))).toEqual([])
+  })
+
+  it.each([
+    ['another reason', "const starter = 'plan.approve' // dv-arch-allow R5: legacy log reader"],
+    ['another rule', "const starter = 'plan.approve' // dv-arch-allow R4: transition until W4"],
+    ['a marker that suppresses nothing', 'const approvals = 0 // dv-arch-allow R5: transition until W4'],
+  ])('fail on %s', (_name, line) => {
+    expect(rules(transition(line))).toContain('marker')
+  })
+})
+
+describe('ratchet baseline comparison', () => {
+  const violation: Violation = { file: 'packages/dv/project/src/shared.ts', line: 10, rule: 'R1b', text: 'plan' }
+  const key = 'packages/dv/project/src/shared.ts R1b plan'
+
+  it('passes when every count matches', () => {
+    expect(compareBaseline([violation], { [key]: 1 })).toEqual([])
+  })
+
+  it.each<[string, Violation[], Baseline]>([
+    ['a new violation', [violation], {}],
+    ['more matches than the count', [violation, { ...violation, line: 11 }], { [key]: 1 }],
+    ['fewer matches than the count', [violation], { [key]: 2 }],
+  ])('fails on %s', (_name, violations, baseline) => {
+    expect(compareBaseline(violations, baseline)).toHaveLength(1)
+  })
+
+  it('states the rule with each failure', () => {
+    expect(compareBaseline([violation], {})).toEqual([`${key}: found 1, baseline 0; lines 10; R1: ${RULE_STATEMENTS.R1 ?? ''}`])
+  })
+
+  it('states every scanned rule', () => {
+    expect(Object.keys(RULE_STATEMENTS)).toEqual(['R1', 'R2', 'R3', 'R4', 'R5', 'R6', 'R7', 'R8', 'marker'])
+  })
+})

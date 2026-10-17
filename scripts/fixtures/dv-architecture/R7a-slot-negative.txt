@@ -1,0 +1,5 @@
+--- packages/dv/ui-shell/src/index.ts
+declare module '@deepseek-ai/dsh-client-ui-slots' { interface SlotMap { 'dv.explore': Slot } }
+--- packages/dv/ui-skills/src/client/index.ts
+import type {} from '@dv/ui-shell'
+import type { Slot } from '@dv/ui-shell'

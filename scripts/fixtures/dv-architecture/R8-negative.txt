@@ -1,0 +1,4 @@
+--- packages/dv/workflow-story/src/index.ts
+export const spec = { component: 'story' }
+--- packages/bundle/dv/skills/video-directing/SKILL.md
+After the user agrees, call `dv_story_approve`.

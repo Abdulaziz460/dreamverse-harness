@@ -1,0 +1,4 @@
+--- packages/dv/story-bible/src/index.ts
+ctx.dvProject.registerComponent('bible')
+--- packages/dv/prop/src/index.ts
+ctx.dvProject.registerComponent('bible')

@@ -1,0 +1,2 @@
+--- packages/dv/models/src/types.ts
+export interface PrimitiveTypes { image: { request: ImageRequest } }
