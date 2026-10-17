@@ -30,7 +30,7 @@ import {
 } from '@dv/models'
 import {
   citedAsset, citedInput, elementCitationUri, parsePromptCitations, replacePromptCitations, type AssetId, type OperationContext,
-  type OperationInput, type OperationResult, type OperationSpec, type ProjectId, type RecordId, type RecordInput,
+  type OperationInput, type OperationResult, type OperationSpec, type ProjectId, type RecordId, type RecordInput, type StartedBy,
 } from '@dv/project'
 import { RENDER_OPERATION, shotReducer } from './reducer.ts'
 import { backendSeconds, baseMime, number, shotGeometry, text } from './render.ts'
@@ -266,9 +266,10 @@ async function streamShot(
           break
         case 'video_start':
           mime = event.mime
-          // The shot number a plan assigned tells the page which shot is playing; a free-standing shot has none.
+          // The slot that the starter record gave the render (else the shot number of a plan approval) tells the page
+          // which shot is playing; a free-standing shot has none.
           live = liveSink(ctx)?.openSegment(context.project, record, {
-            mime: event.mime, segmentIdx: number(context.params['shot'], 0),
+            mime: event.mime, segmentIdx: context.record?.started_by?.slot ?? number(context.params['shot'], 0),
           }) ?? null
           break
         case 'chunk':
@@ -342,10 +343,10 @@ const RENDER_DECLARATION: GenerationSpec<'video'> = {
   },
   confirmText(params) {
     const durationSec = number(params['duration_sec'], 0)
-    return `Render ${planShot(params)} with ${formatModelKey(modelKey(params))}${durationSec > 0 ? `, ${durationSec} s` : ''}: `
+    return `Render ${shotName(params)} with ${formatModelKey(modelKey(params))}${durationSec > 0 ? `, ${durationSec} s` : ''}: `
       + `"${text(params['prompt']).slice(0, 80)}"`
   },
-  summarize: record => `${planShot(record.params)} "${text(record.params['prompt']).slice(0, 60)}" `
+  summarize: record => `${shotName(record.params, record.started_by)} "${text(record.params['prompt']).slice(0, 60)}" `
     + `(${label(record.report?.['duration_sec'] ?? record.params['duration_sec'])}s, seed ${label(record.report?.['seed'])})`,
 }
 
@@ -362,10 +363,17 @@ export default class DvShotRender extends defineGeneration(RENDER_DECLARATION) {
   }
 }
 
-/** How a summary names the shot: `shot 7 of plan p1 v2` for a render an approved plan scheduled, else `shot`. */
-function planShot(params: Record<string, unknown>): string {
-  if (typeof params['plan'] !== 'string') return 'shot'
-  return `shot ${label(params['shot'])} of plan ${params['plan']} v${label(params['plan_version'])}`
+/**
+ * How a summary or a confirmation text names the shot: `shot 7 of plan p1 v2` for a render an approved plan scheduled,
+ * `shot 7` for a render that a record started at slot 7, else `shot`.
+ * @param params - the render params; an approved plan sets `plan`, `plan_version` and `shot`.
+ * @param startedBy - the record that started the render; its `slot` wins over the `shot` param.
+ * @returns the name.
+ */
+function shotName(params: Record<string, unknown>, startedBy?: StartedBy): string {
+  const slot = startedBy?.slot ?? null
+  if (typeof params['plan'] !== 'string') return slot === null ? 'shot' : `shot ${String(slot)}`
+  return `shot ${label(slot ?? params['shot'])} of plan ${params['plan']} v${label(params['plan_version'])}`
 }
 
 /** A number or string field as display text, or `?` for anything else. */

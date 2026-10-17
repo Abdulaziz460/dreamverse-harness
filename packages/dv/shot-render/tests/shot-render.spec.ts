@@ -422,6 +422,11 @@ describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
     expect(renderSpec(fixture)?.summarize({ ...withoutReport, params: {} })).toBe('shot "" (?s, seed ?)')
     expect(renderSpec(fixture)?.summarize({ ...withoutReport, params: { prompt: 'x', plan: 'p1', plan_version: 2, shot: 7 } }))
       .toBe('shot 7 of plan p1 v2 "x" (?s, seed ?)')
+    // The slot that the starter record gave the render wins over the plan's shot param.
+    const started_by = { record: shot.id, slot: 2 }
+    expect(renderSpec(fixture)?.summarize({ ...withoutReport, params: { prompt: 'x' }, started_by })).toBe('shot 2 "x" (?s, seed ?)')
+    expect(renderSpec(fixture)?.summarize({ ...withoutReport, params: { prompt: 'x', plan: 'p1', plan_version: 2, shot: 7 }, started_by }))
+      .toBe('shot 2 of plan p1 v2 "x" (?s, seed ?)')
     // The next shot continues from the last still, which is the first frame.
     const next = await fixture.record('shot.render', { ...REF, prompt: 'keeps waving' }, [c1(), { role: 'first_frame', ref: { record: shot.id, output: 1 } }])
     expect(fixture.reference.requests[1]).toMatchObject({ references: [image], firstFrame: shot.outputs[1] })
@@ -679,15 +684,17 @@ describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
     expect(fixture.ctx.dvAssetPool.get(shot.outputs[0] as AssetId).size_bytes).toBeGreaterThan(256 * 1024)
   })
 
-  it('broadcasts the shot to the live stream service while the provider streams it', async () => {
+  it('broadcasts the shot to the live stream service at its slot while the provider streams it', async () => {
     const live = new FakeLiveStream()
     const fixture = await start({ live })
     await withCharacter(fixture)
     const shot = await fixture.record('shot.render', { ...REF, prompt: 'Picture 1 waves', shot: 3 }, [c1()])
     expect(live.shots).toEqual([{ record: shot.id, init: { mime: 'video/mp4; codecs="avc1.64001f"', segmentIdx: 3 }, bytes: fixture.ctx.dvAssetPool.get(shot.outputs[0] as AssetId).size_bytes, end: 'complete' }])
+    const started = await fixture.record('shot.render', { ...REF, prompt: 'Picture 1 waves', shot: 3 }, [c1()], { started_by: { record: shot.id, slot: 4 } })
+    expect(live.shots[1]).toMatchObject({ record: started.id, init: { segmentIdx: 4 }, end: 'complete' })
     fixture.reference.omit = 'done'
     await fixture.record('shot.render', { ...REF, prompt: 'cut short' }, [c1()])
-    expect(live.shots[1]).toMatchObject({ init: { segmentIdx: 0 }, end: 'failed' })
+    expect(live.shots[2]).toMatchObject({ init: { segmentIdx: 0 }, end: 'failed' })
   })
 })
 
