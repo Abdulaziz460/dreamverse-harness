@@ -14,6 +14,7 @@ export type ProjectErrorCode =
   | 'invalid_inputs'
   | 'input_not_ready'
   | 'component_exists'
+  | 'kind_exists'
   | 'operation_exists'
   | 'reducer_exists'
   | 'parent_not_head'

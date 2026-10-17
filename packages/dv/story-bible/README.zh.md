@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-使用本包保存项目的角色、场景和风格，每个都带参考图。它向 `dvProject` 注册六个操作，每种一个创建和一个更新（`bible.character_create`、`bible.character_update`，`location` 和 `style` 同理），以及把这些记录变成版本的 `bible` 归约函数。每次调用写出一个 ID 的下一个版本。镜头以输入 `<id>@<version>` 指明一个版本，它代表该版本的参考图。更新会让每条读过上一版本的记录过期。
+使用本包保存项目的角色、场景和风格，每个都带参考图。它向 `dvProject` 注册六个操作，每种一个创建和一个更新（`bible.character_create`、`bible.character_update`，`location` 和 `style` 同理），把这些记录变成版本的 `bible` 归约函数，以及引用种类 `character`、`location` 和 `style`。每次调用写出一个 ID 的下一个版本。镜头以输入 `<id>@<version>` 指明一个版本，它代表该版本的参考图。更新会让每条读过上一版本的记录过期。
 
 ## 目录
 
@@ -45,13 +45,13 @@ kind: "package-reference"
 <a id="understand-the-implementation"></a>
 ## 理解实现
 
-归约函数只读已完成的 `bible.*` 记录。一个版本的参考图是记录的 `reference` 输入所解析到的素材，因此运行器会检查它们存在，记录也把它们列为它读取的内容。Project 调用 `bible` 键下归约函数的两个可选成员：`assetsOf` 把 `<id>@<version>` 输入解析为其参考图，`createdBy` 指出写出一个版本的记录（Project 把它当作该输入的产生者，用于过期标记和解析 `<id>@<version>`）。版本跟随当前状态：撤销回到某个版本之前时，该版本从状态中移除，它的 ID 在该状态中重新可用。
+归约函数只读已完成的 `bible.*` 记录。一个版本的参考图是记录的 `reference` 输入所解析到的素材，因此运行器会检查它们存在，记录也把它们列为它读取的内容。每个种类用 `dvProject.registerReferenceKind` 注册，并从 `bible` 切片作答：`assetsOf` 把 `<id>@<version>` 输入解析为其参考图，`createdBy` 指出写出一个版本的记录（Project 把它当作该输入的产生者，用于过期标记和解析 `<id>@<version>`）。版本跟随当前状态：撤销回到某个版本之前时，该版本从状态中移除，它的 ID 在该状态中重新可用。
 
 | 文件 | 内容 |
 | --- | --- |
 | [`src/index.ts`](src/index.ts) | `dvStoryBible`：六个操作及其 ID 检查 |
-| [`src/reducer.ts`](src/reducer.ts) | 带 `assetsOf` 和 `createdBy` 的 `bible` 归约函数 |
-| [`src/types.ts`](src/types.ts) | `Character`、`Location`、`Style`、`StoryBibleState` 和 `ComponentStates` 声明 |
+| [`src/reducer.ts`](src/reducer.ts) | `bible` 归约函数，以及带 `assetsOf` 和 `createdBy` 的引用种类 |
+| [`src/types.ts`](src/types.ts) | `Character`、`Location`、`Style`、`StoryBibleState` 以及 `ComponentStates` 和 `ReferenceKinds` 声明 |
 
 -----
 

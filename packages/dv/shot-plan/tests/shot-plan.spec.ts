@@ -606,11 +606,11 @@ describe('dvShotPlan', () => {
     // An unknown reference is refused before the record, for the plan's references and a shot's own.
     const before = fixture.ctx.dvProject.listHistory({ project: fixture.project }).length
     await expect(fixture.record('plan.create', { references: ['c9@1'], shots: [ref('x')] }))
-      .rejects.toThrow("Unknown character, location, or style version 'c9@1'.")
+      .rejects.toThrow("Unknown version 'c9@1'; reference kinds: none.")
     expect(fixture.ctx.dvProject.listHistory({ project: fixture.project })).toHaveLength(before)
     await fixture.record('plan.create', { shots: [{ ...TXT, prompt: 'x' }] })
     await expect(fixture.record('plan.update', { plan: 'p1', shots: [ref('x', { references: ['s9@1'] })] }))
-      .rejects.toThrow("Unknown character, location, or style version 's9@1'.")
+      .rejects.toThrow("Unknown version 's9@1'; reference kinds: none.")
     expect((await fixture.record('plan.update', { plan: 'p1', shots: [] })).error?.message).toBe('plan.update needs at least one shot.')
     expect(fixture.recordsOf('shot.render')).toEqual([])
     expect(() => fixture.ctx.dvShotPlan.getPlan(fixture.ctx.dvProject.getState(fixture.project), 'ghost')).toThrow("Unknown plan 'ghost'")

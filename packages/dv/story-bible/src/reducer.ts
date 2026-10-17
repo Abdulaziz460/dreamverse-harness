@@ -1,17 +1,18 @@
 /**
- * The `bible` reducer: every version of each character, location and style, from the finished `bible.*` records. It
- * also answers Project's two version lookups: `assetsOf` (the reference images a `<id>@<version>` input stands for)
- * and `createdBy` (the record that wrote that version, which Project treats as the input's producer for stale marks).
+ * The `bible` reducer: every version of each character, location and style, from the finished `bible.*` records. Each
+ * kind is also a reference kind of Project, which answers from the slice: `assetsOf` (the reference images a
+ * `<id>@<version>` input stands for) and `createdBy` (the record that wrote that version, which Project treats as the
+ * input's producer for stale marks).
  *
  * @module @dv/story-bible/reducer
  */
-import type { AssetId, ProjectRecord, RecordInputRef, Reducer } from '@dv/project'
+import type { AssetId, ProjectRecord, Reducer, ReferenceKindSpec } from '@dv/project'
 import type { Character, Location, Style, StoryBibleState } from './types.ts'
 
-/** The three kinds of story element; each is the ID param name of its operations and a `RecordInputRef` key. */
+/** The three kinds of story element; each is the ID param name of its operations and a reference kind. */
 export type BibleKind = 'character' | 'location' | 'style'
 
-/** The kinds in the order Project tries them for an `<id>@<version>` reference. */
+/** The kinds, in registration order. */
 export const BIBLE_KINDS: readonly BibleKind[] = ['character', 'location', 'style']
 
 /** The slice field that holds each kind's versions. */
@@ -64,18 +65,19 @@ export function latestVersion(slice: StoryBibleState, kind: BibleKind, id: strin
 }
 
 /**
- * The version a character, location or style reference names.
- * @param slice - the `bible` slice.
- * @param ref - a record input reference.
- * @returns the version, or undefined for an unknown version or an asset or record reference.
+ * The reference kind of one story element kind: it answers for a version from the `bible` slice.
+ * @param kind - the kind.
+ * @returns the spec that `dvProject.registerReferenceKind` takes.
  */
-function versionOf(slice: StoryBibleState, ref: RecordInputRef): Version | undefined {
-  let named: { kind: BibleKind; id: string; version: number }
-  if ('character' in ref) named = { kind: 'character', id: ref.character, version: ref.version }
-  else if ('location' in ref) named = { kind: 'location', id: ref.location, version: ref.version }
-  else if ('style' in ref) named = { kind: 'style', id: ref.style, version: ref.version }
-  else return undefined
-  return versionsOf(slice, named.kind)[named.id]?.find(version => version.version === named.version)
+export function referenceKind(kind: BibleKind): ReferenceKindSpec<'bible'> {
+  const versionOf = (slice: StoryBibleState, id: string, version: number): Version | undefined =>
+    versionsOf(slice, kind)[id]?.find(candidate => candidate.version === version)
+  return {
+    kind,
+    component: 'bible',
+    assetsOf: (slice, id, version) => versionOf(slice, id, version)?.references ?? null,
+    createdBy: (slice, id, version) => versionOf(slice, id, version)?.created_by ?? null,
+  }
 }
 
 /**
@@ -128,12 +130,6 @@ export const bibleReducer: Reducer<'bible'> = {
     const versions = versionsOf(slice, operation.kind)[id] ?? []
     const byId = { ...versionsOf(slice, operation.kind), [id]: [...versions, nextVersion(versions, id, record)] }
     return { ...slice, [FIELD[operation.kind]]: byId }
-  },
-  assetsOf(slice, ref) {
-    return versionOf(slice, ref)?.references ?? null
-  },
-  createdBy(slice, ref) {
-    return versionOf(slice, ref)?.created_by ?? null
   },
   agentSummary(slice) {
     return {

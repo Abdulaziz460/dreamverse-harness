@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to keep the characters, locations and styles of a project, each with its reference images. It registers six operations with `dvProject`, a create and an update per kind (`bible.character_create`, `bible.character_update`, and the same for `location` and `style`), and the `bible` reducer that turns their records into versions. Each call writes the next version of an ID. A shot names a version as the input `<id>@<version>`, which stands for that version's reference images. An update makes every record that read the previous version stale.
+Use this package to keep the characters, locations and styles of a project, each with its reference images. It registers six operations with `dvProject`, a create and an update per kind (`bible.character_create`, `bible.character_update`, and the same for `location` and `style`), the `bible` reducer that turns their records into versions, and the reference kinds `character`, `location` and `style`. Each call writes the next version of an ID. A shot names a version as the input `<id>@<version>`, which stands for that version's reference images. An update makes every record that read the previous version stale.
 
 ## Table of Contents
 
@@ -45,13 +45,13 @@ The `bible` slice of `ProjectState` is `StoryBibleState`: `characters`, `locatio
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
 
-The reducer reads only finished `bible.*` records. A version's reference images are the resolved assets of the record's `reference` inputs, so the runner checks that they exist and the record lists them as what it read. Project calls two optional reducer members of the `bible` key: `assetsOf` resolves an `<id>@<version>` input to its reference images, and `createdBy` names the record that wrote a version (Project treats it as the input's producer for stale marks and for parsing `<id>@<version>`). The versions follow the current state: an undo that goes back before a version takes that version off the state, and its ID is free again in that state.
+The reducer reads only finished `bible.*` records. A version's reference images are the resolved assets of the record's `reference` inputs, so the runner checks that they exist and the record lists them as what it read. Each kind is registered with `dvProject.registerReferenceKind` and answers from the `bible` slice: `assetsOf` resolves an `<id>@<version>` input to its reference images, and `createdBy` names the record that wrote a version (Project treats it as the input's producer for stale marks and for parsing `<id>@<version>`). The versions follow the current state: an undo that goes back before a version takes that version off the state, and its ID is free again in that state.
 
 | File | Content |
 | --- | --- |
 | [`src/index.ts`](src/index.ts) | `dvStoryBible`: the six operations and their ID checks |
-| [`src/reducer.ts`](src/reducer.ts) | The `bible` reducer with `assetsOf` and `createdBy` |
-| [`src/types.ts`](src/types.ts) | `Character`, `Location`, `Style`, `StoryBibleState` and the `ComponentStates` declaration |
+| [`src/reducer.ts`](src/reducer.ts) | The `bible` reducer, and the reference kinds with `assetsOf` and `createdBy` |
+| [`src/types.ts`](src/types.ts) | `Character`, `Location`, `Style`, `StoryBibleState` and the `ComponentStates` and `ReferenceKinds` declarations |
 
 -----
 

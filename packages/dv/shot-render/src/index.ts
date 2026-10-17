@@ -109,7 +109,7 @@ const RENDER_PARAMS: OperationSpec['params'] = {
 const RENDER_INPUTS: Record<string, OperationInput> = {
   reference: {
     type: 'any', many: true, bible: true,
-    description: 'Reference media in prompt order: imported assets, or character, location and style versions whose reference '
+    description: 'Reference media in prompt order: imported assets, or versions (<id>@<version>) whose reference '
       + 'assets the shot carries; the model accepts the media types dv_models_get lists. Task ref2v only.',
   },
   first_frame: { type: 'image', description: 'The frame the shot starts from, usually output #1 of the previous shot.' },
@@ -480,8 +480,8 @@ export default class DvShotRender extends Service {
       component: 'shot',
       version: '1',
       description: 'Render one take of a shot with a model from dv_models_list; modality, task, provider and model name it and are '
-        + 'required. Task ref2v renders from reference media through the reference input: imported assets, or character, '
-        + 'location and style versions with reference assets (c1@1); the prompt cites each reference image as '
+        + 'required. Task ref2v renders from reference media through the reference input: imported assets, or versions '
+        + 'with reference assets (<id>@<version>, such as c1@1); the prompt cites each reference image as '
         + '@[<label>](dv:asset/<asset ID>). dv_models_get lists the inputs, media types and counts each model accepts. '
         + 'Pass continue_from to start from the last still of an earlier shot when the model takes a first frame. '
         + 'The model\'s own parameters go in extra (see dv_models_get). ' + TAKE_RULE,

@@ -2,8 +2,8 @@
  * The Shot render component in a REAL composition: a test-only `cordis.yml` boots the DSH tool registry, the asset
  * pool, `dvProject`, `dvFfmpeg`, `dvModels` and `dvShotRender` through the Loader. The video model is the only fake:
  * an in-process model `fake` of provider `test`, registered once per task, whose entries render solid-color clips with
- * ffmpeg. A test-only `bible` reducer stands
- * for the Story bible, so references can name character versions.
+ * ffmpeg. A test-only `bible` reducer and
+ * reference kind `character` stand for the Story bible, so references can name character versions.
  */
 import { execFile } from 'node:child_process'
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -22,12 +22,16 @@ import DvAssetPool from '@dv/asset-pool'
 import DvFfmpeg from '@dv/ffmpeg'
 import DvProject, {
   type AssetId, type CharacterId, type OperationSpec, type OperationToolValue, type ProjectId, type ProjectRecord, type RecordId,
-  type RecordInputRef, type Reducer, type RunRequest, type SessionId,
+  type Reducer, type ReferenceKindSpec, type RunRequest, type SessionId,
 } from '@dv/project'
 import DvModels, { type ModelEntry, type RenderModelFacts, type RenderRequest, type RenderStreamEvent, type TaskId } from '@dv/models'
 import { afterEach, describe, expect, it } from 'vitest'
 import DvShotRender from '../src/index.ts'
 import { backendSeconds, shotGeometry } from '../src/render.ts'
+
+declare module '@dv/project' {
+  interface ReferenceKinds { character: CharacterId }
+}
 
 const FFMPEG = process.env['DV_FFMPEG'] ?? '/mnt/lustre/vlm-d1su/opt/ffmpeg-native/bin/ffmpeg'
 const FFPROBE = process.env['DV_FFPROBE'] ?? 'ffprobe'
@@ -163,12 +167,19 @@ const characterCreate: OperationSpec = {
   execute: () => Promise.resolve({ outputs: [] }),
 }
 
-/** The version a character reference names in the test-only slice. */
-function versionOf(slice: BibleSlice, ref: RecordInputRef) {
-  return 'character' in ref ? slice[ref.character]?.[ref.version - 1] ?? null : null
+/** A version of a character in the test-only slice. */
+function versionOf(slice: BibleSlice, id: string, version: number) {
+  return slice[id]?.[version - 1] ?? null
 }
 
-/** The test-only `bible` reducer, which answers `createdBy` and `assetsOf` the way the Story bible does. */
+/** The test-only reference kind `character`, which answers from the test-only slice the way the Story bible does. */
+const characterKind: ReferenceKindSpec<never> = {
+  kind: 'character', component: 'bible' as never,
+  assetsOf: (slice: BibleSlice, id, version) => versionOf(slice, id, version)?.references ?? null,
+  createdBy: (slice: BibleSlice, id, version) => versionOf(slice, id, version)?.record ?? null,
+}
+
+/** The test-only `bible` reducer, which holds the character versions. */
 const bibleReducer: Reducer<never> & { initial(): BibleSlice } = {
   initial: () => ({}),
   reduce(slice: BibleSlice, record: ProjectRecord): BibleSlice {
@@ -177,8 +188,6 @@ const bibleReducer: Reducer<never> & { initial(): BibleSlice } = {
     const references = record.inputs.flatMap(input => input.resolved_asset === null ? [] : [input.resolved_asset])
     return { ...slice, [id]: [...slice[id] ?? [], { references, record: record.id }] }
   },
-  createdBy: (slice: BibleSlice, ref: RecordInputRef) => versionOf(slice, ref)?.record ?? null,
-  assetsOf: (slice: BibleSlice, ref: RecordInputRef) => versionOf(slice, ref)?.references ?? null,
 } as never
 
 /** The plugin classes the fixture rows resolve through `globalThis`, because Node imports the rows outside Vite. */
@@ -249,6 +258,7 @@ async function start(options: { tasks?: TaskId[]; live?: FakeLiveStream; budget?
   })
   ctx.effect(() => ctx.dvProject.registerComponent('bible'))
   ctx.effect(() => ctx.dvProject.registerReducer('bible' as never, bibleReducer))
+  ctx.effect(() => ctx.dvProject.registerReferenceKind(characterKind))
   ctx.effect(() => ctx.dvProject.registerOperation(characterCreate))
   const origin = { actor: 'user' as const, surface: 'api' as const, session: null, turn: null, tool_call: null }
   const project = (await ctx.dvProject.createProject('shots', { ...origin, intent: 'create' })).id

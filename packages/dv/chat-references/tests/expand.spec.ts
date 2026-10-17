@@ -5,6 +5,10 @@ import type { AssetId, CharacterId, ProjectId, ProjectRecord, ProjectState, Reco
 import type { ClipId, TimelineId } from '@dv/timeline'
 import { expansionBlock, formatMention, parseMentions, type ExpansionSources } from '../src/expand.ts'
 
+declare module '@dv/project' {
+  interface ReferenceKinds { character: CharacterId }
+}
+
 const project = brandString<ProjectId>('p1')
 const img = brandString<AssetId>('img1')
 const vid = brandString<AssetId>('vid1')

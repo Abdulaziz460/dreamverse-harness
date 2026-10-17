@@ -1,8 +1,9 @@
-/** The pure `bible` reducer: versions from `bible.*` records and the two version lookups. */
+/** The pure `bible` reducer: versions from `bible.*` records, and the two version lookups of the reference kinds. */
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { AssetId, ProjectRecord, ProjectState, RecordId, RecordInput } from '@dv/project'
 import { describe, expect, it } from 'vitest'
-import { bibleReducer, type CharacterId, type LocationId, type StoryBibleState, type StyleId } from '../src/index.ts'
+import { bibleReducer, type StoryBibleState, type StyleId } from '../src/index.ts'
+import { referenceKind } from '../src/reducer.ts'
 
 const FACE = brandString<AssetId>('face')
 const COAT = brandString<AssetId>('coat')
@@ -72,23 +73,22 @@ describe('bibleReducer', () => {
     ]) expect(bibleReducer.reduce(initial, entry)).toBe(initial)
   })
 
-  it('answers assetsOf and createdBy for each kind and null for unknown versions and other refs', () => {
+  it('answers assetsOf and createdBy for each kind and null for unknown versions and IDs of other kinds', () => {
     const slice = reduceAll([
       record('r1', 'bible.character_create', { character: 'c1', name: 'Lead' }, [FACE]),
       record('r2', 'bible.character_update', { character: 'c1' }, [COAT, FACE]),
       record('r3', 'bible.location_create', { location: 'l1', name: 'Beach' }, [COAT]),
       record('r4', 'bible.style_create', { style: 's1', name: 'Film' }),
     ])
-    const c1 = brandString<CharacterId>('c1')
-    expect(bibleReducer.assetsOf?.(slice, { character: c1, version: 1 })).toEqual([FACE])
-    expect(bibleReducer.assetsOf?.(slice, { character: c1, version: 2 })).toEqual([COAT, FACE])
-    expect(bibleReducer.createdBy?.(slice, { character: c1, version: 2 })).toBe('r2')
-    expect(bibleReducer.assetsOf?.(slice, { location: brandString<LocationId>('l1'), version: 1 })).toEqual([COAT])
-    expect(bibleReducer.createdBy?.(slice, { style: brandString<StyleId>('s1'), version: 1 })).toBe('r4')
-    expect(bibleReducer.assetsOf?.(slice, { character: c1, version: 3 })).toBeNull()
-    expect(bibleReducer.createdBy?.(slice, { location: brandString<LocationId>('c1'), version: 1 })).toBeNull()
-    expect(bibleReducer.assetsOf?.(slice, { asset: FACE })).toBeNull()
-    expect(bibleReducer.createdBy?.(slice, { record: brandString<RecordId>('r1'), output: 0 })).toBeNull()
+    const [character, location, style] = (['character', 'location', 'style'] as const).map(referenceKind)
+    expect(character?.assetsOf(slice, 'c1', 1)).toEqual([FACE])
+    expect(character?.assetsOf(slice, 'c1', 2)).toEqual([COAT, FACE])
+    expect(character?.createdBy(slice, 'c1', 2)).toBe('r2')
+    expect(location?.assetsOf(slice, 'l1', 1)).toEqual([COAT])
+    expect(style?.createdBy(slice, 's1', 1)).toBe('r4')
+    expect(character?.assetsOf(slice, 'c1', 3)).toBeNull()
+    expect(location?.createdBy(slice, 'c1', 1)).toBeNull()
+    expect(style?.assetsOf(slice, 'l1', 1)).toBeNull()
   })
 
   it('lists the latest version of each character, location and style in the agent summary', () => {

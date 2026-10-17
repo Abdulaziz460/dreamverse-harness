@@ -66,4 +66,6 @@ declare module '@dv/project' {
     /** Characters, locations and styles with their versions (the Story bible component). */
     bible: StoryBibleState
   }
+  /** The reference kinds of the Story bible; an input names a version as `<id>@<version>`. */
+  interface ReferenceKinds { character: CharacterId; location: LocationId; style: StyleId }
 }

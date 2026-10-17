@@ -6,15 +6,15 @@
  * `<id>@<version>`, which stands for that version's reference images.
  *
  * The operations write only their records. `dvProject` turns each into its agent tool (`dv_bible_character_create`,
- * and so on), resolves `<id>@<version>` inputs through the reducer's `assetsOf`, and marks every record that read a
- * version stale once an update supersedes the record that wrote it.
+ * and so on). Each kind is a reference kind of `dvProject`, which resolves `<id>@<version>` inputs through the kind's
+ * `assetsOf` and marks every record that read a version stale once an update supersedes the record that wrote it.
  *
  * @module @dv/story-bible
  */
 import { Service, type Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type { OperationContext, OperationResult, OperationSpec, ProjectState, RecordId } from '@dv/project'
-import { BIBLE_KINDS, bibleReducer, kindOf, latestVersion, type BibleKind } from './reducer.ts'
+import { BIBLE_KINDS, bibleReducer, kindOf, latestVersion, referenceKind, type BibleKind } from './reducer.ts'
 
 export * from './types.ts'
 export { bibleReducer } from './reducer.ts'
@@ -54,7 +54,7 @@ function text(value: unknown, fallback = ''): string {
   return typeof value === 'string' ? value : fallback
 }
 
-/** The Story bible service: the `bible` reducer and the six operations. */
+/** The Story bible service: the `bible` reducer, the three reference kinds and the six operations. */
 export default class DvStoryBible extends Service {
   static inject = ['dvProject']
   static Config = Config
@@ -64,6 +64,7 @@ export default class DvStoryBible extends Service {
     ctx.effect(() => ctx.dvProject.registerComponent('bible'), 'dvStoryBible component')
     ctx.effect(() => ctx.dvProject.registerReducer('bible', bibleReducer), 'dvStoryBible reducer')
     for (const kind of BIBLE_KINDS) {
+      ctx.effect(() => ctx.dvProject.registerReferenceKind(referenceKind(kind)), `dvStoryBible kind ${kind}`)
       for (const spec of [createOperation(kind), updateOperation(kind)]) {
         ctx.effect(() => ctx.dvProject.registerOperation(spec), `dvStoryBible ${spec.name}`)
       }

@@ -1,7 +1,7 @@
 /**
  * Shared fixtures of the `@dv/project` unit tests: a temporary store root, record origins, in-memory asset stores,
  * a module set wired the same way as the `dvProject` service, without a Cordis context, and the `test_bible` slice
- * of the test reducers that answer `createdBy` and `assetsOf`.
+ * that the test reference kinds answer `createdBy` and `assetsOf` from.
  */
 import { createHash } from 'node:crypto'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
@@ -16,7 +16,8 @@ import { Runner, type RunnerAssets } from '../src/runner.ts'
 import { Scheduler } from '../src/scheduler.ts'
 import { Subscriptions } from '../src/subscriptions.ts'
 import type {
-  AssetId, AssetStore, ProjectEvent, ProjectId, RecordId, RecordInputRef, RecordOrigin, SessionId, TurnId,
+  AssetId, AssetStore, CharacterId, LocationId, ProjectEvent, ProjectId, RecordId, RecordOrigin, ReferenceKindSpec, SessionId, StyleId,
+  TurnId,
 } from '../src/types.ts'
 
 declare module '@dv/project' {
@@ -27,18 +28,29 @@ declare module '@dv/project' {
      */
     test_bible?: { assets: Record<string, AssetId[]>; creators: Record<string, RecordId> }
   }
+  /** The reference kinds that the tests name in version references; the same kinds as Story bible's. */
+  interface ReferenceKinds { character: CharacterId; location: LocationId; style: StyleId }
 }
 
 /**
- * The `test_bible` key of a character, location or style version.
- * @param ref - an input reference.
- * @returns `<kind>:<id>@<version>`, or null for an asset or a record output.
+ * The `test_bible` key of one version.
+ * @returns `<kind>:<id>@<version>`.
  */
-export function versionKey(ref: RecordInputRef): string | null {
-  if ('character' in ref) return `character:${ref.character}@${ref.version}`
-  if ('location' in ref) return `location:${ref.location}@${ref.version}`
-  if ('style' in ref) return `style:${ref.style}@${ref.version}`
-  return null
+export function versionKey(kind: string, id: string, version: number): string {
+  return `${kind}:${id}@${version}`
+}
+
+/**
+ * A reference kind that answers from the `test_bible` slice.
+ * @param kind - the kind, such as `character`.
+ * @returns the spec.
+ */
+export function testKind(kind: string): ReferenceKindSpec<'test_bible'> {
+  return {
+    kind, component: 'test_bible',
+    assetsOf: (slice, id, version) => slice?.assets[versionKey(kind, id, version)] ?? null,
+    createdBy: (slice, id, version) => slice?.creators[versionKey(kind, id, version)] ?? null,
+  }
 }
 
 /**

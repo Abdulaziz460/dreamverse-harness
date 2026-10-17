@@ -39,12 +39,13 @@ The runner and history call the record store; the runner calls the reducer regis
         |  run acceptStale registerOperation listOperations                    |
         |                                                  -> runner           |
         |  undo redo listHistory                            -> history          |
-        |  getState registerReducer                        -> reducers         |
+        |  getState registerReducer registerReferenceKind  -> reducers         |
         |  wait                                            -> scheduler        |
         |  subscribe                                       -> subscriptions    |
         |  bindSession sessionProject holdToolCalls                            |
         |                                                  -> sessions         |
-        |  registerOperation (tool), parseInputs           -> agent-tools      |
+        |  registerOperation (tool), parseInputs, parseReference               |
+        |                                                  -> agent-tools      |
         |  dv_proj_* tools (registry mounted)              -> proj-tools       |
         |  dv:project section (systemPrompt mounted)       -> agent-context    |
         |  registerAssetStore: the store the runner and agent-tools read       |
@@ -127,25 +128,27 @@ Owner: agent D.
 
 | Function                             | Behavior                                                                                                                                               |
 | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `register(key, reducer)`             | One reducer per key (`reducer_exists`); at most one reducer defines `createdBy` and `assetsOf` (`invalid_params`). Registration order is the call order of `reduce`. Returns a remover.               |
+| `register(key, reducer)`             | One reducer per key (`reducer_exists`). Registration order is the call order of `reduce`. Returns a remover.                                           |
+| `registerKind(spec)`                 | One owner per reference kind (`kind_exists`). `listReferenceKinds()` returns registration order. Returns a remover.                                    |
+| `kindsWithVersion(state, id, n)`     | The kinds whose `createdBy(owner slice, id, n)` is not null, in registration order.                                                                    |
 | `getState(project)`                  | `stateAt(project, at)` with the project's current position.                                                                                            |
 | `stateAt(project, head)`             | `reduceChain(info, store.ancestors(project, head))`.                                                                                                   |
 | `reduceChain(info, records)`         | Starts each registered reducer at `initial()`, calls `reduce` for every record in order, returns `{project: info, head: last.id, components}`.         |
 | `apply(state, record)`               | One more `reduce` per reducer on a copy of `state.components`; `head` becomes `record.id`.                                                             |
-| `assetsOf(state, ref)`               | `assetsOf` of the reducer that defines it, on that reducer's slice (Story bible in a deployment); null when no reducer defines it.                    |
-| `createdBy` (private)                | `createdBy` of the reducer that defines it, on its slice before the record; the `proj` slice reads it while it reduces that record.                   |
+| `assetsOf(state, ref)`               | `assetsOf` of the ref's kind, on its owner's slice; null for another ref, a kind that is not registered, or an owner without a reducer.                |
+| `createdBy` (private)                | `createdBy` of the ref's kind, on its owner's slice before the record; the `proj` slice reads it while it reduces that record.                         |
 | `agentSummaries(state, assets)`      | The `agentSummary(slice, assets, state)` fields of every reducer that defines it: `proj` first, then the other keys in alphabetical order.             |
 
 `projReducer` (Project's own slice) follows its JSDoc. Staleness in detail, for each record R in order:
 
-The producers of an input are the record in `created_by[resolved_asset]` and, for a `{character}`, `{location}` or `{style}` ref, the record that created that version (`createdBy` of the reducer that defines it).
+The producers of an input are the record in `created_by[resolved_asset]` and, for a version ref, the record that created that version (`createdBy` of its kind; none while the kind is not registered).
 
 1. Each output asset of R when R is `done`: `created_by[asset] = R.id`.
 2. Each ID X in `R.supersedes`: `superseded[X] = R.id`; then every earlier record with an input produced by X, or by a record already stale through X, gets `stale[consumer] = R.id` unless it carries a stale acceptance.
 3. Each input of R produced by a record P with `superseded[P]` or `stale[P]` set: R gets `stale[R] = superseded[P] ?? stale[P]`, unless R carries a stale acceptance.
 4. `proj.stale_accept` with `params.record = X`: delete `stale[X]` and remember X as accepted; accepted records are never marked again, and their consumers are not stale through them.
 
-Version staleness follows from these rules: the operation that writes a new character, location or style version supersedes the record that created the previous version (`OperationSpec.supersedes`), so every record that read the previous version, and every record downstream of it, is stale.
+Version staleness follows from these rules: the operation that writes a new version of a reference kind supersedes the record that created the previous version (`OperationSpec.supersedes`), so every record that read the previous version, and every record downstream of it, is stale.
 
 Invariants: reducers are pure; `getState` on the same records always gives equal state; a reducer never sees a record twice; a registered reducer that throws makes `getState` throw (the error propagates; nothing is cached). An implementation may cache states by `(project, head)`; a cached state must be dropped when an update line changes a record on that chain.
 
@@ -168,7 +171,7 @@ Invariants: a move writes no record and keeps `tip`; an undo and then a redo ret
 
 Owner: agent B.
 
-**Registration.** `registerComponent(key)` adds a component key and returns the disposer that removes it; a registered key is refused with `component_exists`. The service registers `proj` when it starts, and its `registerReducer` refuses a key that is not registered with `invalid_params`. `registerOperation(spec)` accepts an operation of a registered component: refuse a registered name with `operation_exists`, a `component` that no plugin registered with `invalid_params`, a name that does not start with `<component>.` with `invalid_params`, and a `confirm` other than `never` without `confirmSummary` with `invalid_params`. `listOperations` returns registration order.
+**Registration.** `registerComponent(key)` adds a component key and returns the disposer that removes it; a registered key is refused with `component_exists`. The service registers `proj` when it starts, and its `registerReducer` and `registerReferenceKind` refuse a key that is not registered with `invalid_params`; `registerReferenceKind` also refuses the kinds `asset`, `record` and `version`, the keys of the other input reference arms, with `invalid_params`, and it and its remover rebuild every operation tool, because the `inputs` text lists the kinds. `registerOperation(spec)` accepts an operation of a registered component: refuse a registered name with `operation_exists`, a `component` that no plugin registered with `invalid_params`, a name that does not start with `<component>.` with `invalid_params`, and a `confirm` other than `never` without `confirmSummary` with `invalid_params`. `listOperations` returns registration order.
 
 **Runner: run.** Steps of `run(request)`:
 
@@ -176,7 +179,7 @@ Owner: agent B.
 2. Validate `params` with `validateArgs(spec.params, params)` from `@deepseek-ai/dsh-tools`; any message → `invalid_params` with the messages joined. Every input role must be a key of `spec.inputs` (`invalid_inputs`).
 3. Read-only operation (`spec.readOnly`): state = `reducers.getState(project)`, resolve inputs (step 5 rules), await `spec.precondition?.(request, state)` (a throw rejects `run` with that error), call `execute` with `record: null` and a scratch directory, and resolve `{record: null, outputs, report: report ?? null}`. No lock, no record. A throw from `execute` rejects `run` with that error.
 4. Take the lock. `parent` = the current position, `store.line(project).at`.
-5. Resolve inputs against `reducers.getState(project)` (the state at `parent`): `{asset}` must exist in the registered asset store (`unknown_asset`); `{record, output}` must name an existing record (`unknown_record`) and a non-negative integer `output`; when the producer is `done`, `resolved_asset` is its `outputs[output]` (missing → `invalid_inputs`); `failed` or `cancelled` → `invalid_inputs`; `pending` or `running` → `resolved_asset: null`, allowed only when `request.after` is set, else `input_not_ready`. An input whose role is in `spec.pendingInputRoles` resolves to `resolved_asset: null` for a producer in any status other than `done`, without `request.after`. A `{character}`, `{location}` or `{style}` ref becomes one input per asset of `reducers.assetsOf` (null → `invalid_inputs`), each with the same role and ref. Then await `spec.precondition?.(request, current state)` under the lock: a throw rejects `run` with that error unchanged, before anything is written.
+5. Resolve inputs against `reducers.getState(project)` (the state at `parent`): `{asset}` must exist in the registered asset store (`unknown_asset`); `{record, output}` must name an existing record (`unknown_record`) and a non-negative integer `output`; when the producer is `done`, `resolved_asset` is its `outputs[output]` (missing → `invalid_inputs`); `failed` or `cancelled` → `invalid_inputs`; `pending` or `running` → `resolved_asset: null`, allowed only when `request.after` is set, else `input_not_ready`. An input whose role is in `spec.pendingInputRoles` resolves to `resolved_asset: null` for a producer in any status other than `done`, without `request.after`. A version ref becomes one input per asset of `reducers.assetsOf` (null → `invalid_inputs`), each with the same role and ref. Then await `spec.precondition?.(request, current state)` under the lock: a throw rejects `run` with that error unchanged, before anything is written.
 6. Append the operation record by the discard rule (below): `status: 'pending'`, `component`, `operation`, `operation_version`, `deterministic` from the spec, `based_on ?? null`, `outputs: []`, and `supersedes`: `request.supersedes ?? []` followed by `spec.supersedes?.(params, current state)`, without repeats. Release the lock.
 7. `request.after` set → `scheduler.enqueue(project, id, spec.resource, after, spec.pendingInputRoles ?? [])`; resolve with the `pending` record, `outputs: []`, `report: null`. Otherwise `final = await execute(project, id, request.signal)`; resolve with `{record: final, outputs: final.outputs, report: final.report ?? null}`. Immediate runs do not count against the scheduler's limits.
 
@@ -219,7 +222,7 @@ Invariants: never more than `limits.gpu` scheduled `gpu` records and `limits.cpu
 
 **Asset store.** `registerAssetStore(store)` keeps one store; a later registration replaces it and the remover clears only the same store. While no store is registered, `has` and `importAsset` throw "No asset store is registered", so a run that names an asset input or imports an output fails.
 
-**Agent tools.** While the DSH `tools` registry is mounted, the service registers one tool per registered operation and removes it with the operation or the registry. `toolNameOf(spec)`: `dv_<name with _>`. The tool's description is `<description>`, then "Uses the GPU." for resource `gpu` or "Runs on the CPU." for `cpu` (nothing for `none`), then "A read that writes no record." for `readOnly` or, for `deterministic`, "Repeating a call with the same inputs and params reuses the earlier result.". Its parameters are `spec.params`, `spec.toolParams`, the confirmation argument of `spec.confirm` (`user_approved` for `always`, `user_requested` for `over_gpu_budget`, none for `never`), and the shared `reason` (required), `project_id`, `inputs` (when the operation has input roles), and `supersedes` and `based_on` (when the operation writes a record). A call:
+**Agent tools.** While the DSH `tools` registry is mounted, the service registers one tool per registered operation and removes it with the operation or the registry. `toolNameOf(spec)`: `dv_<name with _>`. The tool's description is `<description>`, then "Uses the GPU." for resource `gpu` or "Runs on the CPU." for `cpu` (nothing for `none`), then "A read that writes no record." for `readOnly` or, for `deterministic`, "Repeating a call with the same inputs and params reuses the earlier result.". Its parameters are `spec.params`, `spec.toolParams`, the confirmation argument of `spec.confirm` (`user_approved` for `always`, `user_requested` for `over_gpu_budget`, none for `never`), and the shared `reason` (required), `project_id`, `inputs` (when the operation has input roles; its text names `<id>@<version>` with `listReferenceKinds()` while a kind is registered), and `supersedes` and `based_on` (when the operation writes a record). A call:
 
 1. waits for `sessions.ready(session)`; `session` is the calling agent's ID, else `anonymous`;
 2. takes `project_id`, else the session's project, else fails with "No project selected";
@@ -233,7 +236,7 @@ Invariants: never more than `limits.gpu` scheduled `gpu` records and `limits.cpu
 
 **Confirmation rule.** Applies only to agent tool calls; calls by the human (views, API) and by the system (scheduled renders) never reach it and are never refused. For `confirm: 'never'` nothing happens. For `always`, a call whose `user_approved` argument is `true` runs; any other call is refused. For `over_gpu_budget`, a call whose `user_requested` argument is `true` runs; otherwise Project computes the turn's GPU seconds: the `cost.gpu_seconds` of the finished records of the call's session and turn (`listHistory({project, session, turn})`, the whole history), plus `spec.estimate(params).gpu_seconds` of that turn's `pending` and `running` records (by their operation's spec), plus `confirmSummary(call, state).gpu_seconds`; at most `confirmGpuSecondsThreshold` (Config, default 60) runs, more is refused. A call outside any turn (`turn` null) counts only its own estimate. The refusal is an `Error` whose message is, line by line: "<tool> needs the user's agreement." (`always`) or "<tool> would bring this turn to about N GPU seconds, above the M s budget." (`over_gpu_budget`, N rounded); "What it will do:"; the `confirmSummary` text; "Estimated GPU time: about S s."; and "Show this to the user and ask in the conversation, with the question in bold (for example **Render these shots now?**). Wait for the user's answer, then call again with <user_approved | user_requested>: true.".
 
-**Input references.** `parseInputs(spec, raw, state, versionCreatedBy, callerName)`: `raw` is an object of role → reference text or a list of them. `<record>#<output>` → `{record, output}`; `<id>@<version>` → the first of `{character}`, `{location}`, `{style}` whose version `createdBy` of the reducer that defines it knows, else "Unknown character, location, or style version"; anything else → `{asset}`. An unknown role, a list on a single role, a non-string reference and a missing required role throw an error that names the role and `callerName`: the agent tool passes the tool name (`dv_shot_render`), and `dvProject.parseInputs(operation, raw, state, callerName?)` passes the operation name unless its caller names another, so `@dv/api` names the operation. `formatInputRef(ref)` writes a reference as the text this parser reads back.
+**Input references.** `parseInputs(spec, raw, state, kinds, callerName)`: `raw` is an object of role → reference text or a list of them, each parsed by `parseInputRef` (`dvProject.parseReference`). `<record>#<output>` → `{record, output}`; `<id>@<version>` → `{<kind>: id, version}` for the one kind of `kindsWithVersion`, else `invalid_inputs` ("Unknown version …; reference kinds: …" or "… names more than one reference kind: …"); anything else → `{asset}`. An unknown role, a list on a single role, a non-string reference and a missing required role throw an error that names the role and `callerName`: the agent tool passes the tool name (`dv_shot_render`), and `dvProject.parseInputs(operation, raw, state, callerName?)` passes the operation name unless its caller names another, so `@dv/api` names the operation. `formatInputRef(ref)` writes a reference as the text this parser reads back, and `versionRefOf(ref)` gives the kind, ID and version of a version ref.
 
 **Project tools.** While the registry is mounted, the service also registers the `dv_proj_*` tools of `proj-tools.ts` and removes them with the registry. Each resolves the project from `project_id`, else the session's project (else "No project selected"), and writes its records with the agent origin of the call. `dv_proj_create` and `dv_proj_open` bind the session and refuse ("This conversation belongs to project …") when the session is bound to another project. `dv_proj_history_list` returns `listHistory` entries (default limit 20), each as `{record, place, operation, status, actor, intent, outputs}`. `dv_proj_undo` takes an optional `to` and calls `undo`; `dv_proj_redo` calls `redo`. Every other tool returns the project summary of the current state: `record` (only after a tool that writes records: the newest record of the call, by `listHistory({tool_call})`; the tool's `presentationMeta` is `{record}`, and the tools `dv_proj_open dv_proj_state dv_proj_history_list dv_proj_undo dv_proj_redo dv_proj_wait`, which write no record, have none), `project_id head records`, then `agentSummaries` in order, then `stale` and `recent` (the last twelve records with their summaries and output URLs). A field name used twice throws `invalid_params`. `projectSummary` is exported to the agent context.
 
@@ -270,9 +273,9 @@ Each test file builds modules with `startModules()` and projects with `createTes
 - `refuses a second reducer for a key`: `reducer_exists`.
 - `marks consumers of a superseded record stale`: A outputs X, B consumes X, C supersedes A → `stale[B] = C`, `superseded[A] = C`, `created_by[X] = A`.
 - `keeps a record fresh after proj.stale_accept`: after the accept record, `stale[B]` is gone and stays gone after a later unrelated record.
-- `refuses a second reducer that defines createdBy or assetsOf`: `invalid_params`; after the remover, the key registers.
-- `resolves character references through the reducer that defines assetsOf`: a test `test_bible` reducer with `assetsOf`.
-- `marks records that read a superseded character version stale`: a test `test_bible` reducer with `createdBy`; an update that supersedes the creating record marks the render that read version 1 and the clip made from it.
+- `registers one owner per reference kind and lists the kinds in registration order`: `kind_exists`; a remover removes only its own registration.
+- `resolves version references through their reference kind, on the slice of its owner`: a test kind on the `test_bible` slice; null without the owner's reducer, for an unregistered kind and for an asset.
+- `marks records that read a superseded character version stale`: a test kind with `createdBy`; an update that supersedes the creating record marks the render that read version 1 and the clip made from it.
 
 **`tests/history.spec.ts` (D)**
 
@@ -294,6 +297,7 @@ Each test file builds modules with `startModules()` and projects with `createTes
 - `refuses an operation whose name does not start with its component key`.
 - `runs an operation that asks for confirmation at once for every caller, holding no call` (R, confirmation): agent and `user` calls of `always` and `over_gpu_budget` operations end `done` through `run`; a `confirm` other than `never` without `confirmSummary` throws `invalid_params`.
 - `lets other edits run while a render executes` (lock scope): an execute blocked on a promise; a second run on the same project finishes first.
+- `loads a stored log whose operations and reference kind have no owner, and refuses a new call with that version`: a log with `shot.render_ref2va`, `deliver.timeline_export` and an input `{character: 'c1', version: 1}` loads with only `proj` reduced and no stale mark; a new call with that input throws `invalid_inputs` and writes no record.
 - `ends unfinished records at start`: a `pending` record from an earlier store → `cancelled` / `stopped` after `recover`.
 
 **`tests/scheduler.spec.ts` (B)**
@@ -316,6 +320,7 @@ Each test file builds modules with `startModules()` and projects with `createTes
 - `refuses to register an operation that asks for confirmation without a confirmSummary`: `invalid_params`; nothing is registered.
 - `gives the agent the dv:project prompt section: Project's rules, and the summary of the bound project's current state` (R): with a `systemPrompt` service mounted, an unbound session's section holds the rules (the step, undo, redo and discard rules) and ends with "No project is bound to this conversation yet: start the work with dv_proj_create."; a bound session's section holds "This conversation belongs to project <ProjectId>" and the project summary `dv_proj_state` returns for the current state, and no selection.
 - Held work delays a session's calls until it settles, even when it fails.
+- Reference kinds need a registered component, refuse a second owner and the kinds `asset`, `record` and `version`, and appear in the `inputs` text of every tool, which follows each registration and removal.
 
 **`tests/proj-tools.spec.ts`**
 

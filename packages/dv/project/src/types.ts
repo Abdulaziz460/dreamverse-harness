@@ -58,15 +58,39 @@ export type Surface = 'chat' | 'canvas' | 'timeline' | 'asset_pool' | 'api' | 'h
 export type RecordStatus = 'pending' | 'running' | 'done' | 'failed' | 'cancelled'
 
 /**
- * What one record input refers to: an asset, the n-th output of an earlier record, or one version of a character, a
- * location or a style.
+ * Reference kinds by stored key, each with the type of its IDs. The plugin that owns a kind adds it by declaration
+ * merging and registers it with `dvProject.registerReferenceKind`; Project declares none.
  */
-export type RecordInputRef =
-  | { asset: AssetId }
-  | { record: RecordId; output: number }
-  | { character: CharacterId; version: number }
-  | { location: LocationId; version: number }
-  | { style: StyleId; version: number }
+export interface ReferenceKinds {}
+
+/** The stored key of each declared reference kind. */
+type KindKey = Extract<keyof ReferenceKinds, string>
+
+/** Kind → its version reference arm: the kind's key with the ID, and `version`. One object type per arm, with zero or
+ *  more kinds declared, keeps the union free of redundant members. */
+type VersionArms = { [K in KindKey]: { [P in K | 'version']: P extends 'version' ? number : ReferenceKinds[K] } }
+
+/** Every arm of a record input reference by name: the version arms, an asset, and the n-th output of a record. */
+interface InputRefArms extends VersionArms { asset: { asset: AssetId }; record: { record: RecordId; output: number } }
+
+/** What one record input refers to, such as `{prop: 'p1', version: 2}`: an asset, the n-th output of an earlier record,
+ *  or one version of a reference kind. The disk format does not change. */
+export type RecordInputRef = InputRefArms[keyof InputRefArms]
+
+/** One version reference, such as `{prop: 'p1', version: 2}`: a reference kind's key with the ID, and the version. */
+export type VersionRef = VersionArms[KindKey]
+
+/** How the owner of a reference kind answers for one version; `dvProject.registerReferenceKind` takes it. */
+export interface ReferenceKindSpec<K extends keyof ComponentStates = keyof ComponentStates> {
+  /** The stored key and the agent noun, such as `prop`. Never `asset`, `record` or `version`. */
+  kind: string
+  /** The owning component key; registered before the kind. */
+  component: K
+  /** @returns the assets of the version, or null for an unknown version. */
+  assetsOf(slice: ComponentStates[K], id: string, version: number): AssetId[] | null
+  /** @returns the record that wrote the version (its producer for stale marks), or null for an unknown version. */
+  createdBy(slice: ComponentStates[K], id: string, version: number): RecordId | null
+}
 
 /** One input of a record: what the operation read. */
 export interface RecordInput {
@@ -236,7 +260,7 @@ export interface OperationInput {
   required?: boolean
   /** Whether the role takes several references, such as every reference image of a shot. */
   many?: boolean
-  /** Whether the role also accepts character, location or style versions (`<id>@<version>`) besides assets. */
+  /** Whether the role also accepts versions of the registered reference kinds (`<id>@<version>`) besides assets. */
   bible?: boolean
 }
 
@@ -401,23 +425,6 @@ export interface Reducer<K extends ComponentKey = ComponentKey> {
    * @returns the slice after the record.
    */
   reduce(slice: ComponentStates[K], record: ProjectRecord): ComponentStates[K]
-  /**
-   * The assets a character, location or style reference stands for (Story bible's reducer defines it). The runner
-   * calls it; at most one registered reducer defines it.
-   * @param slice - the slice at the record's parent.
-   * @param ref - a character, location or style reference.
-   * @returns the assets, or null when the reference names an unknown version.
-   */
-  assetsOf?(slice: ComponentStates[K], ref: RecordInputRef): AssetId[] | null
-  /**
-   * The record that created the character, location or style version a reference names; Project's `proj` reducer
-   * treats it as the producer of that input, so a record that read a superseded version is stale. Story bible's reducer
-   * defines it; at most one registered reducer defines it.
-   * @param slice - the slice before the record being reduced.
-   * @param ref - a character, location or style reference.
-   * @returns the record, or null for an unknown version.
-   */
-  createdBy?(slice: ComponentStates[K], ref: RecordInputRef): RecordId | null
   /**
    * The fields of this slice that the agent reads in the project summary that `dv_proj_state` and the other
    * `dv_proj_*` tools return. Project merges the fields of every reducer that defines it, in component key order,

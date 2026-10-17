@@ -8,6 +8,10 @@ import { afterEach, describe, expect, it } from 'vitest'
 import VhStream, { SegmentBroadcaster, type StreamFrame } from '../src/index.ts'
 import { startBase } from '../../../dv/api/tests/support.ts'
 
+declare module '@dv/project' {
+  interface ReferenceKinds { character: CharacterId }
+}
+
 const PROJECT = brandString<ProjectId>('p1')
 const OP = brandString<RecordId>('op-1')
 

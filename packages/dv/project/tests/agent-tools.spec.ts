@@ -12,11 +12,11 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import { afterEach, describe, expect, it } from 'vitest'
 import DvProject, {
-  formatInputRef, toolNameOf, type OperationSpec, type OperationToolValue, type ProjectId,
+  formatInputRef, toolNameOf, versionRefOf, type OperationSpec, type OperationToolValue, type ProjectId,
   type RecordId, type SessionId, type TurnId,
 } from '../src/index.ts'
 import { formatToolResult } from '../src/agent-tools.ts'
-import { MemoryAssets, STAND_IN_COMPONENTS, tempRoot, versionKey } from './support.ts'
+import { MemoryAssets, STAND_IN_COMPONENTS, tempRoot, testKind } from './support.ts'
 
 /** An attachment service that accepts every image. */
 class MemoryAttachments {
@@ -343,27 +343,55 @@ describe('agent tools', () => {
     expect(order).toEqual(['work', 'call'])
   })
 
-  it('parses input references: assets, record outputs, and character, location or style versions', async () => {
+  it('registers reference kinds of registered components, and lists them in the inputs text of every tool', async () => {
+    const fixture = await start()
+    fixture.project.registerOperation(operation({ name: 'asset.grab_still', component: 'asset' }))
+    const inputsText = () => JSON.stringify(fixture.context.tools.schemas().find(tool => tool.name === 'dv_asset_grab_still')?.parameters)
+    expect(inputsText()).toContain('<asset> (an asset ID), <record>#<output> (an output of an earlier record); a list')
+    expect(() => fixture.project.registerReferenceKind(testKind('location'))).toThrow(expect.objectContaining({ code: 'invalid_params' }))
+    fixture.project.registerComponent('test_bible')
+    // The other arms of an input reference use these keys, so no kind may take one.
+    for (const reserved of ['asset', 'record', 'version']) {
+      expect(() => fixture.project.registerReferenceKind(testKind(reserved))).toThrow(expect.objectContaining({ code: 'invalid_params' }))
+    }
+    expect(fixture.project.listReferenceKinds()).toEqual([])
+    const removeLocation = fixture.project.registerReferenceKind(testKind('location'))
+    expect(inputsText()).toContain('or <id>@<version> (a location version such as c1@1); a list')
+    fixture.project.registerReferenceKind(testKind('style'))
+    fixture.project.registerReferenceKind(testKind('character'))
+    expect(fixture.project.listReferenceKinds()).toEqual(['location', 'style', 'character'])
+    expect(inputsText()).toContain('(a location, style or character version such as c1@1)')
+    expect(() => fixture.project.registerReferenceKind(testKind('style'))).toThrow(expect.objectContaining({ code: 'kind_exists' }))
+    removeLocation()
+    expect(inputsText()).toContain('(a style or character version such as c1@1)')
+  })
+
+  it('parses input references: assets, record outputs, and versions of the one reference kind that has them', async () => {
     const fixture = await start()
     const projectId = await boundProject(fixture)
     fixture.project.registerOperation(operation({ name: 'shot.render', component: 'shot', inputs: {
       first_frame: { type: 'image', description: 'A frame.', required: true }, reference: { type: 'image', description: 'refs', many: true, bible: true },
     } }))
     fixture.project.registerOperation(operation({ name: 'plan.create', component: 'plan', inputs: {} }))
-    const creators: Record<string, RecordId> = { 'location:l1@2': brandString<RecordId>('r-location') }
+    const creators: Record<string, RecordId> = {
+      'location:l1@2': brandString<RecordId>('r-location'), 'location:dup@1': brandString<RecordId>('r1'), 'style:dup@1': brandString<RecordId>('r2'),
+    }
     fixture.project.registerComponent('test_bible')
-    fixture.project.registerReducer('test_bible', {
-      initial: () => ({ assets: {}, creators }),
-      reduce: slice => slice,
-      createdBy: (slice, ref) => slice?.creators[versionKey(ref) ?? ''] ?? null,
-    })
+    fixture.project.registerReducer('test_bible', { initial: () => ({ assets: {}, creators }), reduce: slice => slice })
     const state = fixture.project.getState(projectId)
+    expect(() => fixture.project.parseReference('l1@2', state)).toThrow("Unknown version 'l1@2'; reference kinds: none.")
+    fixture.project.registerReferenceKind(testKind('location'))
+    fixture.project.registerReferenceKind(testKind('style'))
     const parse = (name: string, raw: unknown) => fixture.project.parseInputs(name, raw, state)
     expect(parse('shot.render', { first_frame: 'r1#1', reference: ['a1', 'l1@2'] })).toEqual([
       { role: 'first_frame', ref: { record: 'r1', output: 1 } }, { role: 'reference', ref: { asset: 'a1' } },
       { role: 'reference', ref: { location: 'l1', version: 2 } },
     ])
-    expect(() => parse('shot.render', { first_frame: 'a', reference: 'nobody@1' })).toThrow("Unknown character, location, or style version 'nobody@1'")
+    expect(fixture.project.parseReference('l1@2', state)).toEqual({ location: 'l1', version: 2 })
+    expect(() => parse('shot.render', { first_frame: 'a', reference: 'nobody@1' }))
+      .toThrow(expect.objectContaining({ code: 'invalid_inputs', message: "Unknown version 'nobody@1'; reference kinds: location, style." }))
+    expect(() => fixture.project.parseReference('dup@1', state))
+      .toThrow(expect.objectContaining({ code: 'invalid_inputs', message: "Version 'dup@1' names more than one reference kind: location, style." }))
     // A view request names the operation by default; the caller can name the call another way, as the agent tool does.
     expect(() => parse('shot.render', undefined)).toThrow('shot.render needs input "first_frame"')
     expect(() => fixture.project.parseInputs('shot.render', { first_frame: 'a', other: 'b' }, state, 'dv_shot_render'))
@@ -380,6 +408,9 @@ describe('agent tools', () => {
     const texts = inputs.map(input => formatInputRef(input.ref))
     expect(texts).toEqual(['r1#1', 'a1', 'l1@2'])
     expect(parse('shot.render', { first_frame: texts[0], reference: texts.slice(1) })).toEqual(inputs)
+    expect(inputs.map(input => versionRefOf(input.ref))).toEqual([null, null, { kind: 'location', id: 'l1', version: 2 }])
+    // A reference without a kind key, which no typed caller builds, names no version.
+    expect([versionRefOf({ version: 1 } as never), formatInputRef({ version: 1 } as never)]).toEqual([null, '{"version":1}'])
   })
 })
 
