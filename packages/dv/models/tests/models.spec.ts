@@ -152,7 +152,16 @@ describe('dvModels', () => {
     })
     const unknown = await call(ctx, 'dv_models_get', { modality: 'video', task: 'ref2v', provider: 'other', model: 'beta' })
     expect(unknown.isError && unknown.error.message)
-      .toContain('No video model has the key video/ref2v/other/beta; call dv_models_list for the models you can use.')
+      .toContain('No model has the key video/ref2v/other/beta; call dv_models_list for the models you can use.')
+  })
+
+  it('describes its tools without naming a media type, so a new primitive needs no catalog text', async () => {
+    const ctx = await start()
+    for (const name of ['dv_models_list', 'dv_models_get']) {
+      const tool = ctx.tools.get(name)
+      expect(tool).toBeDefined()
+      expect(JSON.stringify({ description: tool?.description, parameters: tool?.parameters })).not.toMatch(/video|image|audio/i)
+    }
   })
 
   it('reads the key of a call from its params, and resolves the entry among the given tasks or names the unknown key', async () => {

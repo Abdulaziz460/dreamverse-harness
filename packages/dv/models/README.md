@@ -193,20 +193,20 @@ While the DSH tool registry is mounted, the agent sees the tool `dv_models_list`
 ##### dv_models_list description
 
 ```markdown
-List the video models you can render with, each with its key (modality, task, provider, model) and its description. To choose the model of a shot, follow the video-model-selection skill.
+List the models you can generate with, each with its key (modality, task, provider, model) and its description.
 ```
 
 ##### dv_models_list argument descriptions
 
 ```markdown
-- modality: Only models of this modality, such as video.
-- task: Only models for this task: t2v (prompt only) or ref2v (reference media and prompt).
+- modality: Only models of this modality.
+- task: Only models for this task.
 - provider: Only models of this provider.
 ```
 
 #### Token effect
 
-About 120 tokens for the definition, in every request while the tool registry is mounted. A result costs about 30 tokens for each entry, plus the tokens of the entry's description.
+About 85 tokens for the definition, in every request while the tool registry is mounted. A result costs about 30 tokens for each entry, plus the tokens of the entry's description.
 
 #### KV Cache effect
 
@@ -216,12 +216,12 @@ The definition is fixed text in the stable tool section. Registration or removal
 
 #### What the model sees
 
-While the DSH tool registry is mounted, the agent sees the tool `dv_models_get` with the description below. The tool has four required string arguments: `modality`, `task`, `provider` and `model`. A call returns one text block with indented JSON: the four key fields, `description`, and the `schema` JSON of the provider, which holds the limits of the model. A key that names no entry fails the call with `No video model has the key <modality>/<task>/<provider>/<model>; call dv_models_list for the models you can use.` A backend that cannot be reached fails the call with the error of the backend.
+While the DSH tool registry is mounted, the agent sees the tool `dv_models_get` with the description below. The tool has four required string arguments: `modality`, `task`, `provider` and `model`. A call returns one text block with indented JSON: the four key fields, `description`, and the `schema` JSON of the provider, which holds the limits of the model. A key that names no entry fails the call with `No model has the key <modality>/<task>/<provider>/<model>; call dv_models_list for the models you can use.` A backend that cannot be reached fails the call with the error of the backend.
 
 ##### dv_models_get description
 
 ```markdown
-Read one video model by its key from dv_models_list: its description and its schema (its limits, such as durations, aspect ratios and resolutions; the inputs it accepts with their media types and counts; and the parameters it takes in `extra`).
+Read one model by its key from dv_models_list: its description and its schema (its limits, such as durations, aspect ratios and resolutions; the inputs it accepts with their media types and counts; and the parameters it takes in `extra`).
 ```
 
 ##### dv_models_get argument descriptions
@@ -267,7 +267,7 @@ Mounting or removing this package changes the skill list. Then `dsh-tool-skill` 
 
 These limits apply to the catalog, its two tools, and its selection skill.
 
-- **Agent-facing text names only two tasks** — the `task` argument of `dv_models_list` and step 1 of `video-model-selection` name only `t2v` and `ref2v`. A plugin can add a task through declaration merging. That task appears in `dv_models_list` results. The agent gets no instruction about when to choose that task.
+- **Only the selection skill explains tasks** — the text of the two tools names no task and no media type. Step 1 of `video-model-selection` explains only `t2v` and `ref2v`. A plugin can add a task through declaration merging. That task appears in `dv_models_list` results. This package gives the agent no instruction about when to choose that task.
 - **No readiness check** — an entry appears in `dv_models_list` when its provider plugin registers it. At that time, the backend of the entry can be unreachable. A backend failure shows only when `dv_models_get` or a render reads the entry.
 - **Key fields can contain `/`** — `register` compares keys in the format of `formatModelKey`. `register` does not refuse a `/` in a field. Provider `a/b` with model `c` and provider `a` with model `b/c` have the same formatted key, so the second registration fails. Provider plugins must use names without `/`.
 - **`schema()` has no fixed JSON format** — each provider plugin defines its own JSON. `@dv/models` does not check the JSON. Only the agent reads it; no consumer code parses it. The `validateGenerationRequest` member of each entry is the only enforced check of inputs and `extra` values.

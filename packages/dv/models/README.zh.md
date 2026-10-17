@@ -193,20 +193,20 @@ DSH 工具注册表挂载期间，agent 看到工具 `dv_models_list`，带下�
 ##### dv_models_list 描述
 
 ```markdown
-List the video models you can render with, each with its key (modality, task, provider, model) and its description. To choose the model of a shot, follow the video-model-selection skill.
+List the models you can generate with, each with its key (modality, task, provider, model) and its description.
 ```
 
 ##### dv_models_list 参数描述
 
 ```markdown
-- modality: Only models of this modality, such as video.
-- task: Only models for this task: t2v (prompt only) or ref2v (reference media and prompt).
+- modality: Only models of this modality.
+- task: Only models for this task.
 - provider: Only models of this provider.
 ```
 
 #### Token 影响
 
-工具注册表挂载期间，每次请求中定义约 120 个 token。每个条目的结果约 30 个 token，再加上该条目描述的 token。
+工具注册表挂载期间，每次请求中定义约 85 个 token。每个条目的结果约 30 个 token，再加上该条目描述的 token。
 
 #### KV Cache 影响
 
@@ -216,12 +216,12 @@ List the video models you can render with, each with its key (modality, task, pr
 
 #### 模型看到什么
 
-DSH 工具注册表挂载期间，agent 看到工具 `dv_models_get`，带下面的描述。该工具有四个必填字符串参数：`modality`、`task`、`provider` 和 `model`。一次调用返回一个文本块，内容是缩进的 JSON：四个键字段、`description` 和提供方的 `schema` JSON，其中包含模型的限制。键不对应任何条目时，调用以 `No video model has the key <modality>/<task>/<provider>/<model>; call dv_models_list for the models you can use.` 失败。后端无法连接时，调用以后端的错误失败。
+DSH 工具注册表挂载期间，agent 看到工具 `dv_models_get`，带下面的描述。该工具有四个必填字符串参数：`modality`、`task`、`provider` 和 `model`。一次调用返回一个文本块，内容是缩进的 JSON：四个键字段、`description` 和提供方的 `schema` JSON，其中包含模型的限制。键不对应任何条目时，调用以 `No model has the key <modality>/<task>/<provider>/<model>; call dv_models_list for the models you can use.` 失败。后端无法连接时，调用以后端的错误失败。
 
 ##### dv_models_get 描述
 
 ```markdown
-Read one video model by its key from dv_models_list: its description and its schema (its limits, such as durations, aspect ratios and resolutions; the inputs it accepts with their media types and counts; and the parameters it takes in `extra`).
+Read one model by its key from dv_models_list: its description and its schema (its limits, such as durations, aspect ratios and resolutions; the inputs it accepts with their media types and counts; and the parameters it takes in `extra`).
 ```
 
 ##### dv_models_get 参数描述
@@ -267,7 +267,7 @@ skill 注册表挂载期间，目录中约 40 个 token。agent 每次加载该 
 
 以下限制适用于模型目录、两个工具和选择 skill。
 
-- **面向 agent 的文本只列出两个任务**——`dv_models_list` 的 `task` 参数和 `video-model-selection` 的第 1 步只列出 `t2v` 和 `ref2v`。插件可以通过声明合并添加任务。该任务会出现在 `dv_models_list` 结果中。agent 得不到何时选择该任务的说明。
+- **只有选择 skill 解释任务**——两个工具的文本不列出任何任务，也不提及任何媒体类型。`video-model-selection` 的第 1 步只解释 `t2v` 和 `ref2v`。插件可以通过声明合并添加任务。该任务会出现在 `dv_models_list` 结果中。本包不告诉 agent 何时选择该任务。
 - **没有就绪检查**——提供方插件注册条目后，该条目就出现在 `dv_models_list` 中。此时该条目的后端可能无法连接。只有 `dv_models_get` 或一次渲染读取该条目时，后端失败才会显现。
 - **键字段可以包含 `/`**——`register` 按 `formatModelKey` 的格式比较键。`register` 不拒绝字段中的 `/`。提供方 `a/b` 加模型 `c` 与提供方 `a` 加模型 `b/c` 的格式化键相同，所以第二次注册失败。提供方插件必须使用不含 `/` 的名称。
 - **`schema()` 没有固定的 JSON 格式**——每个提供方插件定义自己的 JSON。`@dv/models` 不检查该 JSON。只有 agent 读取它；没有消费方代码解析它。每个条目的 `validateGenerationRequest` 成员是对输入和 `extra` 值唯一强制执行的检查。

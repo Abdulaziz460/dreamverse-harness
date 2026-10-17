@@ -211,11 +211,10 @@ export default class DvModels extends Service {
   private defineModelsListTool() {
     return defineTool({
       name: 'dv_models_list',
-      description: 'List the video models you can render with, each with its key (modality, task, provider, model) and '
-        + 'its description. To choose the model of a shot, follow the video-model-selection skill.',
+      description: 'List the models you can generate with, each with its key (modality, task, provider, model) and its description.',
       parameters: {
-        modality: { type: 'string', description: 'Only models of this modality, such as video.' },
-        task: { type: 'string', description: 'Only models for this task: t2v (prompt only) or ref2v (reference media and prompt).' },
+        modality: { type: 'string', description: 'Only models of this modality.' },
+        task: { type: 'string', description: 'Only models for this task.' },
         provider: { type: 'string', description: 'Only models of this provider.' },
       },
       output: JSON_TOOL_OUTPUT,
@@ -227,7 +226,7 @@ export default class DvModels extends Service {
   private defineModelsGetTool() {
     return defineTool({
       name: 'dv_models_get',
-      description: 'Read one video model by its key from dv_models_list: its description and its schema (its limits, '
+      description: 'Read one model by its key from dv_models_list: its description and its schema (its limits, '
         + 'such as durations, aspect ratios and resolutions; the inputs it accepts with their media types and counts; '
         + 'and the parameters it takes in `extra`).',
       parameters: {
@@ -240,7 +239,7 @@ export default class DvModels extends Service {
       execute: async (args) => {
         const entry = this.list().find(candidate => entryMatchesFilter(candidate, args))
         if (entry === undefined) {
-          throw new Error(`No video model has the key ${args.modality}/${args.task}/${args.provider}/${args.model}; `
+          throw new Error(`No model has the key ${args.modality}/${args.task}/${args.provider}/${args.model}; `
             + 'call dv_models_list for the models you can use.')
         }
         return { ...toModelListItem(entry), schema: await entry.schema() }
