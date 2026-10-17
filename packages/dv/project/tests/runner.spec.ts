@@ -120,6 +120,24 @@ describe('Runner', () => {
     expect(next.record?.supersedes).toEqual([update.record?.id])
   })
 
+  it('copies started_by from the request onto the record of a run or a scheduled run', async () => {
+    const m = startModules()
+    const project = await createTestProject(m)
+    m.runner.registerOperation(operation({ name: 'timeline.clip_insert', component: 'timeline' }))
+    const starter = (await m.runner.run(request(project, 'timeline.clip_insert'))).record!
+    const startedBy = { record: starter.id, slot: 1, lane: 'wide' }
+
+    const now = await m.runner.run(request(project, 'timeline.clip_insert', userOrigin(), { started_by: startedBy }))
+    const scheduled = { started_by: { record: starter.id, slot: null }, after: [] }
+    const later = await m.runner.run(request(project, 'timeline.clip_insert', userOrigin(), scheduled))
+
+    expect(starter).not.toHaveProperty('started_by')
+    expect(now.record?.started_by).toEqual(startedBy)
+    expect(later.record?.started_by).toEqual({ record: starter.id, slot: null })
+    expect(readLines(m.root, project).find(line => line['id'] === now.record?.id)?.['started_by']).toEqual(startedBy)
+    await vi.waitFor(() => { expect(m.store.getRecord(project, later.record!.id).status).toBe('done') })
+  })
+
   it('refuses invalid params, unknown inputs and unfinished inputs before writing', async () => {
     const m = startModules()
     const project = await createTestProject(m)

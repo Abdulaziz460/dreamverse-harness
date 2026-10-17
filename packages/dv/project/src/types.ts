@@ -116,6 +116,14 @@ export interface RecordFailure {
   message: string
 }
 
+/** The record whose execute started a call, the position that the caller gave the call in its own sequence (or null),
+ *  and the caller's parallel sequence, such as a variant. The kernel stores it and never reads it. */
+export interface StartedBy {
+  record: RecordId
+  slot: number | null
+  lane?: string
+}
+
 /**
  * One record of a project, in its current form: the fields of the record line, plus the fields that its update lines
  * set. The record line on disk carries only the fields up to `created_at`; `started_at`, `finished_at`, `error`,
@@ -151,6 +159,8 @@ export interface ProjectRecord {
   based_on: RecordId | null
   /** Records whose outputs this one replaces; their dependents become stale. */
   supersedes: RecordId[]
+  /** The record that started this call, copied from the run request; absent when no record started it. */
+  started_by?: StartedBy
   /** Whether the same inputs and parameters always give the same outputs, which allows reuse. */
   deterministic: boolean
   status: RecordStatus
@@ -481,6 +491,8 @@ export interface RunRequest extends RecordOrigin {
   after?: RecordId[]
   based_on?: RecordId | null
   supersedes?: RecordId[]
+  /** The record whose execute makes this call, with the slot and lane it gives the call; copied onto the record. */
+  started_by?: StartedBy
   /** The turn's stop signal: aborting it aborts the execution (code `stopped`). */
   signal?: AbortSignal
 }

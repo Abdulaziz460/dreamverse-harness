@@ -164,6 +164,22 @@ describe('RecordStore', () => {
     expect(reloaded.line(project)).toEqual({ tip: last.id, at: record.id })
   })
 
+  it('writes started_by on the record line only when the line has it, and reloads it', () => {
+    const { root, store } = openStore()
+    const { project, first } = createProject(store)
+    const startedBy = { record: first.id, slot: 2, lane: 'wide' }
+    const started = store.append(project, line(first.id, { started_by: startedBy }))
+    const free = store.append(project, line(started.id))
+
+    const lines = readLines(root, project)
+    expect(Object.keys(lines[1] ?? {}).slice(16, 19)).toEqual(['supersedes', 'started_by', 'deterministic'])
+    expect(lines[1]?.['started_by']).toEqual(startedBy)
+    expect(lines[2]).not.toHaveProperty('started_by')
+    expect(store.getRecord(project, started.id).started_by).toEqual(startedBy)
+    expect(openStore(root).store.getRecord(project, started.id).started_by).toEqual(startedBy)
+    expect(store.getRecord(project, free.id)).not.toHaveProperty('started_by')
+  })
+
   it('moves the current position without writing a record, and appends after it', () => {
     const { root, store, events } = openStore()
     const { project, first } = createProject(store)

@@ -77,7 +77,7 @@ Only `record-store.ts` imports `node:fs` or knows a file path under the root. Th
 
 **IDs and times.** Record IDs and project IDs are `randomUUID()` values. Times are `new Date().toISOString()`.
 
-**Record templates.** Every record has `kind: 'operation'` and copies the six `RecordOrigin` fields from the call: `session`, `turn` and `tool_call` link the record to the DSH session log, and `intent` is the agent's `reason` or a description of the human's gesture. `proj.*` records are written with `status: 'done'` and have no update lines.
+**Record templates.** Every record has `kind: 'operation'` and copies the six `RecordOrigin` fields from the call: `session`, `turn` and `tool_call` link the record to the DSH session log, and `intent` is the agent's `reason` or a description of the human's gesture. A record whose run request carries `started_by: {record, slot, lane?}` stores it as given; a record without it was not started by a record. `proj.*` records are written with `status: 'done'` and have no update lines.
 
 | Record               | `kind`      | `component` | `operation`, `operation_version` | `params`                                                         |
 | -------------------- | ----------- | ----------- | -------------------------------- | ---------------------------------------------------------------- |
@@ -182,7 +182,7 @@ Owner: agent B.
 3. Read-only operation (`spec.readOnly`): state = `reducers.getState(project)`, resolve inputs (step 5 rules), await `spec.precondition?.(request, state)` (a throw rejects `run` with that error), call `execute` with `record: null` and a scratch directory, and resolve `{record: null, outputs, report: report ?? null}`. No lock, no record. A throw from `execute` rejects `run` with that error.
 4. Take the lock. `parent` = the current position, `store.line(project).at`.
 5. Resolve inputs against `reducers.getState(project)` (the state at `parent`): `{asset}` must exist in the registered asset store (`unknown_asset`); `{record, output}` must name an existing record (`unknown_record`) and a non-negative integer `output`; when the producer is `done`, `resolved_asset` is its `outputs[output]` (missing → `invalid_inputs`); `failed` or `cancelled` → `invalid_inputs`; `pending` or `running` → `resolved_asset: null`, allowed only when `request.after` is set, else `input_not_ready`. An input whose role is in `spec.pendingInputRoles` resolves to `resolved_asset: null` for a producer in any status other than `done`, without `request.after`. A version ref becomes one input per asset of `reducers.assetsOf` (null → `invalid_inputs`), each with the same role and ref. Then await `spec.precondition?.(request, current state)` under the lock: a throw rejects `run` with that error unchanged, before anything is written.
-6. Append the operation record by the discard rule (below): `status: 'pending'`, `component`, `operation`, `operation_version`, `deterministic` from the spec, `based_on ?? null`, `outputs: []`, and `supersedes`: `request.supersedes ?? []` followed by `spec.supersedes?.(params, current state)`, without repeats. Release the lock.
+6. Append the operation record by the discard rule (below): `status: 'pending'`, `component`, `operation`, `operation_version`, `deterministic` from the spec, `based_on ?? null`, `outputs: []`, and `supersedes`: `request.supersedes ?? []` followed by `spec.supersedes?.(params, current state)`, without repeats, and `request.started_by` when the request has it (copied, never read). Release the lock.
 7. `request.after` set → `scheduler.enqueue(project, id, spec.resource, after, spec.pendingInputRoles ?? [])`; resolve with the `pending` record, `outputs: []`, `report: null`. Otherwise `final = await execute(project, id, request.signal)`; resolve with `{record: final, outputs: final.outputs, report: final.report ?? null}`. Immediate runs do not count against the scheduler's limits.
 
 **Runner: execute.** `execute(project, record, signal?)`:
@@ -255,6 +255,7 @@ Each test file builds modules with `startModules()` and projects with `createTes
 - `refuses a backward or repeated status`: `done` → `running` and `running` → `running` throw `status_backwards`.
 - `refuses an update of a finished record`: `record_finished` after `done`, `failed`, `cancelled`.
 - `reloads records, updates and the line from disk`: a second `RecordStore` on the same root after `load()` returns equal records and the same `{tip, at}` after a `moveTo`.
+- `writes started_by on the record line only when the line has it, and reloads it`: the key follows `supersedes` on the line with its `lane`, a line without it has no key, and a reload returns it.
 - `moves the current position without writing a record, and appends after it`: `moveTo` leaves `records.jsonl` unchanged and emits `line`; an append after the old `tip` throws `parent_not_head`; an append after `at` becomes `tip` and `at`; an unknown record throws `unknown_record`; a project without records has no line.
 - `lists the record IDs of the history list with the index of the current position`: `lineIds` gives the list and the index of `at`; a write after a move leaves the later IDs out; a project without records gives `{ids: [], atIndex: -1}` and `requireLine` throws `invalid_params`.
 - `fills resolved_asset of an output input once the producer is done`: record B with `{record: A, output: 0}`; null before A is done, A's output after; the file still has `null`.
@@ -291,6 +292,7 @@ Each test file builds modules with `startModules()` and projects with `createTes
 **`tests/runner.spec.ts` (B)**
 
 - `runs an operation and records its outputs`: `done` record with outputs, `cost.reused: false`, measured `wall_seconds`, report.
+- `copies started_by from the request onto the record of a run or a scheduled run`: an immediate run (with a `lane`) and a scheduled run (without one) carry the request's `started_by`; a run without it has none.
 - `refuses invalid params, unknown inputs and unfinished inputs before writing`: `invalid_params`, `unknown_asset`, `input_not_ready`; the file is unchanged.
 - `refuses a call that the operation's precondition refuses, before writing`.
 - `adds the records an operation replaces to the record's supersedes`: `spec.supersedes` receives the params and the current state; its records follow `request.supersedes` without repeats.

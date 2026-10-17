@@ -194,6 +194,7 @@ export class Runner {
         parents: [this.headOf(request.project)], kind: 'operation', component: spec.component, operation: spec.name,
         operation_version: spec.version, ...origin, params: request.params, inputs, outputs: [], based_on: request.based_on ?? null,
         supersedes, deterministic: spec.deterministic, status: 'pending',
+        ...request.started_by === undefined ? {} : { started_by: request.started_by },
       })
     })
 

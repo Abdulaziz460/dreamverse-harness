@@ -202,6 +202,7 @@ export class RecordStore {
       component: line.component, operation: line.operation, operation_version: line.operation_version, actor: line.actor,
       surface: line.surface, turn: line.turn, session: line.session, tool_call: line.tool_call, intent: line.intent,
       params: line.params, inputs: line.inputs, outputs: line.outputs, based_on: line.based_on, supersedes: line.supersedes,
+      ...line.started_by === undefined ? {} : { started_by: line.started_by },
       deterministic: line.deterministic, status: line.status, created_at: new Date().toISOString(),
     }
     const stored = structuredClone(record)
