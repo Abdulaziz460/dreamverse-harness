@@ -7444,6 +7444,9 @@ importers:
       '@deepseek-ai/schemastery':
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
+      '@dv/generation':
+        specifier: workspace:*
+        version: link:../generation
       '@dv/models':
         specifier: workspace:*
         version: link:../models

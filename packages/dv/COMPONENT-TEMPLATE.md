@@ -56,7 +56,7 @@ export default class DvTimeline extends Service {
 }
 ```
 
-Every registration is inside `ctx.effect`, so disposal removes it. An operation that needs an optional service (the model) is registered inside `ctx.inject([...], child => child.effect(...))`, as `inspect.image` is. Service methods named by registry verbs (`insertClip`, `renderShot`, `exportTimeline`) do the work; each operation's `execute` calls one of them.
+Every registration is inside `ctx.effect`, so disposal removes it. An operation that needs an optional service (the model) is registered inside `ctx.inject([...], child => child.effect(...))`, as `inspect.image` is. Service methods named by registry verbs (`insertClip`, `exportTimeline`) do the work; each operation's `execute` calls one of them. A generation primitive declares its operation for `defineGeneration` of `@dv/generation`, which builds its service with the `GenerationApi` methods, as `dvShotRender` does.
 
 **Operation spec** (`OperationSpec` of `@dv/project`; read its JSDoc in `packages/dv/project/src/types.ts`):
 

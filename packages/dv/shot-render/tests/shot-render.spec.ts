@@ -314,14 +314,19 @@ function renderSpec(fixture: Fixture, name = 'shot.render'): OperationSpec | und
 describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
   it('registers shot.render while the catalog holds a model, and removes it on disposal', async () => {
     const fixture = await start()
-    expect(renderSpec(fixture)).toMatchObject({ component: 'shot', resource: 'gpu', confirm: 'over_gpu_budget', deterministic: false })
+    expect(renderSpec(fixture)).toMatchObject({
+      component: 'shot', label: { zh: '渲染镜头', en: 'Render shot' }, resource: 'gpu', confirm: 'over_gpu_budget', deterministic: false,
+    })
     // Each estimate uses the GPU rate of the catalog entry the call's key names.
     expect(renderSpec(fixture)?.estimate?.({ ...REF, duration_sec: 2 })).toEqual({ gpu_seconds: 6 })
     expect(renderSpec(fixture)?.estimate?.({ ...TXT })).toEqual({ gpu_seconds: 7.5 })
     expect(renderSpec(fixture)?.estimate?.({ ...TXT, model: 'other' })).toEqual({ gpu_seconds: 0 })
-    // An approved plan schedules renders with the params `plan`, `plan_version` and `shot`, so the spec declares them.
+    // An approved plan schedules renders with the params `plan`, `plan_version` and `shot`, so the spec declares them,
+    // after `seed` and `extra`.
     const params = renderSpec(fixture)?.params ?? {}
-    expect(Object.keys(params)).toEqual(expect.arrayContaining(['modality', 'task', 'provider', 'model', 'extra', 'plan', 'plan_version', 'shot']))
+    expect(Object.keys(params)).toEqual([
+      'modality', 'task', 'provider', 'model', 'prompt', 'duration_sec', 'aspect_ratio', 'resolution', 'seed', 'extra', 'plan', 'plan_version', 'shot',
+    ])
     // The key fields are free strings: dv_models_list lists their values and the precondition refuses an unknown key.
     for (const field of ['modality', 'task', 'provider', 'model']) {
       expect(params[field]).toMatchObject({ type: 'string', required: true })
@@ -332,9 +337,13 @@ describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
     expect(tool?.description).toContain('Uses the GPU.')
     expect(JSON.stringify(tool?.parameters)).toContain('continue_from')
     expect(JSON.stringify(tool?.parameters)).toContain('user_requested')
+    // The catalog serves the labels of both tasks while the service lives.
+    const labels = { t2v: { zh: '文字生成', en: 'From text' }, ref2v: { zh: '参考图生成', en: 'From references' } }
+    expect(fixture.ctx.dvModels.taskLabels()).toEqual(labels)
     const entry = [...fixture.ctx.loader.entries()].find(candidate => candidate.options.name.endsWith('/dv-shot-render.mjs'))
     await entry?.fiber?.dispose()
     expect(renderSpec(fixture)).toBeUndefined()
+    expect(fixture.ctx.dvModels.taskLabels()).toEqual({})
     expect(fixture.ctx.tools.get('dv_shot_render')).toBeUndefined()
     // The reducer went with the plugin: a state no longer has the `shot` slice.
     expect(fixture.ctx.dvProject.getState(fixture.project).components).not.toHaveProperty('shot')
@@ -344,14 +353,14 @@ describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
     const fixture = await start({ tasks: ['ref2v'] })
     await withCharacter(fixture)
     const before = fixture.ctx.dvProject.listHistory({ project: fixture.project }).length
-    await expect(fixture.record('shot.render', { ...TXT, prompt: 'a cat' }))
-      .rejects.toThrow('Unknown model "video/t2v/test/fake"; call dv_models_list for the models.')
+    await expect(fixture.record('shot.render', { ...TXT, prompt: 'a cat' })).rejects.toThrow(
+      'Unknown model "video/t2v/test/fake"; call dv_models_list for the models. Nothing was generated; change the inputs or params, then call again.')
     await expect(fixture.record('shot.render', { ...REF, model: 'nope', prompt: 'a cat' }, [c1()]))
       .rejects.toThrow('Unknown model "video/ref2v/test/nope"; call dv_models_list for the models.')
     // `extra` reaches the model's validation, which judges its parameters and values.
     fixture.reference.check = request => Object.hasOwn(request.extra, 'cfg') ? ['It has no extra parameter `cfg`; its extra parameters: strength.'] : []
     await expect(fixture.record('shot.render', { ...REF, prompt: 'a cat', extra: { cfg: 7 } }, [c1()]))
-      .rejects.toThrow('Model video/ref2v/test/fake cannot render this shot: It has no extra parameter `cfg`; its extra parameters: strength.')
+      .rejects.toThrow('Model video/ref2v/test/fake cannot generate this: It has no extra parameter `cfg`; its extra parameters: strength.')
     expect(fixture.ctx.dvProject.listHistory({ project: fixture.project })).toHaveLength(before)
     const shot = await fixture.record('shot.render', { ...REF, prompt: 'Picture 1 waves', extra: { strength: 0.5 } }, [c1()])
     expect(shot.status).toBe('done')
@@ -365,10 +374,10 @@ describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
       ...request.references.length > 0 ? ['It takes no reference input.'] : [], ...request.firstFrame === null ? [] : ['It takes no first frame.'],
     ]
     await expect(fixture.record('shot.render', { ...TXT, prompt: 'a cat' }, [c1()]))
-      .rejects.toThrow('Model video/t2v/test/fake cannot render this shot: It takes no reference input. Nothing was rendered;')
+      .rejects.toThrow('Model video/t2v/test/fake cannot generate this: It takes no reference input. Nothing was generated;')
     const shot = await fixture.record('shot.render', { ...TXT, prompt: 'A street at dawn' })
     expect(failure(await fixture.call('dv_shot_render', { ...TXT, reason: 'next', prompt: 'later', continue_from: shot.id })))
-      .toContain('Model video/t2v/test/fake cannot render this shot: It takes no first frame.')
+      .toContain('Model video/t2v/test/fake cannot generate this: It takes no first frame.')
   })
 
   it('has no render operation without a model, and follows the catalog', async () => {
@@ -376,8 +385,6 @@ describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
     expect(renderSpec(fixture)).toBeUndefined()
     expect(fixture.ctx.tools.schemas().filter(tool => tool.name.startsWith('dv_shot_render'))).toEqual([])
     expect(fixture.ctx.dvProject.getState(fixture.project).components.shot).toEqual({ takes: {}, roots: {} })
-    const call = { record: { operation: 'shot.render' }, params: { ...REF, prompt: 'x' } } as never
-    await expect(fixture.ctx.dvShotRender.renderShot(call)).rejects.toThrow('Unknown model "video/ref2v/test/fake"; call dv_models_list for the models.')
     // The first model registers the operation and a second keeps it; removing the last model removes it.
     const removeFirst = fixture.ctx.dvModels.register(fakeEntry('t2v', fixture.text))
     const spec = renderSpec(fixture)
@@ -387,6 +394,9 @@ describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
     expect(renderSpec(fixture)).toBe(spec)
     removeSecond()
     expect(renderSpec(fixture)).toBeUndefined()
+    // A call that runs after its model left the catalog fails with the key.
+    const call = { record: { operation: 'shot.render' }, params: { ...REF, prompt: 'x' } } as never
+    await expect(spec?.execute(call)).rejects.toThrow('Unknown model "video/ref2v/test/fake"; call dv_models_list for the models.')
   })
 
   it('renders a take in task ref2v with references and a first frame, keeps the seed, and stores both outputs', async () => {
@@ -491,13 +501,13 @@ describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
     const before = fixture.ctx.dvProject.listHistory({ project: fixture.project }).length
     const noImages = await fixture.call('dv_shot_render', { ...REF, reason: 'cat', prompt: 'a cat', inputs: { reference: 'c2@1' } })
     expect(failure(noImages)).toContain(
-      'Model video/ref2v/test/fake cannot render this shot: It needs a reference asset; this shot has none. Nothing was rendered; '
-      + 'change the inputs (ask the user for an asset the shot needs; they can attach it in the chat), then call again.',
+      'Model video/ref2v/test/fake cannot generate this: It needs a reference asset; this shot has none. Nothing was generated; '
+      + 'change the inputs or params, then call again.',
     )
-    // A render that a plan scheduled is told to update the plan.
+    // A render that a plan scheduled gets the same text.
     const c2 = { role: 'reference', ref: { test_character: 'c2', version: 1 } }
     await expect(fixture.record('shot.render', { ...REF, prompt: 'a cat', plan: 'p1', plan_version: 1, shot: 2 }, [c2]))
-      .rejects.toThrow(/Nothing was rendered; update the plan with dv_plan_update, then call again\.$/)
+      .rejects.toThrow(/Nothing was generated; change the inputs or params, then call again\.$/)
     expect(fixture.ctx.dvProject.listHistory({ project: fixture.project })).toHaveLength(before)
     expect(fixture.reference.requests).toHaveLength(0)
   })
@@ -519,7 +529,7 @@ describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
     // shot.render passes every input to the model, which judges them.
     fixture.text.check = request => request.firstFrame === null ? [] : ['It takes no first frame.']
     await expect(fixture.record('shot.render', { ...TXT, prompt: 'x' }, [{ role: 'first_frame', ref: { asset: still } }]))
-      .rejects.toThrow('Model video/t2v/test/fake cannot render this shot: It takes no first frame.')
+      .rejects.toThrow('Model video/t2v/test/fake cannot generate this: It takes no first frame.')
     await expect(fixture.record('shot.render', { ...REF, prompt: 'x' }, [c1(), { role: 'first_frame', ref: { asset: still } }, { role: 'first_frame', ref: { asset: still } }]))
       .rejects.toThrow('shot.render takes one first_frame input; this call has 2.')
   })
@@ -541,14 +551,14 @@ describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
     expect(fixture.reference.validations).toHaveLength(0)
     release()
     await fixture.ctx.dvProject.wait(fixture.project, [producer.id, firstFrame.id, planned.id])
-    // A render that a plan scheduled is told to update the plan, at render time as before recording.
+    // A render that a plan scheduled gets the same text at render time as before recording.
     expect(fixture.ctx.dvProject.getRecord(fixture.project, planned.id).error?.message)
-      .toMatch(/update the plan with dv_plan_update, then call again\.$/)
+      .toMatch(/Nothing was generated; change the inputs or params, then call again\.$/)
     const output = fixture.ctx.dvProject.getRecord(fixture.project, producer.id).outputs[0]
     expect(fixture.reference.validations.map(request => request.firstFrame)).toEqual([output, output])
-    expect(fixture.ctx.dvProject.getRecord(fixture.project, firstFrame.id)).toMatchObject({
-      status: 'failed', error: { message: expect.stringContaining('Model video/ref2v/test/fake cannot render this shot: Its first frame must be an image.') },
-    })
+    const refused = fixture.ctx.dvProject.getRecord(fixture.project, firstFrame.id)
+    expect(refused.status).toBe('failed')
+    expect(refused.error?.message).toContain('Model video/ref2v/test/fake cannot generate this: Its first frame must be an image.')
     expect(fixture.reference.requests).toHaveLength(0)
   })
 
@@ -604,6 +614,32 @@ describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
     // The reference input is cited by its assets, not by its role.
     expect(failure(await fixture.call('dv_shot_render', { ...args, reason: 'role', prompt: '@[refs](dv:input/reference)' })))
       .toContain('The prompt cites the input reference, which this call does not have.')
+  })
+
+  it('gives workflows the GenerationApi methods, and checks chained roles before their producers exist', async () => {
+    const fixture = await start()
+    const face = await withCharacter(fixture)
+    const state = () => fixture.ctx.dvProject.getState(fixture.project)
+    const origin = { actor: 'system' as const, surface: 'api' as const, session: null, turn: null, tool_call: null, intent: 'shot 2' }
+    const inputs = fixture.ctx.dvShotRender.parseInputs({ reference: 'c1@1' }, state())
+    expect(inputs).toEqual([c1()])
+    const prompt = '@[Bo](dv:test_character/c1) starts from @[首帧](dv:input/first_frame).'
+    const call = { ...origin, project: fixture.project, params: { ...REF, prompt }, inputs }
+    // A chained role (here a first frame and a reference image that earlier steps produce) has no reference yet: the
+    // citation of the role passes, element expansion skips it, and the model check waits for execute.
+    expect(await fixture.ctx.dvShotRender.check(call, state(), ['first_frame', 'reference'])).toEqual([])
+    expect(await fixture.ctx.dvShotRender.check(call, state())).toEqual([
+      'The prompt cites the input first_frame, which this call does not have. Cite only the assets of inputs.reference and the inputs of the call.',
+    ])
+    expect(fixture.reference.validations).toHaveLength(0)
+    expect(fixture.ctx.dvShotRender.estimate({ params: { ...REF, duration_sec: 2 } })).toEqual({ gpu_seconds: 6 })
+    const take = { params: { ...REF, prompt: '@[Bo](dv:test_character/c1) waves', seed: 3 }, inputs }
+    const started_by = { record: brandString<RecordId>('approve-1'), slot: 2 }
+    const id = await fixture.ctx.dvShotRender.render({ ...call, ...take, started_by })
+    expect(fixture.ctx.dvProject.getRecord(fixture.project, id)).toMatchObject({ status: 'done', started_by, report: { seed: 3 } })
+    expect(fixture.reference.requests[0]?.references).toEqual([face])
+    expect(fixture.ctx.dvShotRender.findTake(state(), take, record => record.started_by?.slot === 2)).toBe(id)
+    expect(fixture.ctx.dvShotRender.findTake(state(), take, () => false)).toBeNull()
   })
 
   it('refuses requests outside the model\'s facts before recording, and records stream failures', async () => {

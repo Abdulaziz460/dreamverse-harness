@@ -345,9 +345,11 @@ describe('dvApi', () => {
 
   it('serves the task labels of the model catalog, and no label while the catalog is not loaded', async () => {
     const fixture = await start()
-    expect(await call(fixture, ROUTES.tasks)).toEqual({ status: 200, json: {} })
-    fixture.context.effect(() => fixture.context.dvModels.labelTasks({ t2v: { zh: '文字生成', en: 'From text' } }))
-    expect(await call(fixture, ROUTES.tasks)).toEqual({ status: 200, json: { t2v: { zh: '文字生成', en: 'From text' } } })
+    // dvShotRender labels the video tasks while it lives.
+    const video = { t2v: { zh: '文字生成', en: 'From text' }, ref2v: { zh: '参考图生成', en: 'From references' } }
+    expect(await call(fixture, ROUTES.tasks)).toEqual({ status: 200, json: video })
+    fixture.context.effect(() => fixture.context.dvModels.labelTasks({ test_task: { zh: '测试', en: 'Test' } }))
+    expect(await call(fixture, ROUTES.tasks)).toEqual({ status: 200, json: { ...video, test_task: { zh: '测试', en: 'Test' } } })
     for (const fiber of fixture.context.registry.get(DvModels)?.fibers ?? []) await fiber.dispose()
     expect(await call(fixture, ROUTES.tasks)).toEqual({ status: 200, json: {} })
   })
