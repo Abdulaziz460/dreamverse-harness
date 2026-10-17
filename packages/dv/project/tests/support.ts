@@ -16,8 +16,7 @@ import { Runner, type RunnerAssets } from '../src/runner.ts'
 import { Scheduler } from '../src/scheduler.ts'
 import { Subscriptions } from '../src/subscriptions.ts'
 import type {
-  AssetId, AssetStore, CharacterId, LocationId, ProjectEvent, ProjectId, RecordId, RecordOrigin, ReferenceKindSpec, SessionId, StyleId,
-  TurnId,
+  AssetId, AssetStore, ProjectEvent, ProjectId, RecordId, RecordOrigin, ReferenceKindSpec, SessionId, TurnId,
 } from '../src/types.ts'
 
 declare module '@dv/project' {
@@ -28,8 +27,8 @@ declare module '@dv/project' {
      */
     test_bible?: { assets: Record<string, AssetId[]>; creators: Record<string, RecordId> }
   }
-  /** The reference kinds that the tests name in version references; the same kinds as Story bible's. */
-  interface ReferenceKinds { character: CharacterId; location: LocationId; style: StyleId }
+  /** The test reference kinds that the tests name in version references, with `string` IDs; they answer from `test_bible`. */
+  interface ReferenceKinds { test_character: string; test_location: string; test_style: string }
 }
 
 /**
@@ -42,7 +41,7 @@ export function versionKey(kind: string, id: string, version: number): string {
 
 /**
  * A reference kind that answers from the `test_bible` slice.
- * @param kind - the kind, such as `character`.
+ * @param kind - the kind, such as `test_character`.
  * @returns the spec.
  */
 export function testKind(kind: string): ReferenceKindSpec<'test_bible'> {

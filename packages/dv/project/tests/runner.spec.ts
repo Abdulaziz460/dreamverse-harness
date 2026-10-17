@@ -14,7 +14,7 @@ import { projReducer, ReducerRegistry } from '../src/reducers.ts'
 import { Runner } from '../src/runner.ts'
 import { Scheduler } from '../src/scheduler.ts'
 import type {
-  AssetId, CharacterId, OperationSpec, ProjectId, ProjectRecord, RecordOrigin, RunRequest,
+  AssetId, OperationSpec, ProjectId, ProjectRecord, RecordOrigin, RunRequest,
 } from '../src/types.ts'
 
 /**
@@ -342,7 +342,8 @@ describe('Runner', () => {
     expect(proj.records.map(record => record.operation)).toEqual(['proj.create', 'shot.render_ref2va', 'deliver.timeline_export'])
     expect(proj.stale).toEqual({})
     m.runner.registerOperation(operation({ name: 'shot.render', component: 'shot' }))
-    const reads = { inputs: [{ role: 'reference', ref: { character: brandString<CharacterId>('c1'), version: 1 } }] }
+    // The new call reads the stored `{character, version}` reference of the old render.
+    const reads = { inputs: [{ role: 'reference', ref: proj.records[1]!.inputs[0]!.ref }] }
     await expect(m.runner.run(request(project, 'shot.render', userOrigin(), reads))).rejects.toMatchObject({ code: 'invalid_inputs' })
     expect(recordsOf(m, project, 'shot.render')).toEqual([])
   })

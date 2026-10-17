@@ -38,7 +38,7 @@ Mount the plugin after `@dv/project`. The component has no configuration fields.
 
 `<kind>` is `character`, `location` or `style`. The operations write no files (`outputs` is empty), take no confirmation, and are not deterministic, so the runner never reuses an earlier call instead of the ID checks. An update supersedes the record that wrote the previous version, so every record that read the previous version becomes stale.
 
-The `bible` slice of `ProjectState` is `StoryBibleState`: `characters`, `locations` and `styles`, each a map from ID to the versions oldest first. A version (`Character`, `Location`, `Style`) has `id`, `version`, `name`, `description`, `references` (asset IDs) and `created_by` (the record that wrote it). The ID types `CharacterId`, `LocationId` and `StyleId` are defined in `@dv/project`, which types record inputs with them, and re-exported here.
+The `bible` slice of `ProjectState` is `StoryBibleState`: `characters`, `locations` and `styles`, each a map from ID to the versions oldest first. A version (`Character`, `Location`, `Style`) has `id`, `version`, `name`, `description`, `references` (asset IDs) and `created_by` (the record that wrote it). This package defines the ID types `CharacterId`, `LocationId` and `StyleId`; its `ReferenceKinds` merge into `@dv/project` types the record inputs that name a version with them.
 
 -----
 

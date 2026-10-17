@@ -348,22 +348,22 @@ describe('agent tools', () => {
     fixture.project.registerOperation(operation({ name: 'asset.grab_still', component: 'asset' }))
     const inputsText = () => JSON.stringify(fixture.context.tools.schemas().find(tool => tool.name === 'dv_asset_grab_still')?.parameters)
     expect(inputsText()).toContain('<asset> (an asset ID), <record>#<output> (an output of an earlier record); a list')
-    expect(() => fixture.project.registerReferenceKind(testKind('location'))).toThrow(expect.objectContaining({ code: 'invalid_params' }))
+    expect(() => fixture.project.registerReferenceKind(testKind('test_location'))).toThrow(expect.objectContaining({ code: 'invalid_params' }))
     fixture.project.registerComponent('test_bible')
     // The other arms of an input reference use these keys, so no kind may take one.
     for (const reserved of ['asset', 'record', 'version']) {
       expect(() => fixture.project.registerReferenceKind(testKind(reserved))).toThrow(expect.objectContaining({ code: 'invalid_params' }))
     }
     expect(fixture.project.listReferenceKinds()).toEqual([])
-    const removeLocation = fixture.project.registerReferenceKind(testKind('location'))
-    expect(inputsText()).toContain('or <id>@<version> (a location version such as c1@1); a list')
-    fixture.project.registerReferenceKind(testKind('style'))
-    fixture.project.registerReferenceKind(testKind('character'))
-    expect(fixture.project.listReferenceKinds()).toEqual(['location', 'style', 'character'])
-    expect(inputsText()).toContain('(a location, style or character version such as c1@1)')
-    expect(() => fixture.project.registerReferenceKind(testKind('style'))).toThrow(expect.objectContaining({ code: 'kind_exists' }))
+    const removeLocation = fixture.project.registerReferenceKind(testKind('test_location'))
+    expect(inputsText()).toContain('or <id>@<version> (a test_location version such as c1@1); a list')
+    fixture.project.registerReferenceKind(testKind('test_style'))
+    fixture.project.registerReferenceKind(testKind('test_character'))
+    expect(fixture.project.listReferenceKinds()).toEqual(['test_location', 'test_style', 'test_character'])
+    expect(inputsText()).toContain('(a test_location, test_style or test_character version such as c1@1)')
+    expect(() => fixture.project.registerReferenceKind(testKind('test_style'))).toThrow(expect.objectContaining({ code: 'kind_exists' }))
     removeLocation()
-    expect(inputsText()).toContain('(a style or character version such as c1@1)')
+    expect(inputsText()).toContain('(a test_style or test_character version such as c1@1)')
   })
 
   it('parses input references: assets, record outputs, and versions of the one reference kind that has them', async () => {
@@ -374,24 +374,24 @@ describe('agent tools', () => {
     } }))
     fixture.project.registerOperation(operation({ name: 'plan.create', component: 'plan', inputs: {} }))
     const creators: Record<string, RecordId> = {
-      'location:l1@2': brandString<RecordId>('r-location'), 'location:dup@1': brandString<RecordId>('r1'), 'style:dup@1': brandString<RecordId>('r2'),
+      'test_location:l1@2': brandString<RecordId>('r-location'), 'test_location:dup@1': brandString<RecordId>('r1'), 'test_style:dup@1': brandString<RecordId>('r2'),
     }
     fixture.project.registerComponent('test_bible')
     fixture.project.registerReducer('test_bible', { initial: () => ({ assets: {}, creators }), reduce: slice => slice })
     const state = fixture.project.getState(projectId)
     expect(() => fixture.project.parseReference('l1@2', state)).toThrow("Unknown version 'l1@2'; reference kinds: none.")
-    fixture.project.registerReferenceKind(testKind('location'))
-    fixture.project.registerReferenceKind(testKind('style'))
+    fixture.project.registerReferenceKind(testKind('test_location'))
+    fixture.project.registerReferenceKind(testKind('test_style'))
     const parse = (name: string, raw: unknown) => fixture.project.parseInputs(name, raw, state)
     expect(parse('shot.render', { first_frame: 'r1#1', reference: ['a1', 'l1@2'] })).toEqual([
       { role: 'first_frame', ref: { record: 'r1', output: 1 } }, { role: 'reference', ref: { asset: 'a1' } },
-      { role: 'reference', ref: { location: 'l1', version: 2 } },
+      { role: 'reference', ref: { test_location: 'l1', version: 2 } },
     ])
-    expect(fixture.project.parseReference('l1@2', state)).toEqual({ location: 'l1', version: 2 })
+    expect(fixture.project.parseReference('l1@2', state)).toEqual({ test_location: 'l1', version: 2 })
     expect(() => parse('shot.render', { first_frame: 'a', reference: 'nobody@1' }))
-      .toThrow(expect.objectContaining({ code: 'invalid_inputs', message: "Unknown version 'nobody@1'; reference kinds: location, style." }))
+      .toThrow(expect.objectContaining({ code: 'invalid_inputs', message: "Unknown version 'nobody@1'; reference kinds: test_location, test_style." }))
     expect(() => fixture.project.parseReference('dup@1', state))
-      .toThrow(expect.objectContaining({ code: 'invalid_inputs', message: "Version 'dup@1' names more than one reference kind: location, style." }))
+      .toThrow(expect.objectContaining({ code: 'invalid_inputs', message: "Version 'dup@1' names more than one reference kind: test_location, test_style." }))
     // A view request names the operation by default; the caller can name the call another way, as the agent tool does.
     expect(() => parse('shot.render', undefined)).toThrow('shot.render needs input "first_frame"')
     expect(() => fixture.project.parseInputs('shot.render', { first_frame: 'a', other: 'b' }, state, 'dv_shot_render'))
@@ -408,7 +408,7 @@ describe('agent tools', () => {
     const texts = inputs.map(input => formatInputRef(input.ref))
     expect(texts).toEqual(['r1#1', 'a1', 'l1@2'])
     expect(parse('shot.render', { first_frame: texts[0], reference: texts.slice(1) })).toEqual(inputs)
-    expect(inputs.map(input => versionRefOf(input.ref))).toEqual([null, null, { kind: 'location', id: 'l1', version: 2 }])
+    expect(inputs.map(input => versionRefOf(input.ref))).toEqual([null, null, { kind: 'test_location', id: 'l1', version: 2 }])
     // A reference without a kind key, which no typed caller builds, names no version.
     expect([versionRefOf({ version: 1 } as never), formatInputRef({ version: 1 } as never)]).toEqual([null, '{"version":1}'])
   })

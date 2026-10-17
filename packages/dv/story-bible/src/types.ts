@@ -1,13 +1,20 @@
 /**
- * Types of the Story bible component: one version of a character, a location or a style, and the `bible` slice of the
- * project state. The three ID types are defined in `@dv/project`, because record inputs name versions, and re-exported
- * here.
+ * Types of the Story bible component: the IDs of characters, locations and styles, one version of each, and the `bible`
+ * slice of the project state. Record inputs name a version with these ID types through the `ReferenceKinds` merge.
  *
  * @module @dv/story-bible/types
  */
-import type { AssetId, CharacterId, LocationId, RecordId, StyleId } from '@dv/project'
+import type { Branded } from '@deepseek-ai/dsh-brand'
+import type { AssetId, RecordId } from '@dv/project'
 
-export type { CharacterId, LocationId, StyleId } from '@dv/project'
+/** The ID of a character, chosen by the caller of `bible.character_create`, such as `c1`. */
+export type CharacterId = Branded<'DvCharacterId'>
+
+/** The ID of a location, chosen by the caller of `bible.location_create`, such as `l1`. */
+export type LocationId = Branded<'DvLocationId'>
+
+/** The ID of a style, chosen by the caller of `bible.style_create`, such as `s1`. */
+export type StyleId = Branded<'DvStyleId'>
 
 /** One version of a character: a person who must look the same across shots. */
 export interface Character {

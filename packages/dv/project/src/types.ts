@@ -18,15 +18,6 @@ import type { JsonValue } from '@deepseek-ai/dsh-util-values'
  */
 export type AssetId = Branded<'DvAssetId'>
 
-/** The ID of a character, chosen by the caller of `bible.character_create`, such as `c1`. The Story bible re-exports it. */
-export type CharacterId = Branded<'DvCharacterId'>
-
-/** The ID of a location, chosen by the caller of `bible.location_create`, such as `l1`. The Story bible re-exports it. */
-export type LocationId = Branded<'DvLocationId'>
-
-/** The ID of a style, chosen by the caller of `bible.style_create`, such as `s1`. The Story bible re-exports it. */
-export type StyleId = Branded<'DvStyleId'>
-
 /** The ID of a project; it names the project's directory under the store root. */
 export type ProjectId = Branded<'DvProjectId'>
 

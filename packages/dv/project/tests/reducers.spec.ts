@@ -10,7 +10,7 @@ import type { ProjectModules } from './support.ts'
 import { createTestProject, startModules, testKind, userOrigin, versionKey } from './support.ts'
 import { ProjectError } from '../src/shared.ts'
 import type { RecordLineInput } from '../src/record-store.ts'
-import type { AssetId, CharacterId, ComponentStates, LocationId, ProjectId, ProjectRecord, RecordInput } from '../src/types.ts'
+import type { AssetId, ComponentStates, ProjectId, ProjectRecord, RecordInput } from '../src/types.ts'
 
 declare module '@dv/project' {
   interface ComponentStates {
@@ -19,8 +19,8 @@ declare module '@dv/project' {
   }
 }
 
-/** The character the `test_bible` reducers record. */
-const HERO = brandString<CharacterId>('hero')
+/** The `test_character` ID that the `test_bible` reducers record. */
+const HERO = 'hero'
 
 /** A record's operation, plus the record-line fields that differ from a plain finished human edit. */
 type RecordLineFields = Pick<RecordLineInput, 'component' | 'operation'> & Partial<RecordLineInput>
@@ -98,16 +98,16 @@ describe('reducers', () => {
 
   it('registers one owner per reference kind and lists the kinds in registration order', () => {
     const m = startModules()
-    const remove = m.reducers.registerKind(testKind('character'))
-    m.reducers.registerKind(testKind('location'))
-    expect(m.reducers.listReferenceKinds()).toEqual(['character', 'location'])
-    expect(() => m.reducers.registerKind(testKind('character'))).toThrow(expect.objectContaining({ code: 'kind_exists' }))
+    const remove = m.reducers.registerKind(testKind('test_character'))
+    m.reducers.registerKind(testKind('test_location'))
+    expect(m.reducers.listReferenceKinds()).toEqual(['test_character', 'test_location'])
+    expect(() => m.reducers.registerKind(testKind('test_character'))).toThrow(expect.objectContaining({ code: 'kind_exists' }))
     remove()
-    expect(m.reducers.listReferenceKinds()).toEqual(['location'])
-    m.reducers.registerKind(testKind('character'))
+    expect(m.reducers.listReferenceKinds()).toEqual(['test_location'])
+    m.reducers.registerKind(testKind('test_character'))
     // A remover removes only its own registration.
     remove()
-    expect(m.reducers.listReferenceKinds()).toEqual(['location', 'character'])
+    expect(m.reducers.listReferenceKinds()).toEqual(['test_location', 'test_character'])
   })
 
   it('marks consumers of a superseded record stale', async () => {
@@ -150,8 +150,8 @@ describe('reducers', () => {
   it('resolves version references through their reference kind, on the slice of its owner', async () => {
     const m = startModules()
     const project = await createTestProject(m)
-    const ref = { character: HERO, version: 1 }
-    m.reducers.registerKind(testKind('character'))
+    const ref = { test_character: HERO, version: 1 }
+    m.reducers.registerKind(testKind('test_character'))
     // A kind whose owner has no reducer knows no version.
     expect(m.reducers.assetsOf(m.reducers.getState(project), ref)).toBeNull()
     expect(m.reducers.kindsWithVersion(m.reducers.getState(project), HERO, 1)).toEqual([])
@@ -159,16 +159,16 @@ describe('reducers', () => {
     m.reducers.register('test_bible', {
       initial: () => ({ assets: {}, creators: {} }),
       reduce: (slice, record) => record.operation === 'bible.character_create'
-        ? { assets: { [versionKey('character', HERO, 1)]: record.outputs }, creators: { [versionKey('character', HERO, 1)]: record.id } }
+        ? { assets: { [versionKey('test_character', HERO, 1)]: record.outputs }, creators: { [versionKey('test_character', HERO, 1)]: record.id } }
         : slice,
     })
     await append(m, project, { component: 'bible', operation: 'bible.character_create', params: { character: 'hero' }, outputs: [face] })
     const withBible = m.reducers.getState(project)
     expect(m.reducers.assetsOf(withBible, ref)).toEqual([face])
-    expect(m.reducers.kindsWithVersion(withBible, HERO, 1)).toEqual(['character'])
-    expect(m.reducers.assetsOf(withBible, { character: HERO, version: 2 })).toBeNull()
+    expect(m.reducers.kindsWithVersion(withBible, HERO, 1)).toEqual(['test_character'])
+    expect(m.reducers.assetsOf(withBible, { test_character: HERO, version: 2 })).toBeNull()
     // A kind that is not registered, and an asset, stand for no version.
-    expect(m.reducers.assetsOf(withBible, { location: brandString<LocationId>('hero'), version: 1 })).toBeNull()
+    expect(m.reducers.assetsOf(withBible, { test_location: HERO, version: 1 })).toBeNull()
     expect(m.reducers.assetsOf(withBible, { asset: face })).toBeNull()
   })
 
@@ -180,13 +180,13 @@ describe('reducers', () => {
       initial: () => ({ assets: {}, creators: {} }),
       reduce(slice, record) {
         if (record.operation !== 'bible.character_create' && record.operation !== 'bible.character_update') return slice
-        const key = versionKey('character', HERO, Object.keys(slice?.creators ?? {}).length + 1)
+        const key = versionKey('test_character', HERO, Object.keys(slice?.creators ?? {}).length + 1)
         return { assets: { ...slice?.assets, [key]: [face] }, creators: { ...slice?.creators, [key]: record.id } }
       },
     })
-    m.reducers.registerKind(testKind('character'))
+    m.reducers.registerKind(testKind('test_character'))
     /** A render that reads one version of the hero. */
-    const reads = (version: number): RecordInput => ({ role: 'reference', ref: { character: HERO, version }, resolved_asset: face })
+    const reads = (version: number): RecordInput => ({ role: 'reference', ref: { test_character: HERO, version }, resolved_asset: face })
     const create = await append(m, project, { component: 'bible', operation: 'bible.character_create' })
     const x = m.assets.add('take x')
     const render = await append(m, project, { ...RENDER, inputs: [reads(1)], outputs: [x] })

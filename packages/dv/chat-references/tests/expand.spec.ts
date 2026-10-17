@@ -1,7 +1,8 @@
 /** Expansion of composer `dv:` mentions into concrete record and asset IDs. */
 import { describe, expect, it } from 'vitest'
 import { brandString } from '@deepseek-ai/dsh-brand'
-import type { AssetId, CharacterId, ProjectId, ProjectRecord, ProjectState, RecordId, SessionId, TurnId } from '@dv/project'
+import type { AssetId, ProjectId, ProjectRecord, ProjectState, RecordId, SessionId, TurnId } from '@dv/project'
+import type { CharacterId } from '@dv/story-bible'
 import type { ClipId, TimelineId } from '@dv/timeline'
 import { expansionBlock, formatMention, parseMentions, type ExpansionSources } from '../src/expand.ts'
 

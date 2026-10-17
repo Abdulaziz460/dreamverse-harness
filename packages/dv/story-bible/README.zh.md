@@ -38,7 +38,7 @@ kind: "package-reference"
 
 `<kind>` 是 `character`、`location` 或 `style`。这些操作不写文件（`outputs` 为空），不需要确认，也不是确定性的，因此运行器从不以复用更早的调用代替 ID 检查。更新会取代写出上一版本的记录，因此每条读过上一版本的记录都会过期。
 
-`ProjectState` 的 `bible` 切片是 `StoryBibleState`：`characters`、`locations` 和 `styles`，每个都是从 ID 到按时间先后排列的版本的映射。一个版本（`Character`、`Location`、`Style`）有 `id`、`version`、`name`、`description`、`references`（素材 ID）和 `created_by`（写出它的记录）。ID 类型 `CharacterId`、`LocationId` 和 `StyleId` 定义在 `@dv/project` 中，记录输入用它们标注类型，本包再导出它们。
+`ProjectState` 的 `bible` 切片是 `StoryBibleState`：`characters`、`locations` 和 `styles`，每个都是从 ID 到按时间先后排列的版本的映射。一个版本（`Character`、`Location`、`Style`）有 `id`、`version`、`name`、`description`、`references`（素材 ID）和 `created_by`（写出它的记录）。本包定义 ID 类型 `CharacterId`、`LocationId` 和 `StyleId`；本包对 `@dv/project` 的 `ReferenceKinds` 合并用它们标注指向一个版本的记录输入的类型。
 
 -----
 

@@ -9,6 +9,7 @@
     "./package.json": "./package.json"
   },
   "dependencies": {
+    "@deepseek-ai/dsh-brand": "workspace:*",
     "@dv/project": "workspace:*"
   },
   "peerDependencies": {
@@ -19,7 +20,6 @@
     "@deepseek-ai/cordis": "workspace:~",
     "@deepseek-ai/cordis-plugin-include": "workspace:~",
     "@deepseek-ai/cordis-plugin-loader": "workspace:~",
-    "@deepseek-ai/dsh-brand": "workspace:*",
     "@deepseek-ai/dsh-llm": "workspace:*",
     "@deepseek-ai/dsh-system-prompt": "workspace:*",
     "@deepseek-ai/dsh-tools": "workspace:*",
