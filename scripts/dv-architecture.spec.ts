@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { compareBaseline, parseFixture, readScanFiles, RULE_STATEMENTS, scan, type Baseline, type ScanFile, type Violation } from './dv-architecture.ts'
+import { checkBudget, countLines, findingsOnAddedLines, parseAllow, parseDiff, type FileChange } from './dv-blast-radius.ts'
 
 const root = resolve(import.meta.dirname, '..')
 
@@ -206,5 +207,106 @@ describe('ratchet baseline comparison', () => {
 
   it('states every scanned rule', () => {
     expect(Object.keys(RULE_STATEMENTS)).toEqual(['R1', 'R2', 'R3', 'R4', 'R5', 'R6', 'R7', 'R8', 'marker'])
+  })
+})
+
+describe('slice budget check (R9, R10)', () => {
+  const change = (path: string, added: string[], deleted: string[] = []): FileChange =>
+    ({ path, added, addedAt: added.map((_, index) => index + 1), deleted })
+  const budget = (changes: FileChange[], own: string[], allow: string[], existing: string[] = [], maxLines = 400) =>
+    checkBudget(changes, { own, allow: allow.map(parseAllow), existing: new Set(existing), maxLines })
+  const diffFixture = (name: string): FileChange[] =>
+    parseDiff(readFileSync(resolve(import.meta.dirname, 'fixtures/dv-blast-radius', name), 'utf8'))
+
+  it.each([
+    ['max-negative.txt', ['packages/dv/shot-render/src/index.ts:max=6'], 'changes 9 lines, more than max=6'],
+    ['net-delete-negative.txt', ['packages/dv/shot-plan/**:net-delete'], 'gains lines (+3 -1)'],
+    ['r10-negative.txt', [], '4 existing packages with logic changes, more than 3'],
+  ])('rejects the fixture %s', (name, allow, failure) => {
+    const changes = diffFixture(name)
+    const existing = changes.map(c => c.path.split('/').slice(0, 3).join('/'))
+    expect(budget(changes, ['packages/dv'], allow, existing).failures).toEqual([expect.stringContaining(failure)])
+  })
+
+  it('rejects the fixture max-lines-negative.txt under --max-lines 3 and passes it under the default 400', () => {
+    const changes = diffFixture('max-lines-negative.txt')
+    expect(budget(changes, ['packages/dv'], [], ['packages/dv/timeline'], 3).failures).toEqual(['R10: 3.5 counted lines, more than 3'])
+    expect(budget(changes, ['packages/dv'], [], ['packages/dv/timeline']).failures).toEqual([])
+  })
+
+  it('reads the new-file line of each added line from the hunk headers', () => {
+    expect(diffFixture('max-negative.txt').map(c => c.addedAt)).toEqual([[111, 112, 431, 432, 433]])
+  })
+
+  it('weighs an added line 1, a deleted line 0.5, a moved line 0 and a test line 0', () => {
+    expect(countLines([
+      change('packages/dv/a/src/x.ts', ['const a = 1', ''], ['old()', 'moved()']),
+      change('packages/dv/b/src/y.ts', ['  moved()']),
+      change('packages/dv/a/tests/x.spec.ts', ['expect(a).toBe(1)']),
+    ])).toBe(3.5)
+  })
+
+  it('puts paths outside own and wiring in X and fails on a path that no allow glob matches', () => {
+    const report = budget([
+      change('packages/dv/a/src/x.ts', ['a']), change('pnpm-lock.yaml', ['b']),
+      change('packages/dv/b/src/y.ts', ['c']), change('packages/client/c/src/z.ts', ['d']),
+    ], ['packages/dv/a'], ['packages/dv/b/**'])
+    expect([report.outside, report.brPkgs, report.failures]).toEqual([
+      ['packages/dv/b/src/y.ts', 'packages/client/c/src/z.ts'], 2,
+      ['R9: packages/client/c/src/z.ts is outside own, wiring and every --allow glob'],
+    ])
+  })
+
+  it('fails over 400 counted lines and over 3 existing packages with more than 2 changed src lines', () => {
+    const report = budget([
+      ...['a', 'c', 'd', 'f'].map(pkg => change(`packages/dv/${pkg}/src/index.ts`, ['x', 'y'], ['z'])),
+      change('packages/dv/b/src/index.ts', ['x'], ['w']),
+      change('packages/dv/new/src/index.ts', Array.from({ length: 400 }, (_, i) => `line ${String(i)}`)),
+    ], ['packages/dv'], [], ['a', 'b', 'c', 'd', 'f'].map(pkg => `packages/dv/${pkg}`))
+    expect(report.logicPackages).toEqual(['a', 'c', 'd', 'f'].map(pkg => `packages/dv/${pkg}`))
+    expect(report.failures).toEqual([
+      'R10: 411.5 counted lines, more than 400',
+      'R10: 4 existing packages with logic changes, more than 3',
+    ])
+  })
+
+  it('treats the baseline file as W with :net-delete only once it exists at the merge base', () => {
+    const lowered = [change('scripts/dv-architecture.baseline.json', ['  "a": 1,'], ['  "a": 2,', '  "b": 1,'])]
+    expect(budget(lowered, [], [], ['scripts/dv-architecture.baseline.json'])).toMatchObject({ outside: [], countedLines: 0, failures: [] })
+    const grown = [change('scripts/dv-architecture.baseline.json', ['  "a": 1,', '  "c": 1,'], ['  "a": 2,'])]
+    expect(budget(grown, [], [], ['scripts/dv-architecture.baseline.json']).failures).toEqual([
+      'R9: scripts/dv-architecture.baseline.json gains lines (+2 -1), not a net deletion',
+    ])
+    expect(budget(grown, [], [])).toMatchObject({ outside: ['scripts/dv-architecture.baseline.json'], countedLines: 2.5 })
+  })
+
+  it('counts only src and skills of a new package and makes its README.md, package.json and tsconfig.json W', () => {
+    const files = ['README.md', 'package.json', 'tsconfig.json', 'CONTRACTS.md', 'src/index.ts', 'skills/x/SKILL.md']
+    const changes = files.map(file => change(`packages/dv/new/${file}`, ['x']))
+    expect(budget(changes, ['packages/dv/new/src', 'packages/dv/new/skills'], ['packages/dv/new/CONTRACTS.md'])).toMatchObject({
+      outside: ['packages/dv/new/CONTRACTS.md'], countedLines: 2, failures: [],
+    })
+    expect(budget(changes, [], ['packages/dv/new/**'], ['packages/dv/new'])).toMatchObject({ outside: changes.map(c => c.path), countedLines: 6 })
+  })
+
+  it('makes a package whose changed src files all match a limited glob no logic package', () => {
+    const changes = [change('packages/dv/a/src/x.ts', ['x', 'y', 'z']), change('packages/dv/b/src/y.ts', ['x', 'y', 'z'])]
+    const existing = ['packages/dv/a', 'packages/dv/b']
+    expect(budget(changes, [], ['packages/dv/a/src/x.ts:max=3', 'packages/dv/b/src/**'], existing).logicPackages).toEqual(['packages/dv/b'])
+    const allow = ['packages/dv/a/src/x.ts:max=3', 'packages/dv/a/src/z.ts', 'packages/dv/b/**']
+    expect(budget([...changes, change('packages/dv/a/src/z.ts', ['w'])], [], allow, existing).logicPackages).toEqual(['packages/dv/a', 'packages/dv/b'])
+  })
+
+  it('fails a lint finding on an added line and keeps findings on old lines and unchanged files', () => {
+    const output = [
+      'scripts/x.ts:2:5: Unnecessary assertion. [Error/typescript(no-unnecessary-type-assertion)]',
+      'scripts/x.ts:9:1: Old finding. [Error/eslint(no-unused-vars)]',
+      'scripts/y.ts:1:1: Unchanged file. [Error/eslint(no-unused-vars)]',
+      '',
+      '3 problems',
+    ].join('\n')
+    expect(findingsOnAddedLines(output, [change('scripts/x.ts', ['a', 'b'])])).toEqual([
+      'lint: scripts/x.ts:2: Unnecessary assertion. [Error/typescript(no-unnecessary-type-assertion)]',
+    ])
   })
 })

@@ -1,0 +1,9 @@
+diff --git a/packages/dv/timeline/src/index.ts b/packages/dv/timeline/src/index.ts
+index 5555555555..6666666666 100644
+--- a/packages/dv/timeline/src/index.ts
++++ b/packages/dv/timeline/src/index.ts
+@@ -20 +20,3 @@ export const name = 'timeline'
+-const CLIP_LIMIT = 64
++const CLIP_LIMIT = 128
++const TRACK_LIMIT = 8
++const FADE_SECONDS = 0.5
