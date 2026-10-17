@@ -182,7 +182,8 @@ async function start(options: StartOptions = {}): Promise<Fixture> {
   const tasks: TaskId[] = options.tasks ?? ['ref2v', 't2v']
   const removers = options.shotRender === true
     ? tasks.map(task => ctx.dvModels.register(renderingModel(task)))
-    : [ctx.dvProject.registerOperation(standIn(options)), ...tasks.map(task => ctx.dvModels.register(model('fake', task)))]
+    : [ctx.dvProject.registerComponent('shot'), ctx.dvProject.registerOperation(standIn(options)),
+      ...tasks.map(task => ctx.dvModels.register(model('fake', task)))]
   disposers.push(async () => {
     for (const remove of removers) remove()
     await ctx.fiber.dispose()

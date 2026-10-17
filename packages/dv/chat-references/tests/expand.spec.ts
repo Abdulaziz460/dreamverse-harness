@@ -36,10 +36,7 @@ const sources: ExpansionSources = {
         }],
       },
       bible: { characters: { [lead.id]: [lead] }, locations: {}, styles: {} },
-      plan: { plans: {} },
-      shot: { takes: {}, roots: {} },
-      asset: { placed: [] },
-    },
+    } as ProjectState['components'],
   }),
   getRecord: (_project, id) => id === shot.id ? shot : undefined,
 }

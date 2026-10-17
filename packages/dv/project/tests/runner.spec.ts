@@ -261,6 +261,28 @@ describe('Runner', () => {
       .toThrow(expect.objectContaining({ code: 'invalid_params' }))
   })
 
+  it('registers an operation only after a plugin registers its component', () => {
+    const m = startModules()
+    expect(() => m.runner.registerOperation(operation({ name: 'image.generate', component: 'image' })))
+      .toThrow(expect.objectContaining({ code: 'invalid_params' }))
+    const disposeComponent = m.runner.registerComponent('image')
+    expect(() => m.runner.registerComponent('image')).toThrow(expect.objectContaining({ code: 'component_exists' }))
+    m.runner.registerOperation(operation({ name: 'image.generate', component: 'image' }))
+    expect(m.runner.listOperations().map(spec => spec.name)).toEqual(['image.generate'])
+    disposeComponent()
+    m.runner.registerComponent('image')
+  })
+
+  it('refuses a second operation with a registered name until the first one is removed', () => {
+    const m = startModules()
+    const dispose = m.runner.registerOperation(operation({ name: 'shot.render', component: 'shot' }))
+    expect(() => m.runner.registerOperation(operation({ name: 'shot.render', component: 'shot' })))
+      .toThrow(expect.objectContaining({ code: 'operation_exists' }))
+    dispose()
+    m.runner.registerOperation(operation({ name: 'shot.render', component: 'shot' }))
+    expect(m.runner.listOperations().map(spec => spec.name)).toEqual(['shot.render'])
+  })
+
   it('refuses an operation whose name does not start with its component key', () => {
     const m = startModules()
     expect(() => m.runner.registerOperation(operation({ name: 'timeline.create', component: 'inspect' })))
