@@ -49,21 +49,21 @@ DreamVerse bundle [`@dv/bundle`](../../bundle/dv/README.zh.md) 以行 `dv-models
 
 | 字段 | 含义 | 本包中的值 |
 | --- | --- | --- |
-| `modality` | 任务产生的输出。`ModalityMap` 声明模态名称。 | `video` |
-| `task` | 生成任务。`TaskMap` 声明每个任务名称，并把它映射到该任务产生的模态。 | `t2v`：只由提示词生成视频。`ref2v`：由参考媒体和提示词生成视频，可选首帧。 |
+| `modality` | 任务产生的输出：该任务所用原语的 `modality`。 | `video` |
+| `task` | 生成任务。`TaskMap` 声明每个任务名称，并把它映射到该任务所用的原语。 | `t2v`：只由提示词生成视频。`ref2v`：由参考媒体和提示词生成视频，可选首帧。 |
 | `provider` | 提供方的名称。提供方插件设定该名称。 | 每个提供方插件自己设定名称，如 `fastvideo`。 |
 | `model` | 提供方为模型取的名称。 | 每个提供方插件自己设定名称，如 `fasth3`。 |
 
-服务两个任务的模型有两个条目，每个任务一个。插件在自己的包中通过 TypeScript 声明合并添加模态或任务，例如 `declare module '@dv/models' { interface TaskMap { v2v: 'video' } }`。任务名称的值是该任务产生的模态。两个插件可以用相同的值声明相同的名称。TypeScript 会合并这两个声明。用不同的值声明相同的名称无法编译。
+服务两个任务的模型有两个条目，每个任务一个。原语是生成的一种输入和输出签名，如 `video`。`PrimitiveTypes` 为每个原语声明一行：它的 `modality`、构建请求所依据的 `facts`、`request`、`render` 的 `result`，以及只有该原语读取的 `entry` 字段。本包只声明 `video` 行。插件在自己的包中通过 TypeScript 声明合并添加原语行或任务，例如 `declare module '@dv/models' { interface TaskMap { v2v: 'video' } }`。任务名称的值是该任务所用的原语。`TaskOfPrimitive<P>` 是原语 `P` 的一个任务，如 `video` 的 `t2v | ref2v`。两个插件可以用相同的值声明相同的名称。TypeScript 会合并这两个声明。用不同的值声明相同的名称无法编译。
 
 ### 模型条目
 
-提供方插件为每个键实现一个 `ModelEntry`。`ModelEntry` 有四个键字段和下表中的成员：
+提供方插件为每个键实现一个 `ModelEntry`。`ModelEntry<T>` 从任务 `T` 所用原语的行中取得 `entry` 字段，以及事实、请求和 `render` 结果的类型。`video` 任务的 `ModelEntry` 有四个键字段和下表中的成员：
 
 | 成员 | 约定 |
 | --- | --- |
 | `description` | 模型的长处和短处。agent 和用户比较描述，在相似的模型之间选择。 |
-| `gpuSecondsPerVideoSecond` | 渲染一秒视频所用的 GPU 秒数。消费方把它乘以镜头时长，在渲染开始前估算渲染的 GPU 时间。 |
+| `gpuSecondsPerVideoSecond` | `video` 行的一个 `entry` 字段。渲染一秒视频所用的 GPU 秒数。消费方把它乘以镜头时长，在渲染开始前估算渲染的 GPU 时间。 |
 | `facts()` | resolve 为后端报告的 `RenderModelFacts`。后端无法连接时 reject。 |
 | `schema()` | resolve 为描述模型所接受请求的 JSON：各输入及其媒体类型和数量，以及 `extra` 中的参数。提供方插件定义该 JSON。模型目录把它原样交给 agent。后端无法连接时 reject。 |
 | `validateGenerationRequest(request)` | resolve 为模型无法渲染某个 `RenderRequest` 的每个原因，每个原因一句面向 agent 的话。原因包括无效的 `extra` 值。模型能渲染该请求时 resolve 为空列表。后端无法连接时 reject。 |
@@ -160,7 +160,7 @@ DSH skill 注册表（`skills`）挂载期间，本服务从 `skills/video-model
 | 文件 | 内容 |
 | --- | --- |
 | [`src/index.ts`](src/index.ts) | `Config`、`formatModelKey`、`DvModels` 服务和两个工具 |
-| [`src/types.ts`](src/types.ts) | `ModalityMap`、`TaskMap`、`ModelKey`、`RenderModelFacts`、`RenderRequest`、`RenderStreamEvent`、`ModelEntry`、`ModelFilter` |
+| [`src/types.ts`](src/types.ts) | `PrimitiveTypes`、`PrimitiveId`、`TaskMap`、`ModalityId`、`TaskOfPrimitive`、`ModelKey`、`RenderModelFacts`、`RenderRequest`、`RenderStreamEvent`、`ModelEntry`、`ModelFilter` |
 | [`skills/video-model-selection.md`](skills/video-model-selection.md) | 模型选择 skill |
 | [`tests/models.spec.ts`](tests/models.spec.ts) | Loader 组合中的模型目录、工具、skill 和系统提示词 |
 

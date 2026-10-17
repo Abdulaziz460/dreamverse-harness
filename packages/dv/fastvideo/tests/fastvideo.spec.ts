@@ -20,10 +20,13 @@ import Loader from '@deepseek-ai/cordis-plugin-loader'
 import SkillRegistry from '@deepseek-ai/dsh-skill'
 import DvAssetPool, { type AssetId } from '@dv/asset-pool'
 import DvFfmpeg from '@dv/ffmpeg'
-import DvModels, { type ModelEntry, type RenderStreamEvent, type TaskId } from '@dv/models'
+import DvModels, { type ModelEntry, type RenderStreamEvent, type TaskOfPrimitive } from '@dv/models'
 import DvProject from '@dv/project'
 import { afterEach, describe, expect, it } from 'vitest'
 import * as FastVideo from '../src/index.ts'
+
+/** A task of the video entries that fasth3 serves. */
+type VideoTask = TaskOfPrimitive<'video'>
 
 /** The reference image of the opt-in run against a running server. */
 const REAL_REFERENCE = '/mnt/lustre/vlm-d1su/codes/dsh-dv-hub/elon-musk.jpg'
@@ -152,10 +155,15 @@ async function start(tasks: { ref2v?: string; t2v?: string }): Promise<Context> 
   return ctx
 }
 
+/** Whether a catalog entry serves a video task; narrows its facts, request and result to the video row. */
+function isVideoEntry(entry: ModelEntry): entry is ModelEntry<VideoTask> {
+  return entry.modality === 'video'
+}
+
 /** The registered `fasth3` entry for a task. */
-function fasth3(ctx: Context, task: TaskId): ModelEntry {
+function fasth3(ctx: Context, task: VideoTask): ModelEntry<VideoTask> {
   const entry = ctx.dvModels.get({ modality: 'video', task, provider: 'fastvideo', model: 'fasth3' })
-  if (entry === undefined) throw new Error(`fasth3 is not registered for task ${task}`)
+  if (entry === undefined || !isVideoEntry(entry)) throw new Error(`fasth3 is not registered for task ${task}`)
   return entry
 }
 
@@ -185,7 +193,7 @@ describe('dv-fastvideo', () => {
   it('registers fasth3 once per configured task, each with the facts and schema of its own server', async () => {
     const [reference, text] = await Promise.all([startFakeServer(REFERENCE_CAPABILITIES), startFakeServer(TEXT_CAPABILITIES)])
     const ctx = await start({ ref2v: reference.url, t2v: text.url })
-    expect(ctx.dvModels.list().map(({ modality, task, provider, model, gpuSecondsPerVideoSecond }) =>
+    expect(ctx.dvModels.list().filter(isVideoEntry).map(({ modality, task, provider, model, gpuSecondsPerVideoSecond }) =>
       ({ modality, task, provider, model, gpuSecondsPerVideoSecond }))).toEqual([
       { modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', gpuSecondsPerVideoSecond: 4 },
       { modality: 'video', task: 't2v', provider: 'fastvideo', model: 'fasth3', gpuSecondsPerVideoSecond: 1.5 },
@@ -219,7 +227,7 @@ describe('dv-fastvideo', () => {
     const [image, otherImage, thirdImage] = [asset('IMG1', 'image/png'), asset('IMG2', 'image/png'), asset('IMG3', 'image/png')]
     const [audio, json] = [asset('AUD1', 'audio/mpeg'), asset('{}', 'application/json')]
     // A request with a first frame cites it, as the fasth3 prompt rule asks.
-    const check = (entry: ModelEntry, references: AssetId[], firstFrame: AssetId | null) => entry.validateGenerationRequest({
+    const check = (entry: ModelEntry<VideoTask>, references: AssetId[], firstFrame: AssetId | null) => entry.validateGenerationRequest({
       ...request(references, firstFrame), prompt: firstFrame === null ? '<Picture 1> smiles' : '@[首帧](dv:input/first_frame) smiles',
     })
     expect(await check(referenceTask, [video, image], image)).toEqual([])

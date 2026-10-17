@@ -49,21 +49,21 @@ A provider is a video generation system, such as FastVideo, fal, or SGLang. A se
 
 | Field | Meaning | Values in this package |
 | --- | --- | --- |
-| `modality` | The output that the task produces. `ModalityMap` declares the modality names. | `video` |
-| `task` | The generation task. `TaskMap` declares each task name and maps it to the modality that it produces. | `t2v`: a video from the prompt only. `ref2v`: a video from reference media and the prompt, with an optional first frame. |
+| `modality` | The output that the task produces: the `modality` of the primitive that the task runs on. | `video` |
+| `task` | The generation task. `TaskMap` declares each task name and maps it to the primitive that it runs on. | `t2v`: a video from the prompt only. `ref2v`: a video from reference media and the prompt, with an optional first frame. |
 | `provider` | The name of the provider. The provider plugin sets this name. | Each provider plugin sets its own name, such as `fastvideo`. |
 | `model` | The name that the provider gives to the model. | Each provider plugin sets its own names, such as `fasth3`. |
 
-A model that serves two tasks has two entries, one for each task. A plugin adds a modality or a task in its own package through TypeScript declaration merging, for example `declare module '@dv/models' { interface TaskMap { v2v: 'video' } }`. The value of a task name is the modality that the task produces. Two plugins can declare the same name with the same value. TypeScript merges the two declarations. Declarations of the same name with different values do not compile.
+A model that serves two tasks has two entries, one for each task. A primitive is one input and output signature of generation, such as `video`. `PrimitiveTypes` declares one row for each primitive: its `modality`, the `facts` that a request is built from, the `request`, the `result` of `render`, and the `entry` fields that only this primitive reads. This package declares only the `video` row. A plugin adds a primitive row or a task in its own package through TypeScript declaration merging, for example `declare module '@dv/models' { interface TaskMap { v2v: 'video' } }`. The value of a task name is the primitive that the task runs on. `TaskOfPrimitive<P>` is one task of primitive `P`, such as `t2v | ref2v` for `video`. Two plugins can declare the same name with the same value. TypeScript merges the two declarations. Declarations of the same name with different values do not compile.
 
 ### Model entries
 
-A provider plugin implements one `ModelEntry` for each key. A `ModelEntry` has the four key fields and the members in this table:
+A provider plugin implements one `ModelEntry` for each key. `ModelEntry<T>` takes the `entry` fields and the types of its facts, request and `render` result from the row of the primitive that task `T` runs on. A `ModelEntry` of a `video` task has the four key fields and the members in this table:
 
 | Member | Contract |
 | --- | --- |
 | `description` | The strengths and weaknesses of the model. The agent and the user compare descriptions to choose between similar models. |
-| `gpuSecondsPerVideoSecond` | The GPU seconds for one second of rendered video. A consumer multiplies it by the shot duration to estimate the GPU time of a render before the render starts. |
+| `gpuSecondsPerVideoSecond` | An `entry` field of the `video` row. The GPU seconds for one second of rendered video. A consumer multiplies it by the shot duration to estimate the GPU time of a render before the render starts. |
 | `facts()` | Resolves with the `RenderModelFacts` that the backend reports. Rejects when the backend cannot be reached. |
 | `schema()` | Resolves with a JSON description of the requests that the model accepts: the inputs with their media types and counts, and the parameters in `extra`. The provider plugin defines this JSON. The catalog gives it to the agent unchanged. Rejects when the backend cannot be reached. |
 | `validateGenerationRequest(request)` | Resolves with each reason that the model cannot render a `RenderRequest`, one agent-facing sentence for each reason. The reasons include invalid `extra` values. Resolves with an empty list when the model can render the request. Rejects when the backend cannot be reached. |
@@ -160,7 +160,7 @@ While the DSH skill registry (`skills`) is mounted, the service registers the ru
 | File | Content |
 | --- | --- |
 | [`src/index.ts`](src/index.ts) | `Config`, `formatModelKey`, the `DvModels` service, and the two tools |
-| [`src/types.ts`](src/types.ts) | `ModalityMap`, `TaskMap`, `ModelKey`, `RenderModelFacts`, `RenderRequest`, `RenderStreamEvent`, `ModelEntry`, `ModelFilter` |
+| [`src/types.ts`](src/types.ts) | `PrimitiveTypes`, `PrimitiveId`, `TaskMap`, `ModalityId`, `TaskOfPrimitive`, `ModelKey`, `RenderModelFacts`, `RenderRequest`, `RenderStreamEvent`, `ModelEntry`, `ModelFilter` |
 | [`skills/video-model-selection.md`](skills/video-model-selection.md) | The model selection skill |
 | [`tests/models.spec.ts`](tests/models.spec.ts) | The catalog, the tools, the skill, and the system prompt in a Loader composition |
 

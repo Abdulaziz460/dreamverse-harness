@@ -24,10 +24,13 @@ import DvProject, {
   type AssetId, type OperationSpec, type OperationToolValue, type ProjectId, type ProjectRecord, type RecordId,
   type Reducer, type ReferenceKindSpec, type RunRequest, type SessionId,
 } from '@dv/project'
-import DvModels, { type ModelEntry, type RenderModelFacts, type RenderRequest, type RenderStreamEvent, type TaskId } from '@dv/models'
+import DvModels, { type ModelEntry, type RenderModelFacts, type RenderRequest, type RenderStreamEvent, type TaskOfPrimitive } from '@dv/models'
 import { afterEach, describe, expect, it } from 'vitest'
 import DvShotRender from '../src/index.ts'
 import { backendSeconds, shotGeometry } from '../src/render.ts'
+
+/** A task of the video entries that these tests register. */
+type VideoTask = TaskOfPrimitive<'video'>
 
 declare module '@dv/project' {
   interface ReferenceKinds { test_character: string }
@@ -44,7 +47,7 @@ function framesByDuration(min: number, max: number): Record<string, number> {
 }
 
 /** Facts with small frames so the fake model renders quickly. */
-function testFacts(task: TaskId): RenderModelFacts {
+function testFacts(task: VideoTask): RenderModelFacts {
   return {
     modelId: `test-${task}`, aspectRatios: ['16:9', '9:16'], resolutions: ['720p'],
     frameSizes: { '16:9': { '720p': [192, 112] }, '9:16': { '720p': [112, 192] } }, minDurationSec: 1, maxDurationSec: 5,
@@ -121,7 +124,7 @@ class FakeLane {
  * @param model - the model name.
  * @returns the entry.
  */
-function fakeEntry(task: TaskId, lane: FakeLane, model = 'fake'): ModelEntry {
+function fakeEntry(task: VideoTask, lane: FakeLane, model = 'fake'): ModelEntry<VideoTask> {
   return {
     modality: 'video', task, provider: 'test', model, description: 'Solid-color clips',
     gpuSecondsPerVideoSecond: task === 'ref2v' ? 3 : 1.5,
@@ -222,7 +225,7 @@ afterEach(async () => {
  *   stream service is provided, and the GPU budget of a turn.
  * @returns the fixture, with a project bound to chat session `s1` and the test-only character operation.
  */
-async function start(options: { tasks?: TaskId[]; live?: FakeLiveStream; budget?: number } = {}): Promise<Fixture> {
+async function start(options: { tasks?: VideoTask[]; live?: FakeLiveStream; budget?: number } = {}): Promise<Fixture> {
   const dir = mkdtempSync(join(tmpdir(), 'dv-shot-render-'))
   const globals = globalThis as typeof globalThis & { __dvShotRenderComposition?: typeof PLUGINS }
   globals.__dvShotRenderComposition = PLUGINS
@@ -251,7 +254,7 @@ async function start(options: { tasks?: TaskId[]; live?: FakeLiveStream; budget?
   ctx.loader.builtins.include = Include
   await ctx.loader.create({ name: 'cordis:include', config: { path: pathToFileURL(join(dir, 'cordis.yml')).href } })
   await ctx.loader.await()
-  const lanes: Record<TaskId, FakeLane> = { ref2v: reference, t2v: text }
+  const lanes: Record<VideoTask, FakeLane> = { ref2v: reference, t2v: text }
   for (const task of tasks) ctx.effect(() => ctx.dvModels.register(fakeEntry(task, lanes[task])))
   disposers.push(async () => {
     await ctx.fiber.dispose()
