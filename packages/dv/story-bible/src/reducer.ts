@@ -1,8 +1,8 @@
 /**
  * The `bible` reducer: every version of each character, location and style, from the finished `bible.*` records. Each
  * kind is also a reference kind of Project, which answers from the slice: `assetsOf` (the reference images a
- * `<id>@<version>` input stands for) and `createdBy` (the record that wrote that version, which Project treats as the
- * input's producer for stale marks).
+ * `<id>@<version>` input stands for), `createdBy` (the record that wrote that version, which Project treats as the
+ * input's producer for stale marks) and `latest` (an ID's newest version, which Project's `kindsWithId` reads).
  *
  * @module @dv/story-bible/reducer
  */
@@ -45,16 +45,6 @@ function versionsOf(slice: StoryBibleState, kind: BibleKind): Record<string, Ver
 }
 
 /**
- * The kind an ID belongs to; IDs are unique across the three kinds.
- * @param slice - the `bible` slice.
- * @param id - a character, location or style ID.
- * @returns the kind, or null for an unknown ID.
- */
-export function kindOf(slice: StoryBibleState, id: string): BibleKind | null {
-  return BIBLE_KINDS.find(kind => versionsOf(slice, kind)[id] !== undefined) ?? null
-}
-
-/**
  * @param slice - the `bible` slice.
  * @param kind - a kind.
  * @param id - an ID of that kind.
@@ -77,6 +67,7 @@ export function referenceKind(kind: BibleKind): ReferenceKindSpec<'bible'> {
     component: 'bible',
     assetsOf: (slice, id, version) => versionOf(slice, id, version)?.references ?? null,
     createdBy: (slice, id, version) => versionOf(slice, id, version)?.created_by ?? null,
+    latest: (slice, id) => latestVersion(slice, kind, id)?.version ?? null,
   }
 }
 

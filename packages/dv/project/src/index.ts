@@ -445,6 +445,28 @@ export default class DvProject extends Service {
   }
 
   /**
+   * The reference kinds that have an ID. IDs are unique across kinds: a kind owner's create refuses an ID that this
+   * lists.
+   * @param state - the state to look in, normally the state at the create's parent.
+   * @param id - the ID, such as `p1`.
+   * @returns the kinds whose `latest` knows the ID, in registration order.
+   */
+  kindsWithId(state: ProjectState, id: string): readonly string[] {
+    return this.reducers.kindsWithId(state, id)
+  }
+
+  /**
+   * The newest version of an ID in one reference kind, from the kind's `latest`.
+   * @param state - the state to look in, normally the project's current state.
+   * @param kind - a reference kind.
+   * @param id - the ID.
+   * @returns the version, or null for an unknown ID or a kind that is not registered.
+   */
+  latestVersion(state: ProjectState, kind: string, id: string): number | null {
+    return this.reducers.latestVersion(state, kind, id)
+  }
+
+  /**
    * Parse one reference text: `<record>#<n>` names output n of a record, `<id>@<n>` version n of the one reference
    * kind that has it, anything else an asset.
    * @param text - the reference text.

@@ -1,8 +1,8 @@
 /**
  * Tests of the reducer registry and Project's own `proj` slice: slices computed from the records of the effective chain,
- * one reducer per key, one owner per reference kind, stale and superseded marks, stale acceptance, and version references
- * resolved, and their producers found, through their reference kind. Records are appended after the head directly
- * through the record store.
+ * one reducer per key, one owner per reference kind, stale and superseded marks, stale acceptance, version references
+ * resolved, and their producers found, through their reference kind, and the kinds and newest version of an ID. Records
+ * are appended after the head directly through the record store.
  */
 import { brandString } from '@deepseek-ai/dsh-brand'
 import { describe, expect, it } from 'vitest'
@@ -170,6 +170,37 @@ describe('reducers', () => {
     // A kind that is not registered, and an asset, stand for no version.
     expect(m.reducers.assetsOf(withBible, { test_location: HERO, version: 1 })).toBeNull()
     expect(m.reducers.assetsOf(withBible, { asset: face })).toBeNull()
+  })
+
+  it('lists the kinds that have an ID and the newest version of an ID, on the slice of each owner', async () => {
+    const m = startModules()
+    const project = await createTestProject(m)
+    m.reducers.registerKind(testKind('test_character'))
+    m.reducers.registerKind(testKind('test_location'))
+    // A kind whose owner has no reducer knows no ID.
+    expect(m.reducers.kindsWithId(m.reducers.getState(project), HERO)).toEqual([])
+    m.reducers.register('test_bible', {
+      initial: () => ({ assets: {}, creators: {} }),
+      reduce(slice, record) {
+        if (record.operation !== 'bible.write') return slice
+        const kind = String(record.params['kind'])
+        const key = versionKey(kind, HERO, Object.keys(slice?.creators ?? {}).filter(entry => entry.startsWith(`${kind}:`)).length + 1)
+        return { assets: slice?.assets ?? {}, creators: { ...slice?.creators, [key]: record.id } }
+      },
+    })
+    const write = (kind: string) => append(m, project, { component: 'bible', operation: 'bible.write', params: { kind } })
+    await write('test_location')
+    await write('test_location')
+    const located = m.reducers.getState(project)
+    expect(m.reducers.kindsWithId(located, HERO)).toEqual(['test_location'])
+    expect(m.reducers.latestVersion(located, 'test_location', HERO)).toBe(2)
+    expect(m.reducers.latestVersion(located, 'test_character', HERO)).toBeNull()
+    await write('test_character')
+    // The kinds come in registration order, whichever wrote the ID first.
+    expect(m.reducers.kindsWithId(m.reducers.getState(project), HERO)).toEqual(['test_character', 'test_location'])
+    // An unknown ID, and a kind that is not registered, have no version.
+    expect(m.reducers.kindsWithId(located, 'villain')).toEqual([])
+    expect(m.reducers.latestVersion(located, 'test_style', HERO)).toBeNull()
   })
 
   it('marks records that read a superseded character version stale', async () => {

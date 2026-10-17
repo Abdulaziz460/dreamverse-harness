@@ -37,6 +37,7 @@ const propKind: ReferenceKindSpec<never> = {
   kind: 'prop', component: 'prop' as never,
   assetsOf: (slice: PropSlice, id, version) => slice[id]?.[version - 1]?.assets ?? null,
   createdBy: (slice: PropSlice, id, version) => slice[id]?.[version - 1]?.record ?? null,
+  latest: (slice: PropSlice, id) => slice[id]?.length ?? null,
 }
 
 /** `prop.create` or `prop.update`; an update replaces the record of the prop's previous version. */

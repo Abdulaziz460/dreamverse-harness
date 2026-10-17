@@ -17,7 +17,9 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import DvAssetPool from '@dv/asset-pool'
 import DvFfmpeg from '@dv/ffmpeg'
-import DvProject, { type AssetId, type OperationToolValue, type ProjectId, type RecordOrigin, type SessionId } from '@dv/project'
+import DvProject, {
+  type AssetId, type OperationToolValue, type ProjectId, type ProjectRecord, type RecordId, type RecordOrigin, type SessionId,
+} from '@dv/project'
 import { afterEach, describe, expect, it } from 'vitest'
 import DvStoryBible, { type CharacterId } from '../src/index.ts'
 
@@ -97,6 +99,38 @@ async function start(): Promise<Fixture> {
       return ctx.tools.execute({ callId: ToolCallId(`call-${calls}`), name, arguments: args, signal: new AbortController().signal, agent: { id: 's1' } as never })
     },
   }
+}
+
+/** The `test_prop` slice: the record that wrote each version of a test prop, oldest first, by ID. */
+type TestPropSlice = Record<string, RecordId[]>
+
+/**
+ * Register a test-only reference kind `test_prop` with `string` IDs, owned by the component `test_prop`, and its create
+ * `test_prop.create`, which refuses an ID that `kindsWithId` lists, as a kind owner's create does.
+ * @param project - the `dvProject` service.
+ */
+function registerTestProp(project: Context['dvProject']): void {
+  project.registerComponent('test_prop')
+  project.registerReducer('test_prop' as never, {
+    initial: (): TestPropSlice => ({}),
+    reduce: (slice: TestPropSlice, record: ProjectRecord): TestPropSlice => (
+      record.operation === 'test_prop.create' && record.status === 'done' ? { ...slice, [String(record.params['id'])]: [record.id] } : slice),
+  } as never)
+  project.registerReferenceKind({
+    kind: 'test_prop', component: 'test_prop' as never, assetsOf: () => [],
+    createdBy: (slice: TestPropSlice, id, version) => slice[id]?.[version - 1] ?? null,
+    latest: (slice: TestPropSlice, id) => slice[id]?.length ?? null,
+  })
+  project.registerOperation({
+    name: 'test_prop.create', component: 'test_prop', version: '1', description: 'Test prop create.',
+    params: { id: { type: 'string', required: true, description: 'The ID.' } }, inputs: {},
+    outputs: [], deterministic: false, resource: 'none', confirm: 'never', summarize: () => 'test prop created',
+    execute(context) {
+      const used = project.kindsWithId(context.state, String(context.params['id']))
+      if (used.length > 0) throw new Error(`The ID already names a ${used.join(', ')}.`)
+      return Promise.resolve({ outputs: [] })
+    },
+  })
 }
 
 /** The value of a successful operation tool call. */
@@ -185,6 +219,30 @@ describe('dvStoryBible', () => {
       .filter(record => record.status === 'failed').map(record => record.error?.code)
     expect(failed).toEqual(['operation_failed', 'operation_failed', 'operation_failed'])
     expect(Object.keys(fixture.ctx.dvProject.getState(fixture.project).components.bible.characters)).toEqual([])
+  })
+
+  it('refuses a character whose ID a test_prop has', async () => {
+    const fixture = await start()
+    registerTestProp(fixture.ctx.dvProject)
+    const prop = await fixture.ctx.dvProject.run({ ...HUMAN, project: fixture.project, operation: 'test_prop.create', params: { id: 'p1' }, inputs: [] })
+    expect(prop.record?.status).toBe('done')
+    expect(fixture.ctx.dvProject.kindsWithId(fixture.ctx.dvProject.getState(fixture.project), 'p1')).toEqual(['test_prop'])
+    expect(failure(await fixture.call('dv_bible_character_create', { reason: 'clash', character: 'p1', name: 'X' })))
+      .toBe("The ID 'p1' already names a test_prop; update it, or choose another ID.")
+    expect(fixture.ctx.dvProject.getState(fixture.project).components.bible.characters).toEqual({})
+  })
+
+  it('gives the ID of a character to kindsWithId, so a test_prop with that ID is refused', async () => {
+    const fixture = await start()
+    registerTestProp(fixture.ctx.dvProject)
+    value(await fixture.call('dv_bible_character_create', { reason: 'lead', character: 'c1', name: 'Lead' }))
+    value(await fixture.call('dv_bible_character_update', { reason: 'rename', character: 'c1', name: 'Hero' }))
+    const state = fixture.ctx.dvProject.getState(fixture.project)
+    expect(fixture.ctx.dvProject.kindsWithId(state, 'c1')).toEqual(['character'])
+    expect(fixture.ctx.dvProject.latestVersion(state, 'character', 'c1')).toBe(2)
+    const prop = await fixture.ctx.dvProject.run({ ...HUMAN, project: fixture.project, operation: 'test_prop.create', params: { id: 'c1' }, inputs: [] })
+    expect(prop.record).toMatchObject({ status: 'failed', error: { code: 'operation_failed', message: 'The ID already names a character.' } })
+    expect(fixture.ctx.dvProject.kindsWithId(fixture.ctx.dvProject.getState(fixture.project), 'c1')).toEqual(['character'])
   })
 
   it('takes a version an undo took back off the state, and frees its ID there', async () => {

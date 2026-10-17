@@ -177,6 +177,7 @@ const characterKind: ReferenceKindSpec<never> = {
   kind: 'test_character', component: 'bible' as never,
   assetsOf: (slice: BibleSlice, id, version) => versionOf(slice, id, version)?.references ?? null,
   createdBy: (slice: BibleSlice, id, version) => versionOf(slice, id, version)?.record ?? null,
+  latest: (slice: BibleSlice, id) => slice[id]?.length ?? null,
 }
 
 /** The test-only `bible` reducer, which holds the character versions. */

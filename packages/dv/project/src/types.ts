@@ -81,6 +81,8 @@ export interface ReferenceKindSpec<K extends keyof ComponentStates = keyof Compo
   assetsOf(slice: ComponentStates[K], id: string, version: number): AssetId[] | null
   /** @returns the record that wrote the version (its producer for stale marks), or null for an unknown version. */
   createdBy(slice: ComponentStates[K], id: string, version: number): RecordId | null
+  /** @returns the newest version of the ID, or null when the kind has no such ID. */
+  latest(slice: ComponentStates[K], id: string): number | null
 }
 
 /** One input of a record: what the operation read. */

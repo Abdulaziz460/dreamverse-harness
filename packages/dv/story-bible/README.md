@@ -45,12 +45,12 @@ The `bible` slice of `ProjectState` is `StoryBibleState`: `characters`, `locatio
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
 
-The reducer reads only finished `bible.*` records. A version's reference images are the resolved assets of the record's `reference` inputs, so the runner checks that they exist and the record lists them as what it read. Each kind is registered with `dvProject.registerReferenceKind` and answers from the `bible` slice: `assetsOf` resolves an `<id>@<version>` input to its reference images, and `createdBy` names the record that wrote a version (Project treats it as the input's producer for stale marks and for parsing `<id>@<version>`). The versions follow the current state: an undo that goes back before a version takes that version off the state, and its ID is free again in that state.
+The reducer reads only finished `bible.*` records. A version's reference images are the resolved assets of the record's `reference` inputs, so the runner checks that they exist and the record lists them as what it read. Each kind is registered with `dvProject.registerReferenceKind` and answers from the `bible` slice: `assetsOf` resolves an `<id>@<version>` input to its reference images, `createdBy` names the record that wrote a version (Project treats it as the input's producer for stale marks and for parsing `<id>@<version>`), and `latest` gives an ID's newest version. A create refuses an ID that `dvProject.kindsWithId` lists, so one ID never names items of two reference kinds. The versions follow the current state: an undo that goes back before a version takes that version off the state, and its ID is free again in that state.
 
 | File | Content |
 | --- | --- |
 | [`src/index.ts`](src/index.ts) | `dvStoryBible`: the six operations and their ID checks |
-| [`src/reducer.ts`](src/reducer.ts) | The `bible` reducer, and the reference kinds with `assetsOf` and `createdBy` |
+| [`src/reducer.ts`](src/reducer.ts) | The `bible` reducer, and the reference kinds with `assetsOf`, `createdBy` and `latest` |
 | [`src/types.ts`](src/types.ts) | `Character`, `Location`, `Style`, `StoryBibleState` and the `ComponentStates` and `ReferenceKinds` declarations |
 
 -----
@@ -70,7 +70,7 @@ The reducer reads only finished `bible.*` records. A version's reference images 
 
 #### What the model sees
 
-Six tools, `dv_bible_character_create`, `dv_bible_character_update`, `dv_bible_location_create`, `dv_bible_location_update`, `dv_bible_style_create` and `dv_bible_style_update`, in the format `@dv/project` gives every operation tool. Each takes the ID under the kind's name (`character`, `location` or `style`), `name`, `description` ("Words carried into every prompt: wardrobe, mood, or look."), and `inputs.reference` with asset IDs. A create description says what the kind is, that a shot names it as the input `<character>@1`, and that the ID must not name another character, location or style; an update description says that the next version keeps what the call does not change and marks everything made with the previous version as stale.
+Six tools, `dv_bible_character_create`, `dv_bible_character_update`, `dv_bible_location_create`, `dv_bible_location_update`, `dv_bible_style_create` and `dv_bible_style_update`, in the format `@dv/project` gives every operation tool. Each takes the ID under the kind's name (`character`, `location` or `style`), `name`, `description` ("Words carried into every prompt: wardrobe, mood, or look."), and `inputs.reference` with asset IDs. A create description says what the kind is, that a shot names it as the input `<character>@1`, and that the ID must not name another character, location, style or any other item that an input names as `<id>@<version>`; an update description says that the next version keeps what the call does not change and marks everything made with the previous version as stale.
 
 #### Token effect
 

@@ -14,7 +14,7 @@
 import { Service, type Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type { OperationContext, OperationResult, OperationSpec, ProjectState, RecordId } from '@dv/project'
-import { BIBLE_KINDS, bibleReducer, kindOf, latestVersion, referenceKind, type BibleKind } from './reducer.ts'
+import { BIBLE_KINDS, bibleReducer, latestVersion, referenceKind, type BibleKind } from './reducer.ts'
 
 export * from './types.ts'
 export { bibleReducer } from './reducer.ts'
@@ -65,7 +65,7 @@ export default class DvStoryBible extends Service {
     ctx.effect(() => ctx.dvProject.registerReducer('bible', bibleReducer), 'dvStoryBible reducer')
     for (const kind of BIBLE_KINDS) {
       ctx.effect(() => ctx.dvProject.registerReferenceKind(referenceKind(kind)), `dvStoryBible kind ${kind}`)
-      for (const spec of [createOperation(kind), updateOperation(kind)]) {
+      for (const spec of [createOperation(kind, ctx.dvProject), updateOperation(kind)]) {
         ctx.effect(() => ctx.dvProject.registerOperation(spec), `dvStoryBible ${spec.name}`)
       }
     }
@@ -73,17 +73,19 @@ export default class DvStoryBible extends Service {
 }
 
 /**
- * `bible.<kind>_create`: version 1 of a new ID.
+ * `bible.<kind>_create`: version 1 of an ID that no reference kind has.
  * @param kind - the kind.
+ * @param project - the service whose `kindsWithId` lists the reference kinds that have an ID.
  * @returns the operation.
  */
-function createOperation(kind: BibleKind): OperationSpec {
+function createOperation(kind: BibleKind, project: Pick<Context['dvProject'], 'kindsWithId'>): OperationSpec {
   return {
     name: `bible.${kind}_create`,
     component: 'bible',
     version: '1',
     description: `Create a ${kind} (${MEANING[kind]}) with its reference images. Writes version 1; a shot names it as the input `
-      + `<${kind}>@1, which stands for those reference images. The ID must not name another character, location or style.`,
+      + `<${kind}>@1, which stands for those reference images. The ID must not name another character, location, style or any `
+      + 'other item that an input names as <id>@<version>.',
     inputs: REFERENCE_INPUT,
     params: {
       [kind]: { type: 'string', required: true, description: 'Short stable ID, such as c1; without @ or #.' },
@@ -98,8 +100,8 @@ function createOperation(kind: BibleKind): OperationSpec {
     execute(context: OperationContext): Promise<OperationResult> {
       const id = text(context.params[kind])
       if (id === '' || /[@#]/.test(id)) throw new Error(`The ${kind} ID '${id}' must be non-empty and contain no @ or #.`)
-      const used = kindOf(context.state.components.bible, id)
-      if (used !== null) throw new Error(`The ID '${id}' already names a ${used}; update it, or choose another ID.`)
+      const used = project.kindsWithId(context.state, id)
+      if (used.length > 0) throw new Error(`The ID '${id}' already names a ${used.join(', ')}; update it, or choose another ID.`)
       return Promise.resolve({ outputs: [] })
     },
   }

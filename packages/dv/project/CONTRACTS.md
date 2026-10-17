@@ -131,6 +131,8 @@ Owner: agent D.
 | `register(key, reducer)`             | One reducer per key (`reducer_exists`). Registration order is the call order of `reduce`. Returns a remover.                                           |
 | `registerKind(spec)`                 | One owner per reference kind (`kind_exists`). `listReferenceKinds()` returns registration order. Returns a remover.                                    |
 | `kindsWithVersion(state, id, n)`     | The kinds whose `createdBy(owner slice, id, n)` is not null, in registration order.                                                                    |
+| `kindsWithId(state, id)`             | The kinds whose `latest(owner slice, id)` is not null, in registration order.                                                                          |
+| `latestVersion(state, kind, id)`     | `latest` of the kind on its owner's slice; null for a kind that is not registered or an owner without a reducer.                                       |
 | `getState(project)`                  | `stateAt(project, at)` with the project's current position.                                                                                            |
 | `stateAt(project, head)`             | `reduceChain(info, store.ancestors(project, head))`.                                                                                                   |
 | `reduceChain(info, records)`         | Starts each registered reducer at `initial()`, calls `reduce` for every record in order, returns `{project: info, head: last.id, components}`.         |
@@ -275,6 +277,7 @@ Each test file builds modules with `startModules()` and projects with `createTes
 - `keeps a record fresh after proj.stale_accept`: after the accept record, `stale[B]` is gone and stays gone after a later unrelated record.
 - `registers one owner per reference kind and lists the kinds in registration order`: `kind_exists`; a remover removes only its own registration.
 - `resolves version references through their reference kind, on the slice of its owner`: a test kind on the `test_bible` slice; null without the owner's reducer, for an unregistered kind and for an asset.
+- `lists the kinds that have an ID and the newest version of an ID, on the slice of each owner`: two test kinds on the `test_bible` slice; none without the owner's reducer; registration order; null for an unknown ID and an unregistered kind.
 - `marks records that read a superseded character version stale`: a test kind with `createdBy`; an update that supersedes the creating record marks the render that read version 1 and the clip made from it.
 
 **`tests/history.spec.ts` (D)**

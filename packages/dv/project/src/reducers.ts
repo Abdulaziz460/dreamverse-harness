@@ -212,6 +212,29 @@ export class ReducerRegistry {
   }
 
   /**
+   * The reference kinds that have an ID: those whose `latest` answers on their owner's slice.
+   * @param state - a project state.
+   * @param id - the ID, such as `p1`.
+   * @returns the kinds, in registration order.
+   */
+  kindsWithId(state: ProjectState, id: string): string[] {
+    return this.listReferenceKinds().filter(kind => this.latestVersion(state, kind, id) !== null)
+  }
+
+  /**
+   * The newest version of an ID in one reference kind, from `latest` of the kind on its owner's slice.
+   * @param state - a project state.
+   * @param kind - a reference kind.
+   * @param id - the ID.
+   * @returns the version, or null for an unknown ID, a kind that is not registered, or an owner without a reducer.
+   */
+  latestVersion(state: ProjectState, kind: string, id: string): number | null {
+    const spec = this.kinds.get(kind)
+    const owner = spec === undefined ? undefined : this.ownerSlice(spec, (key, reducer) => sliceOf(state, key, reducer))
+    return spec === undefined || owner === undefined ? null : spec.latest(owner, id)
+  }
+
+  /**
    * The project's current state: the state at its current position.
    * @param project - the project.
    * @returns the state.

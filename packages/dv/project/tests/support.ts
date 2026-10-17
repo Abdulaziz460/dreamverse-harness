@@ -49,6 +49,11 @@ export function testKind(kind: string): ReferenceKindSpec<'test_bible'> {
     kind, component: 'test_bible',
     assetsOf: (slice, id, version) => slice?.assets[versionKey(kind, id, version)] ?? null,
     createdBy: (slice, id, version) => slice?.creators[versionKey(kind, id, version)] ?? null,
+    latest(slice, id) {
+      let version = 0
+      while (slice?.creators[versionKey(kind, id, version + 1)] !== undefined) version += 1
+      return version === 0 ? null : version
+    },
   }
 }
 

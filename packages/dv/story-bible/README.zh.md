@@ -45,12 +45,12 @@ kind: "package-reference"
 <a id="understand-the-implementation"></a>
 ## 理解实现
 
-归约函数只读已完成的 `bible.*` 记录。一个版本的参考图是记录的 `reference` 输入所解析到的素材，因此运行器会检查它们存在，记录也把它们列为它读取的内容。每个种类用 `dvProject.registerReferenceKind` 注册，并从 `bible` 切片作答：`assetsOf` 把 `<id>@<version>` 输入解析为其参考图，`createdBy` 指出写出一个版本的记录（Project 把它当作该输入的产生者，用于过期标记和解析 `<id>@<version>`）。版本跟随当前状态：撤销回到某个版本之前时，该版本从状态中移除，它的 ID 在该状态中重新可用。
+归约函数只读已完成的 `bible.*` 记录。一个版本的参考图是记录的 `reference` 输入所解析到的素材，因此运行器会检查它们存在，记录也把它们列为它读取的内容。每个种类用 `dvProject.registerReferenceKind` 注册，并从 `bible` 切片作答：`assetsOf` 把 `<id>@<version>` 输入解析为其参考图，`createdBy` 指出写出一个版本的记录（Project 把它当作该输入的产生者，用于过期标记和解析 `<id>@<version>`），`latest` 给出一个 ID 的最新版本。创建操作拒绝 `dvProject.kindsWithId` 列出的 ID，因此一个 ID 不会同时指向两个引用种类的项。版本跟随当前状态：撤销回到某个版本之前时，该版本从状态中移除，它的 ID 在该状态中重新可用。
 
 | 文件 | 内容 |
 | --- | --- |
 | [`src/index.ts`](src/index.ts) | `dvStoryBible`：六个操作及其 ID 检查 |
-| [`src/reducer.ts`](src/reducer.ts) | `bible` 归约函数，以及带 `assetsOf` 和 `createdBy` 的引用种类 |
+| [`src/reducer.ts`](src/reducer.ts) | `bible` 归约函数，以及带 `assetsOf`、`createdBy` 和 `latest` 的引用种类 |
 | [`src/types.ts`](src/types.ts) | `Character`、`Location`、`Style`、`StoryBibleState` 以及 `ComponentStates` 和 `ReferenceKinds` 声明 |
 
 -----
@@ -70,7 +70,7 @@ kind: "package-reference"
 
 #### 模型看到什么
 
-六个工具 `dv_bible_character_create`、`dv_bible_character_update`、`dv_bible_location_create`、`dv_bible_location_update`、`dv_bible_style_create` 和 `dv_bible_style_update`，格式与 `@dv/project` 给每个操作工具的一样。每个工具接受以种类命名的 ID 参数（`character`、`location` 或 `style`）、`name`、`description`（"Words carried into every prompt: wardrobe, mood, or look."），以及带素材 ID 的 `inputs.reference`。创建工具的描述说明该种类是什么、镜头以输入 `<character>@1` 指明它，以及 ID 不得已用于另一个角色、场景或风格；更新工具的描述说明下一个版本保留调用未改的内容，并把用上一版本做出的一切标为过期。
+六个工具 `dv_bible_character_create`、`dv_bible_character_update`、`dv_bible_location_create`、`dv_bible_location_update`、`dv_bible_style_create` 和 `dv_bible_style_update`，格式与 `@dv/project` 给每个操作工具的一样。每个工具接受以种类命名的 ID 参数（`character`、`location` 或 `style`）、`name`、`description`（"Words carried into every prompt: wardrobe, mood, or look."），以及带素材 ID 的 `inputs.reference`。创建工具的描述说明该种类是什么、镜头以输入 `<character>@1` 指明它，以及 ID 不得已用于另一个角色、场景、风格或任何其他以 `<id>@<version>` 作为输入的项；更新工具的描述说明下一个版本保留调用未改的内容，并把用上一版本做出的一切标为过期。
 
 #### Token 影响
 

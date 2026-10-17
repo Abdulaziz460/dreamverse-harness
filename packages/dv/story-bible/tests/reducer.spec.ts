@@ -1,4 +1,4 @@
-/** The pure `bible` reducer: versions from `bible.*` records, and the two version lookups of the reference kinds. */
+/** The pure `bible` reducer: versions from `bible.*` records, and the version lookups of the reference kinds. */
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { AssetId, ProjectRecord, ProjectState, RecordId, RecordInput } from '@dv/project'
 import { describe, expect, it } from 'vitest'
@@ -73,7 +73,7 @@ describe('bibleReducer', () => {
     ]) expect(bibleReducer.reduce(initial, entry)).toBe(initial)
   })
 
-  it('answers assetsOf and createdBy for each kind and null for unknown versions and IDs of other kinds', () => {
+  it('answers assetsOf, createdBy and latest for each kind and null for unknown versions and IDs of other kinds', () => {
     const slice = reduceAll([
       record('r1', 'bible.character_create', { character: 'c1', name: 'Lead' }, [FACE]),
       record('r2', 'bible.character_update', { character: 'c1' }, [COAT, FACE]),
@@ -89,6 +89,8 @@ describe('bibleReducer', () => {
     expect(character?.assetsOf(slice, 'c1', 3)).toBeNull()
     expect(location?.createdBy(slice, 'c1', 1)).toBeNull()
     expect(style?.assetsOf(slice, 'l1', 1)).toBeNull()
+    expect([character?.latest(slice, 'c1'), location?.latest(slice, 'l1'), style?.latest(slice, 's1')]).toEqual([2, 1, 1])
+    expect(location?.latest(slice, 'c1')).toBeNull()
   })
 
   it('lists the latest version of each character, location and style in the agent summary', () => {
