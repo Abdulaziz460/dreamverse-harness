@@ -1,7 +1,32 @@
-/** The reference assets of a shot, which of them the model numbers as Picture N, and the split of a prompt at its Picture N tokens. */
+/**
+ * Stored input references read without kind names, the reference assets of a shot, which of them the model numbers as
+ * Picture N, and the split of a prompt at its Picture N tokens.
+ */
 import { describe, expect, it } from 'vitest'
-import { isPicture, pictureParts, referenceAssets, shotReferences } from '../src/client/references.ts'
+import { formatInputRef, isPicture, pictureParts, referenceAssets, shotReferences, versionRefOf } from '../src/client/references.ts'
+import type { WireInputRef } from '../src/client/types.ts'
 import { asset, fixtureState } from './fixture.client.tsx'
+
+/** One stored input reference of each form: an asset, a record output, and versions of three kinds. */
+const REFS: WireInputRef[] = [
+  { asset: 'a1' }, { record: 'g1', output: 1 }, { character: 'hero', version: 2 }, { location: 'alley', version: 1 },
+  { zz: 'z1', version: 3 },
+]
+
+describe('formatInputRef', () => {
+  it('writes stored input references as the reference text of an operation request, for a version of any kind', () => {
+    expect(REFS.map(formatInputRef)).toEqual(['a1', 'g1#1', 'hero@2', 'alley@1', 'z1@3'])
+  })
+})
+
+describe('versionRefOf', () => {
+  it('names the kind, ID and version of a version reference, and nothing for an asset or a record output', () => {
+    expect(REFS.map(versionRefOf)).toEqual([
+      null, null, { kind: 'character', id: 'hero', version: 2 }, { kind: 'location', id: 'alley', version: 1 },
+      { kind: 'zz', id: 'z1', version: 3 },
+    ])
+  })
+})
 
 describe('referenceAssets', () => {
   it('expands a character version to its references in version order, keeps input order and every media type, and skips what the state lacks', () => {

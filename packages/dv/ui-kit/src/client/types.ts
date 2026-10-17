@@ -15,21 +15,19 @@ export type Surface = 'chat' | 'canvas' | 'timeline' | 'asset_pool' | 'api' | 'h
 /** The state of an operation call. */
 export type RecordStatus = 'pending' | 'running' | 'done' | 'failed' | 'cancelled'
 
+/** One version of a reference kind, such as `{ prop: 'p1', version: 2 }`: the kind's key with the ID, and `version`. */
+export type WireVersionRef = { version: number } & { [kind: string]: string | number }
+
 /**
- * What one record input refers to: an asset, the n-th output of an earlier record, or one version of a character, a
- * location or a style.
+ * What one record input refers to: an asset, the n-th output of an earlier record, or one version of a reference kind.
+ * Read it with `versionRefOf` and `formatInputRef` of `@dv/ui-kit/references.ts`.
  */
-export type RecordInputRef =
-  | { asset: string }
-  | { record: string; output: number }
-  | { character: string; version: number }
-  | { location: string; version: number }
-  | { style: string; version: number }
+export type WireInputRef = { asset: string } | { record: string; output: number } | WireVersionRef
 
 /** One input of a record: what the operation read. */
 export interface RecordInput {
   role: string
-  ref: RecordInputRef
+  ref: WireInputRef
   /** The asset the input stood for when the operation ran; null while its producer has not finished. */
   resolved_asset: string | null
 }

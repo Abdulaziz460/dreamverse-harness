@@ -1,8 +1,9 @@
 /** Canvas nodes and edges derived from the shared project state. */
 import { describe, expect, it } from 'vitest'
 import type { PlanVersion, ProjectRecord, WireState } from '@dv/ui-kit/types.ts'
+import { formatInputRef } from '@dv/ui-kit/references.ts'
 import { asset, fixtureState, record } from '../../ui-kit/tests/fixture.client.tsx'
-import { buildCanvasGraph, freePositions, NODE_WIDTH, referenceText, ROW } from '../src/client/graph.ts'
+import { buildCanvasGraph, freePositions, NODE_WIDTH, ROW } from '../src/client/graph.ts'
 
 /** Six shot prompts of plan p1 version 1; versions 2 and 3 change shot 3 and add shot 7, version 4 returns to these. */
 const PROMPTS = ['rain', 'alley', 'door', 'stairs', 'roof', 'dawn']
@@ -227,12 +228,40 @@ describe('buildCanvasGraph', () => {
     expect(pending.components.plan.plans['p1']?.at(-1)?.approved_by).toBeNull()
     expect(drawn(pending).filter(([, kind]) => kind === 'take').map(([id]) => id)).toEqual(['r1', 'r2', 'r3', 'r4', 's7', 'w5', 'r6'].sort(byRecordOrder))
   })
+})
 
-  it('writes stored input references as the reference text of an operation request', () => {
-    expect([
-      referenceText({ asset: 'a1' }), referenceText({ record: 'g1', output: 1 }), referenceText({ character: 'hero', version: 2 }),
-      referenceText({ location: 'alley', version: 1 }), referenceText({ style: 'noir', version: 3 }),
-    ]).toEqual(['a1', 'g1#1', 'hero@2', 'alley@1', 'noir@3'])
+describe('T1c: the canvas writes a reference of any kind', () => {
+  /**
+   * The shared fixture plus a take `g9` that reads version 3 of `z1`, an item of a reference kind `zz` that no UI package
+   * knows, whose reference image `zz.png` the import `u9` wrote.
+   * @returns the state.
+   */
+  function unknownKindState(): WireState {
+    const state = fixtureState()
+    state.assets.push(asset('zz.png', 'image/png', 'u9'))
+    state.components.proj.created_by['zz.png'] = 'u9'
+    state.components.proj.records.push(
+      record({ id: 'u9', operation: 'asset.import', params: { name: 'zz.png' }, outputs: ['zz.png'] }),
+      record({
+        id: 'g9', operation: 'shot.render', deterministic: false, params: { prompt: 'z1 waits' },
+        inputs: [{ role: 'reference', ref: { zz: 'z1', version: 3 }, resolved_asset: 'zz.png' }],
+      }),
+    )
+    return state
+  }
+
+  it('T1c.1: a take input { zz: z1, version: 3 } reads as the reference chip z1@3, never undefined@', () => {
+    const take = buildCanvasGraph(unknownKindState()).nodes.find(node => node.id === 'g9')
+    // The take editor's chips and the retry request write each input with formatInputRef.
+    const chips = take?.record?.inputs.map(input => formatInputRef(input.ref))
+    expect(chips).toEqual(['z1@3'])
+    expect(chips?.join(' ')).not.toContain('undefined')
+  })
+
+  it('T1c.2: a version of a kind without a canvas node links from the node of its asset; a character version links from its bible node', () => {
+    const graph = buildCanvasGraph(unknownKindState(), new Set(['zz.png']))
+    expect(graph.edges).toContainEqual({ from: 'u9', to: 'g9', kind: 'reference' })
+    expect(graph.edges).toContainEqual({ from: 'bible:hero', to: 'g1', kind: 'reference' })
   })
 })
 

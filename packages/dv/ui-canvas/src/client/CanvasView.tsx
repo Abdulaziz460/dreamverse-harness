@@ -22,13 +22,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, DragEvent as ReactDragEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import { DvClient } from '@dv/ui-kit/api.ts'
 import { useLanguage } from '@dv/ui-kit/locale.ts'
+import { formatInputRef } from '@dv/ui-kit/references.ts'
 import type { CanvasViewport, NodePosition, OperationRequest } from '@dv/ui-kit/types.ts'
 import { DV_ASSET_DRAG_TYPE, DV_CANVAS_FOCUS_EVENT } from '@dv/ui-kit/workspace-events.ts'
 import type { DvWorkspaceEventMap } from '@dv/ui-kit/workspace-events.ts'
 import { readStored, writeStored } from '@dv/ui-kit/storage.ts'
 import { useProjectState } from '@dv/ui-kit/useProject.ts'
 import { useZoomPresence } from '@dv/ui-kit/zoom.ts'
-import { buildCanvasGraph, freePositions, NODE_WIDTH, planShotFrames, referenceText, ROW } from './graph.ts'
+import { buildCanvasGraph, freePositions, NODE_WIDTH, planShotFrames, ROW } from './graph.ts'
 import type { CanvasEdge, CanvasNode } from './graph.ts'
 import { NodeCard, nodeHeight, nodeTitle } from './NodeCard.tsx'
 import type { CanvasTranslate } from './NodeCard.tsx'
@@ -586,7 +587,7 @@ export function CanvasView({ projectId, client: given, session = null, t: givenT
     if (record === null || operation === null) return
     setRetryingFrom(record.id)
     startRender({
-      project: projectId, operation, inputs: record.inputs.map(input => ({ role: input.role, ref: referenceText(input.ref) })),
+      project: projectId, operation, inputs: record.inputs.map(input => ({ role: input.role, ref: formatInputRef(input.ref) })),
       params: record.params, surface: 'canvas', intent: t('intent.retryTake', { title: nodeTitle(node, t) }), based_on: record.id,
       ...session === null ? {} : { session },
     }).catch((error: unknown) => { setNotice(t('error', { message: error instanceof Error ? error.message : String(error) })) })

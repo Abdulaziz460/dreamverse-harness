@@ -34,11 +34,11 @@ import { DV_TIMELINE_INSERT_EVENT } from '@dv/ui-kit/workspace-events.ts'
 
 | 模块 | 内容 |
 | --- | --- |
-| `types.ts` | `WireState`（`head` 是当前位置，`tip` 是历史列表的最后一步）、`WireLine`（`{tip, at}`，撤销和重做的回答）、`ProjectRecord`、`Asset`、`ProjectAsset`（带本项目导入名字和时间以及 `made_by` 的素材）、`Timeline`、`Clip`、`WireOperation`、`WireProject`、`WireProjectSummary` 和 `WireProjectCover`（项目卡片的封面、镜头数、时长和最后编辑时间）、`ProjectEvent`、`OperationRequest`、`HistoryQuery`、`HistoryEntry`（`{record, place}`）、`WireHistory`、`PlanVersion`、`Shot`（带模态 `modality`、生成任务 `task`（`RenderTask`，即 `ref2v` 或 `t2v`）、提供方 `provider` 和模型 `model`，以及 `continue_previous`）：`@dv/api` 收发的 JSON 的结构类型 |
+| `types.ts` | `WireState`（`head` 是当前位置，`tip` 是历史列表的最后一步）、`WireLine`（`{tip, at}`，撤销和重做的回答）、`ProjectRecord`、`WireInputRef`（存储的输入引用：素材、记录产出，或 `WireVersionRef`，即任一引用类型的一个版本）、`Asset`、`ProjectAsset`（带本项目导入名字和时间以及 `made_by` 的素材）、`Timeline`、`Clip`、`WireOperation`、`WireProject`、`WireProjectSummary` 和 `WireProjectCover`（项目卡片的封面、镜头数、时长和最后编辑时间）、`ProjectEvent`、`OperationRequest`、`HistoryQuery`、`HistoryEntry`（`{record, place}`）、`WireHistory`、`PlanVersion`、`Shot`（带模态 `modality`、生成任务 `task`（`RenderTask`，即 `ref2v` 或 `t2v`）、提供方 `provider` 和模型 `model`，以及 `continue_previous`）：`@dv/api` 收发的 JSON 的结构类型 |
 | `api.ts` | `DvClient`（`listProjects`、`listProjectSummaries`（`GET /api/dv/projects/summary`）、`getState`（读当前状态）、`listOperations`、`runOperation`、`importAsset`、`undo`（往回移一步）、`moveTo`（移到历史列表中的某一步）、`redo`（往前移一步）、`acceptStale`、`listHistory`、`placeOnCanvas`（在画布来源上执行 `asset.place` 或 `asset.unplace`），项目、布局（位置和视口）、工作区和对话调用，`subscribe`）、`ViewSurface`、`DvApiError`、`assetUrl` |
 | `form.ts` | `fieldsOf(params, values)`、`paramsOf(fields)`、`FieldParseError`：每个 schema 属性一个控件，带类型转换 |
 | `timeline.ts` | `FALLBACK_CLIP_SECONDS`、`timelineName(timeline, numbered)`、`formatSeconds` |
-| `references.ts` | `shotReferences(version, shot)`、`referenceAssets(state, references)`、`isPicture(asset)`、`pictureParts(prompt)`：一个镜头发给视频模型的各种媒体类型的参考素材，其中哪些是图片（按输入顺序编号为 `Picture 1`、`Picture 2`……），以及在这些标记处切开的提示词；生成任务为 `t2v` 的镜头没有参考 |
+| `references.ts` | `versionRefOf(ref)` 和 `formatInputRef(ref)`：存储的版本引用的类型、ID 和版本，以及任一存储的输入引用的引用文本，不点名任何引用类型；`shotReferences(version, shot)`、`referenceAssets(state, references)`、`isPicture(asset)`、`pictureParts(prompt)`：一个镜头发给视频模型的各种媒体类型的参考素材，其中哪些是图片（按输入顺序编号为 `Picture 1`、`Picture 2`……），以及在这些标记处切开的提示词；生成任务为 `t2v` 的镜头没有参考 |
 | `state.ts` | `assetIndex`、`videoAssets` |
 | `useProject.ts` | `useProjects`、`useOperations`、`useProjectState`：每次项目事件都重新拉取的加载器；`useLoader(load, deps)` 是它们共用的请求流程，会中止过期的请求，并在重新加载时保留上一次的值 |
 | `useView.ts` | `useViewSession(client, surface, session?)`：项目选择、项目的当前状态、操作、最近一次失败和项目栏回调；`sessionFromLocation` 从页面地址的 `?session=` 读对话，让视图打开该对话的项目 |
@@ -66,7 +66,7 @@ import { DV_TIMELINE_INSERT_EVENT } from '@dv/ui-kit/workspace-events.ts'
 | [`src/client/api.ts`](src/client/api.ts) | 客户端和共享的事件流 |
 | [`src/client/form.ts`](src/client/form.ts) | 表单模型 |
 | [`src/client/timeline.ts`](src/client/timeline.ts) | 时间线辅助函数 |
-| [`src/client/references.ts`](src/client/references.ts) | 镜头参考素材和 `Picture N` 标记 |
+| [`src/client/references.ts`](src/client/references.ts) | 存储的输入引用、镜头参考素材和 `Picture N` 标记 |
 | [`src/client/zoom.ts`](src/client/zoom.ts) | 弹窗的缩放过渡 |
 | [`src/client/useProject.ts`](src/client/useProject.ts)、[`src/client/useView.ts`](src/client/useView.ts) | hook |
 | [`src/client/ProjectBar.tsx`](src/client/ProjectBar.tsx) | 共用的栏 |

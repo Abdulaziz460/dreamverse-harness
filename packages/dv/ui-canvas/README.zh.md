@@ -63,7 +63,7 @@ Host 半边不注册任何东西。浏览器半边注册 `dv-canvas` 标签类�
 <details>
 <summary>实现内部——点击展开</summary>
 
-`CanvasView` 用 `@dv/ui-kit/useProject.ts` 的 `useProjectState` 读项目的当前状态；`buildCanvasGraph` 把它变成节点、边和默认的分列布局：先设定和素材，再分镜计划，版本按首帧链深度排列，重拍挨着它的源版本。设定节点的 ID 是 `bible:<id>`；`asset` 节点的 ID 是当前状态中产出该素材的 `asset.import` 记录，否则为没有记录的 `asset:<AssetId>`（撤销退过的导入、静帧、导出）；其他节点的 ID 是它的记录 ID。`/api/dv/layout` 中存下的位置覆盖默认布局；布局读写失败时忽略。请求的输入是引用文本（`<asset>`、`<record>#<output>`、`<id>@<version>`），由 `referenceText` 从记录存储的输入引用写出。每收到一帧 `/dv/events`，状态就重新拉取，所以对话消息放上的素材不用刷新就会出现；本视图发出的摆放立即显示，直到状态显示它为止，被拒绝的摆放会恢复原样。
+`CanvasView` 用 `@dv/ui-kit/useProject.ts` 的 `useProjectState` 读项目的当前状态；`buildCanvasGraph` 把它变成节点、边和默认的分列布局：先设定和素材，再分镜计划，版本按首帧链深度排列，重拍挨着它的源版本。设定节点的 ID 是 `bible:<id>`；`asset` 节点的 ID 是当前状态中产出该素材的 `asset.import` 记录，否则为没有记录的 `asset:<AssetId>`（撤销退过的导入、静帧、导出）；其他节点的 ID 是它的记录 ID。`/api/dv/layout` 中存下的位置覆盖默认布局；布局读写失败时忽略。请求的输入是引用文本（`<asset>`、`<record>#<output>`、`<id>@<version>`），由 `@dv/ui-kit/references.ts` 的 `formatInputRef` 从记录存储的输入引用写出，任何引用类型的版本都适用。每收到一帧 `/dv/events`，状态就重新拉取，所以对话消息放上的素材不用刷新就会出现；本视图发出的摆放立即显示，直到状态显示它为止，被拒绝的摆放会恢复原样。
 
 | 文件 | 内容 |
 | --- | --- |

@@ -20,12 +20,12 @@ import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent a
 import { assetUrl } from '@dv/ui-kit/api.ts'
 import type { DvClient } from '@dv/ui-kit/api.ts'
 import { dispatchCompose, type DvComposeRef } from '@dv/ui-kit/compose.ts'
-import { isPicture, pictureParts, referenceAssets, shotReferences } from '@dv/ui-kit/references.ts'
+import { formatInputRef, isPicture, pictureParts, referenceAssets, shotReferences } from '@dv/ui-kit/references.ts'
 import { readStored, writeStored } from '@dv/ui-kit/storage.ts'
 import { clockText } from '@dv/ui-kit/timeline.ts'
 import type { OperationRequest, PlanVersion, ProjectAsset, Shot, WireState } from '@dv/ui-kit/types.ts'
 import { AssetMedia, AssetPicker, AssetPreview } from './AssetPicker.tsx'
-import { bibleVersions, referenceText } from './graph.ts'
+import { bibleVersions } from './graph.ts'
 import type { CanvasNode } from './graph.ts'
 import { KIND_COLOR, kindLabel, mono, nodeTitle, planTotalSec } from './NodeCard.tsx'
 import type { CanvasTranslate } from './NodeCard.tsx'
@@ -548,7 +548,7 @@ function TakeForm(
   const record = node.record
   const [prompt, setPrompt] = useState(() => typeof record?.params['prompt'] === 'string' ? record.params['prompt'] : '')
   const [inputs, setInputs] = useState<EditedInput[]>(
-    () => record?.inputs.map(input => ({ role: input.role, ref: referenceText(input.ref) })) ?? [],
+    () => record?.inputs.map(input => ({ role: input.role, ref: formatInputRef(input.ref) })) ?? [],
   )
   const [duration, setDuration] = useState(() => typeof record?.params['duration_sec'] === 'number' ? String(record.params['duration_sec']) : '')
   const [seed, setSeed] = useState(() => typeof record?.params['seed'] === 'number' ? String(record.params['seed']) : '')

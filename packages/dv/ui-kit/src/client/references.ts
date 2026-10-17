@@ -9,12 +9,37 @@
  * it after the reference images (`Picture N+1`, where N is the number of reference images). A shot in task `t2v`
  * renders from the prompt alone and has no references.
  *
+ * Client code names no reference kind: it reads a version reference with {@link versionRefOf} and writes any stored
+ * input reference as text with {@link formatInputRef}.
+ *
  * @module @dv/ui-kit/references
  */
-import type { PlanVersion, ProjectAsset, Shot, WireState } from './types.ts'
+import type { PlanVersion, ProjectAsset, Shot, WireInputRef, WireState } from './types.ts'
 
 /** One run of a prompt: plain text, or a `Picture N` or `<Picture N>` token that names the N-th (1-based) reference image. */
 export type PicturePart = { text: string } | { picture: number; text: string }
+
+/**
+ * The kind, ID and version of a stored input reference that names a version of a reference kind.
+ * @param ref - the stored input reference.
+ * @returns the kind key, the ID and the version, or null for an asset or a record output.
+ */
+export function versionRefOf(ref: WireInputRef): { kind: string; id: string; version: number } | null {
+  if (!('version' in ref)) return null
+  const kind = Object.keys(ref).find(key => key !== 'version')
+  return kind === undefined ? null : { kind, id: String(ref[kind]), version: ref.version }
+}
+
+/**
+ * The reference text of a stored input reference, as an operation request takes it.
+ * @param ref - the stored input reference.
+ * @returns `<asset>`, `<record>#<output>`, or `<id>@<version>` for a version of any reference kind.
+ */
+export function formatInputRef(ref: WireInputRef): string {
+  if (!('version' in ref)) return 'asset' in ref ? ref.asset : `${ref.record}#${String(ref.output)}`
+  const named = versionRefOf(ref)
+  return named === null ? JSON.stringify(ref) : `${named.id}@${String(named.version)}`
+}
 
 /**
  * The reference texts a plan shot renders from, as `plan.approve` passes them to `shot.render`: in task `ref2v`,

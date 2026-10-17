@@ -6,8 +6,9 @@
  * (still grabs, timeline records) do not become nodes; a timeline trim shows as a badge on the take it shortened.
  */
 import type {
-  Character, Clip, Location, NodePosition, PlanVersion, ProjectRecord, RecordInput, RecordInputRef, StoryBibleState, Style, WireState,
+  Character, Clip, Location, NodePosition, PlanVersion, ProjectRecord, RecordInput, StoryBibleState, Style, WireState,
 } from '@dv/ui-kit/types.ts'
+import { versionRefOf } from '@dv/ui-kit/references.ts'
 import { isRenderOperation } from '@dv/ui-kit/state.ts'
 
 /** What a node represents; the canvas colors nodes by it. */
@@ -130,8 +131,9 @@ function shownTakes(state: WireState): Set<string> {
     }
     return current
   }
-  const producerOf = (input: RecordInput): string | undefined =>
-    'record' in input.ref ? input.ref.record : input.resolved_asset === null ? undefined : proj.created_by[input.resolved_asset]
+  // A version reference may carry any kind key, so only a reference without `version` is a record output.
+  const producerOf = (input: RecordInput): string | undefined => !('version' in input.ref) && 'record' in input.ref
+    ? input.ref.record : input.resolved_asset === null ? undefined : proj.created_by[input.resolved_asset]
   // The render or import behind a record, walking up deterministic edits such as a still grab or a timeline export.
   const sourceOf = (recordId: string | undefined, depth = 0): ProjectRecord | undefined => {
     const record = recordId === undefined ? undefined : records.get(recordId)
@@ -158,7 +160,8 @@ function shownTakes(state: WireState): Set<string> {
     const references = [...latest.references ?? [], ...latest.shots.flatMap(shot => shot.references ?? [])]
     for (const reference of references) use(proj.created_by[reference])
     const layout = approvalLayout(latest, records)
-    const pointed = layout?.inputs.filter(input => input.role === 'clip').map(input => 'record' in input.ref ? input.ref.record : undefined) ?? []
+    const pointed = layout?.inputs.filter(input => input.role === 'clip')
+      .map(input => !('version' in input.ref) && 'record' in input.ref ? input.ref.record : undefined) ?? []
     const timelineId = layout?.params['timeline'] ?? 't1'
     const clips = layout === undefined ? [] : state.components.timeline.timelines.find(timeline => timeline.id === timelineId)?.clips ?? []
     latest.shots.forEach((_shot, index) => {
@@ -212,32 +215,6 @@ export function bibleItems(state: WireState): Array<{ kind: BibleKind; id: strin
 export function bibleVersions(state: WireState, id: string): Character[] | Location[] | Style[] | undefined {
   const bible = state.components.bible
   return bible.characters[id] ?? bible.locations[id] ?? bible.styles[id]
-}
-
-/**
- * The reference text of a record input, as an operation request takes it: `<asset>`, `<record>#<output>`, or
- * `<id>@<version>`.
- * @param ref - the stored input reference.
- * @returns the text.
- */
-export function referenceText(ref: RecordInputRef): string {
-  if ('asset' in ref) return ref.asset
-  if ('record' in ref) return `${ref.record}#${String(ref.output)}`
-  if ('character' in ref) return `${ref.character}@${String(ref.version)}`
-  if ('location' in ref) return `${ref.location}@${String(ref.version)}`
-  return `${ref.style}@${String(ref.version)}`
-}
-
-/**
- * The story bible ID a stored input reference names, when it names a character, location or style version.
- * @param ref - the stored input reference.
- * @returns the ID, or undefined for an asset or record output.
- */
-function bibleIdOf(ref: RecordInputRef): string | undefined {
-  if ('character' in ref) return ref.character
-  if ('location' in ref) return ref.location
-  if ('style' in ref) return ref.style
-  return undefined
 }
 
 /**
@@ -362,7 +339,7 @@ export function buildCanvasGraph(
     const record = node.record
     if (record === null || node.kind === 'bible') continue
     for (const input of record.inputs) {
-      const bibleId = bibleIdOf(input.ref)
+      const bibleId = versionRefOf(input.ref)?.id
       const from = bibleId !== undefined && nodeIds.has(`bible:${bibleId}`) ? `bible:${bibleId}` : nodeOfAsset(input.resolved_asset)
       addEdge(from, node.id, input.role === 'first_frame' ? 'first_frame' : 'reference')
     }
