@@ -56,6 +56,8 @@ export interface WireOperation {
   name: string
   version: string
   description: string
+  /** The name that views show for the operation; absent when the operation declares none. */
+  label?: OperationSpec['label']
   inputs: OperationSpec['inputs']
   params: OperationSpec['params']
   outputs: OperationSpec['outputs']
@@ -134,6 +136,7 @@ export function toWireOperation(spec: OperationSpec): WireOperation {
     name: spec.name,
     version: spec.version,
     description: spec.description,
+    ...spec.label === undefined ? {} : { label: spec.label },
     inputs: spec.inputs,
     params: spec.params,
     outputs: spec.outputs,

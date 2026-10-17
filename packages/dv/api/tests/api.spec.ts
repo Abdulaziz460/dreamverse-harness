@@ -184,6 +184,18 @@ describe('dvApi', () => {
     expect(operations.find(operation => operation.name === 'asset.import')?.resource).toBe('none')
   })
 
+  it('sends the label of an operation declaration only when the operation declares one', async () => {
+    const fixture = await start()
+    fixture.project.registerComponent('inspect')
+    fixture.project.registerOperation({
+      name: SLOW, component: 'inspect', version: '1', description: 'Slow.', label: { zh: '慢操作', en: 'Slow step' }, params: {}, inputs: {},
+      outputs: [], confirm: 'never', deterministic: false, resource: 'none', summarize: () => 'slow', execute: () => Promise.resolve({ outputs: [] }),
+    })
+    const operations = fixture.handlers.listOperations()
+    expect(operations.find(operation => operation.name === SLOW)?.label).toEqual({ zh: '慢操作', en: 'Slow step' })
+    expect(operations.find(operation => operation.name === 'asset.import')).not.toHaveProperty('label')
+  })
+
   it('refuses malformed and unknown requests with the matching status and code', async () => {
     const fixture = await start()
     const projectId = await fixture.newProject('demo')

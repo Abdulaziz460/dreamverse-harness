@@ -302,6 +302,8 @@ export interface OperationSpec {
   version: string
   /** What the operation does, for the model (its tool description) and the canvas form. */
   description: string
+  /** The name that views show for the operation, in Chinese and English; Project only stores it. */
+  label?: { zh: string; en: string }
   /** The parameter schema in the DSH tool parameter format; the runner validates `params` against it. */
   params: ParameterSchemaSpec
   /** The input roles the operation accepts; the runner refuses an input with any other role. */

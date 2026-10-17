@@ -269,6 +269,8 @@ export interface WireOperation {
   name: string
   version: string
   description: string
+  /** The name that views show for the operation; absent when the operation declares none. */
+  label?: { zh: string; en: string }
   inputs: Record<string, { type: string; description: string; required?: boolean; many?: boolean; bible?: boolean }>
   params: Record<string, WireParamSpec>
   outputs: Array<{ role: string; type: string }>

@@ -49,7 +49,7 @@ kind: "package-reference"
 | `/api/dv/projects/rename` | POST | `{project, title}` | `{title}`，重名时追加 ` 2`、` 3`…… 使其唯一 |
 | `/api/dv/projects/delete` | POST | `{project}` | `{ok, workspace_id}`；项目移进 Project 存储的回收目录，它的画布布局文件被删除 |
 | `/api/dv/state` | GET | `project` | `WireState`：`{project, head, tip, components, assets}`：当前位置（`head`）、历史列表的最后一步（`tip`）、当前状态中与 Project 算出的一致的每个组件状态切片，以及 `ProjectAsset` 条目：当前状态中的每个素材，加上项目任何 `asset.import` 记录产出的每个素材，包括被丢弃的记录（当前位置之后的步骤或被丢弃的步骤生成的素材不列出），每个条目带本项目自己的导入 `name` 和 `created_at`，以及 `made_by`（当前状态中创建它的记录的操作，否则为 `asset.import`，否则为 null） |
-| `/api/dv/operations` | GET | — | `WireOperation[]`：每个不是 `readOnly` 的已注册操作，不含执行器 |
+| `/api/dv/operations` | GET | — | `WireOperation[]`：每个不是 `readOnly` 的已注册操作，不含执行器，声明了 `label` 时带上它 |
 | `/api/dv/operation` | POST | `OperationRequest` `{project, operation, inputs?, params?, intent?, surface, session?, based_on?, supersedes?}`；`inputs` = `[{role, ref}]`，`ref` 是引用文本 | `ProjectRecord`，已完成或 `pending` |
 | `/api/dv/assets/import` | POST | 原始文件作为请求体；查询参数 `project`、`name`、`mime`、`surface`（`canvas \| asset_pool`，其他值回 `400` `invalid_params`）、`session?` | `{asset, record}`：`AssetId` 和 `asset.import` 记录；从画布导入时带 `place: true` 运行，因此素材也会放到画布上 |
 | `/api/dv/undo` | POST | `{project, to?}`：把当前位置往回移一步，或移到历史列表中的步骤 `to`，可在当前位置之前或之后；不写记录 | `{tip, at}`：最后一步和当前位置 |
