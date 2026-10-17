@@ -336,6 +336,7 @@
       "@dv/fastvideo": ["./packages/dv/fastvideo/src/index.ts"],
       "@dv/fastvideo-generation-client": ["./packages/dv/fastvideo-generation-client/src/index.ts"],
       "@dv/ffmpeg": ["./packages/dv/ffmpeg/src/index.ts"],
+      "@dv/generation": ["./packages/dv/generation/src/index.ts"],
       "@dv/inspector": ["./packages/dv/inspector/src/index.ts"],
       "@dv/mcp-presets": ["./packages/dv/mcp-presets/src/index.ts"],
       "@dv/models": ["./packages/dv/models/src/index.ts"],
