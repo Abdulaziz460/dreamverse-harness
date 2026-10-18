@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-在 DreamVerse 的浏览器插件里使用本包与 `@dv/api` 通信，并读取它发来的状态。`DvClient` 封装每条 `/api/dv` 路由并跟随 `/dv/events`；`fieldsOf` 和 `paramsOf` 把操作的参数 schema 变成表单字段再变回参数；`useViewSession` 让视图的项目、项目的当前状态和操作与宿主同步；`ProjectBar` 是侧栏视图的项目和撤销栏；事件模块拥有各面板之间交换的 `dv:*` 窗口事件和页面全局变量。本包是一个库：它不注册任何东西，会被打进每个消费者的 bundle。
+在 DreamVerse 的浏览器插件里使用本包与 `@dv/api` 通信，并读取它发来的状态。`DvClient` 封装每条 `/api/dv` 路由并跟随 `/dv/events`；`fieldsOf` 和 `paramsOf` 把操作的参数 schema 变成表单字段再变回参数；`useViewSession` 让视图的项目、项目的当前状态和操作与宿主同步；`ProjectBar` 是侧栏视图的项目和撤销栏；事件模块拥有各面板之间交换的 `dv:*` 窗口事件和页面全局变量；`registries.ts` 存放注册表的描述符类型和 `createRegistry`，这些注册表由 UI 核心包提供、由插件的 UI 半边填充。本包是一个库：它不注册任何东西，会被打进每个消费者的 bundle。
 
 ## 目录
 
@@ -40,6 +40,8 @@ import { DV_TIMELINE_INSERT_EVENT } from '@dv/ui-kit/workspace-events.ts'
 | `timeline.ts` | `FALLBACK_CLIP_SECONDS`、`timelineName(timeline, numbered)`、`formatSeconds` |
 | `references.ts` | `versionRefOf(ref)` 和 `formatInputRef(ref)`：存储的版本引用的类型、ID 和版本，以及任一存储的输入引用的引用文本，不点名任何引用类型；`shotReferences(version, shot)`、`referenceAssets(state, references)`、`isPicture(asset)`、`pictureParts(prompt)`：一个镜头发给视频模型的各种媒体类型的参考素材，其中哪些是图片（按输入顺序编号为 `Picture 1`、`Picture 2`……），以及在这些标记处切开的提示词；生成任务为 `t2v` 的镜头没有参考 |
 | `state.ts` | `assetIndex`、`videoAssets`；`isGenerationOperation(op)`（非确定性、资源为 `gpu`、有图片、视频或音频输出）和 `isGenerationRecord(record, op, mimeOf)`（给出 `op` 时由声明决定，否则由记录决定：非确定性，并有图片、视频或音频输出）：各视图区分生成记录所用的唯一规则 |
+| `registries.ts` | `Registry` 和 `createRegistry(keys)`：每个键只有一个所有者的描述符列表（`register` 遇到已被占用的键时抛错，并返回注销函数），`list()` 在变化之前返回同一个数组；`DvHistory` 和 `HistoryRow`（`match`：一个操作名或 `'<key>.'`；`subject(record)`：名称之后的文字，自带分隔符，或 null），由 `@dv/ui-history` 作为 `ctx.dvHistory` 提供；cordis `Context` 中 `dvHistory` 的声明合并 |
+| `chain.ts` | `chainOf(record, records)`：记录所在的链（`WireStartedBy`），即它自身的 `started_by`，没有时用它 `based_on` 根记录的 `started_by`，再没有时为 null |
 | `useProject.ts` | `useProjects`、`useOperations`、`useTaskLabels`、`useProjectState`：每次项目事件都重新拉取的加载器；`useLoader(load, deps)` 是它们共用的请求流程，会中止过期的请求，并在重新加载时保留上一次的值 |
 | `useView.ts` | `useViewSession(client, surface, session?)`：项目选择、项目的当前状态、操作、最近一次失败和项目栏回调；`sessionFromLocation` 从页面地址的 `?session=` 读对话，让视图打开该对话的项目 |
 | `ProjectBar.tsx` | 侧栏的栏（测试 ID `dv-kit-project-bar`）：项目选择器、新建项目按钮和撤销，用 `--dv-*` 主题变量画成 28 px 的次要控件；文案以 `labels` 传入，由所属插件先本地化 |

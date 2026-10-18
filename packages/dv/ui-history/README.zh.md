@@ -26,14 +26,14 @@ kind: "package-reference"
 
 在叠了 `dsh-web-app`（提供右侧栏和客户端模块加载器）和 `@dv/api`（提供面板调用的路由）的 profile 里挂载插件。先构建浏览器 bundle：`pnpm run build` 会写出 `lib/client.js`。
 
-面板请求项目历史列表中的步骤，最新的在前。每行显示带主体的操作名称（`@dv/ui-kit` 的 `operationLabel`：操作在 `/api/dv/operations` 里的 `label`，没有时用它的工具名称，再没有时用操作名）（修改分镜计划 p1 → v2、渲染镜头 7、新建角色「名字」）、谁做的（你、智能体、自动）、多久以前、状态，以及只有渲染行（`@dv/ui-kit` 的 `isGenerationRecord` 认定的记录，即图片、视频或音频生成）才有的一张缩略图（版本的静帧，没有静帧时用视频画面，什么都没产出时用空方块，让渲染行保持对齐）；其他行只显示文字。智能体行的第二行显示记录自身的 `intent`，即智能体为这次调用给出的理由。分镜计划批准安排的渲染和时间线记录（`report.scheduled`）折叠在批准行下面，由 渲染 n 个镜头 开关展开。当前位置的一行带 当前，它之后的行变灰：文字变淡，缩略图变成黑白。其他每一行末尾有一个 ⋮ 按钮（更多操作），它的菜单提供 回到这一步（`/api/dv/undo` 带 `to` = 该步骤），把当前位置移到那一步，可在当前一步之前或之后。
+面板请求项目历史列表中的步骤，最新的在前。每行显示带主体的操作名称（`@dv/ui-kit` 的 `operationLabel`：操作在 `/api/dv/operations` 里的 `label`，没有时用它的工具名称，再没有时用操作名）（修改分镜计划 p1 → v2、渲染镜头 1、新建角色「名字」）、谁做的（你、智能体、自动）、多久以前、状态，以及只有渲染行（`@dv/ui-kit` 的 `isGenerationRecord` 认定的记录，即图片、视频或音频生成）才有的一张缩略图（版本的静帧，没有静帧时用视频画面，什么都没产出时用空方块，让渲染行保持对齐）；其他行只显示文字。智能体行的第二行显示记录自身的 `intent`，即智能体为这次调用给出的理由。主体来自为该操作注册的 `HistoryRow`（先按完整操作名匹配，再按 `'<key>.'` 匹配）；没有时，分镜计划和故事设定的记录写出它们的计划或条目；再没有时，带链位置的记录写出这个位置，链带有 lane 时再加 ` · <lane>`（`@dv/ui-kit` 的 `chainOf`：记录自身的 `started_by`，没有时用它 `based_on` 根记录的 `started_by`，所以画布上的重新生成保留它的镜头号）。`started_by.record` 是某一行记录的已加载记录，比如分镜计划批准的渲染和时间线记录，按日志顺序折叠在那一行下面，由 渲染 n 个镜头 开关展开。当前位置的一行带 当前，它之后的行变灰：文字变淡，缩略图变成黑白。其他每一行末尾有一个 ⋮ 按钮（更多操作），它的菜单提供 回到这一步（`/api/dv/undo` 带 `to` = 该步骤），把当前位置移到那一步，可在当前一步之前或之后。
 
 ```yaml
 - id: dv-ui-history
   name: '@dv/ui-history'
 ```
 
-Host 半边不注册任何东西。浏览器半边注册 `dv-history` 标签类型（侧栏指南页以"历史"提供的页面）和以自身 id `@dv/ui-history` 为键的标签主体，并在收到 `dv:history-focus` 窗口事件时打开该标签。
+Host 半边不注册任何东西。浏览器半边提供客户端服务 `dvHistory`（`@dv/ui-kit/registries.ts` 的 `DvHistory`），注册 `dv-history` 标签类型（侧栏指南页以"历史"提供的页面）和以自身 id `@dv/ui-history` 为键的标签主体，并在收到 `dv:history-focus` 窗口事件时打开该标签。插件的 UI 半边在 `ctx.inject(['dvHistory'], …)` 里用 `ctx.dvHistory.rows.register({ match, subject })` 为它的操作的记录命名，并保留返回的注销函数；`match` 是一个操作名或 `'<key>.'`，第二个 `match` 相同的行会抛错。
 
 | 手势 | 请求或事件 |
 | --- | --- |
@@ -55,16 +55,16 @@ Host 半边不注册任何东西。浏览器半边注册 `dv-history` 标签类�
 <details>
 <summary>实现内部——点击展开</summary>
 
-`HistoryPanel` 用 `useProjectState` 读取项目的当前状态，以得到时间线和当前状态的记录，并通过 `POST /api/dv/history` 列出历史。`actionRows` 把排定的记录折叠到它们的批准下面，`actionLabel` 为每条记录命名，`centerFocus` 决定选中的行定位什么（变灰的步骤不定位）。每个条目的 `place` 决定 当前 标记、变灰的行，以及哪些行提供 回到这一步。在 `/dv/events` 上，`update` 事件替换已加载行中的记录，`record` 或 `line` 事件以 200 ms 防抖重新拉取已加载的窗口。
+`HistoryPanel` 用 `useProjectState` 读取项目的当前状态，以得到时间线和当前状态的记录，并通过 `POST /api/dv/history` 列出历史。`actionRows` 把每条被启动的记录折叠到启动它的记录那一行下面，`actionLabel` 为每条记录命名，`centerFocus` 决定选中的行定位什么（变灰的步骤不定位）。每个条目的 `place` 决定 当前 标记、变灰的行，以及哪些行提供 回到这一步。在 `/dv/events` 上，`update` 事件替换已加载行中的记录，`record` 或 `line` 事件以 200 ms 防抖重新拉取已加载的窗口。
 
 | 文件 | 内容 |
 | --- | --- |
 | [`src/css-modules.d.ts`](src/css-modules.d.ts) | CSS Module 导入的类型 |
-| [`src/client/index.ts`](src/client/index.ts) | 注册，以及收到 `dv:history-focus` 时打开标签 |
+| [`src/client/index.ts`](src/client/index.ts) | `dvHistory` 服务、注册，以及收到 `dv:history-focus` 时打开标签 |
 | [`src/client/definition.ts`](src/client/definition.ts) | 标签类型 |
 | [`src/client/HistoryPanel.tsx`](src/client/HistoryPanel.tsx) | 面板、带撤销和重做按钮的顶部、带 ⋮ 菜单的行、预览和标签主体 |
 | [`src/client/HistoryPanel.module.css`](src/client/HistoryPanel.module.css) | 面板的样式 |
-| [`src/client/rows.ts`](src/client/rows.ts) | 操作行和批准折叠、带主体的名称、缩略图、相对时间和中间区域定位 |
+| [`src/client/rows.ts`](src/client/rows.ts) | 操作行和被启动记录的折叠、带主体的名称、缩略图、相对时间和中间区域定位 |
 
 </details>
 

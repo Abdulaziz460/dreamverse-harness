@@ -4,8 +4,9 @@
  * 回到这一步, and empty states.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, waitFor, within } from '@testing-library/react'
 import { DvClient } from '@dv/ui-kit/api.ts'
+import { createRegistry, type HistoryRow, type Registry } from '@dv/ui-kit/registries.ts'
 import type { HistoryEntry, HistoryQuery, WireHistory, WireState } from '@dv/ui-kit/types.ts'
 import { DV_CANVAS_FOCUS_EVENT, DV_HISTORY_FOCUS_EVENT, DV_TIMELINE_FOCUS_EVENT } from '@dv/ui-kit/workspace-events.ts'
 import { asset, fixtureState, record, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
@@ -43,9 +44,14 @@ const ENTRIES: HistoryEntry[] = [
  * Mount the panel over scripted routes; `/api/dv/history` answers from {@link ENTRIES}.
  * @param entries - the history the route serves.
  * @param adjust - changes to the fixture state that `/api/dv/state` serves.
+ * @param rows - the registered history rows; none by default.
  * @returns the rendered panel and the recorded writes.
  */
-function mount(entries: HistoryEntry[] = ENTRIES, adjust: (state: WireState) => void = () => {}) {
+function mount(
+  entries: HistoryEntry[] = ENTRIES,
+  adjust: (state: WireState) => void = () => {},
+  rows: Registry<HistoryRow> = createRegistry(row => [row.match]),
+) {
   const queries: HistoryQuery[] = []
   const scripted = scriptedFetch({
     // Timeline `t1` of the fixture holds clips cl1 and cl2, assigned by its create record; the clip move m1 is a record
@@ -69,7 +75,7 @@ function mount(entries: HistoryEntry[] = ENTRIES, adjust: (state: WireState) => 
       return { status: 200, body: answer }
     },
   })
-  const view = render(<HistoryPanel projectId="p1" client={new DvClient(scripted.fetch)} />)
+  const view = render(<HistoryPanel projectId="p1" client={new DvClient(scripted.fetch)} rows={rows} />)
   const row = (id: string): HTMLElement => {
     const element = view.container.querySelector(`[data-testid="dv-history-row"][data-record="${id}"]`)
     if (!(element instanceof HTMLElement)) throw new Error(`no row ${id}`)
@@ -100,10 +106,16 @@ describe('HistoryPanel', () => {
     await waitFor(() => { expect(view.getByTestId('dv-history-redo')).toHaveProperty('disabled', true) })
   })
 
-  it('folds the renders a plan approval scheduled under its row until the toggle opens them', async () => {
+  it('folds the renders a plan approval started under its row until the toggle opens them', async () => {
     const approval: HistoryEntry[] = [
-      { record: record({ id: 'g2', actor: 'system', operation: 'shot.render', params: { plan: 'p1', shot: 2 }, status: 'running' }), place: 'current' },
-      { record: record({ id: 'g1', actor: 'system', operation: 'shot.render', params: { plan: 'p1', shot: 1 }, outputs: ['shot1.mp4'] }), place: 'before' },
+      {
+        record: record({ id: 'g2', actor: 'system', operation: 'shot.render', params: { plan: 'p1', shot: 2 }, started_by: { record: 'ap', slot: 2 }, status: 'running' }),
+        place: 'current',
+      },
+      {
+        record: record({ id: 'g1', actor: 'system', operation: 'shot.render', params: { plan: 'p1', shot: 1 }, started_by: { record: 'ap', slot: 1 }, outputs: ['shot1.mp4'] }),
+        place: 'before',
+      },
       {
         record: record({ id: 'ap', actor: 'agent', operation: 'plan.approve', params: { plan: 'p1' }, report: { plan: 'p1', version: 1, scheduled: ['g1', 'g2'] } }),
         place: 'before',
@@ -120,9 +132,18 @@ describe('HistoryPanel', () => {
     expect(fold.getAttribute('aria-expanded')).toBe('true')
     expect(row('g1').textContent).toContain('Render shot 1')
     expect(row('g2').textContent).toContain('Automatic')
-    // Folded rows follow `report.scheduled`: shot 1, then shot 2.
+    // Folded rows follow the log: shot 1, then shot 2.
     const folded = [...view.container.querySelectorAll('[data-testid="dv-history-row"]')].map(element => element.getAttribute('data-record'))
     expect(folded).toEqual(['ap', 'g1', 'g2'])
+  })
+
+  it('labels a row with the subject of a registered history row, and drops it once the row is disposed', async () => {
+    const rows = createRegistry<HistoryRow>(row => [row.match])
+    const dispose = rows.register({ match: 'timeline.', subject: () => [' 片段 1', ' clip 1'] })
+    const { row } = mount(ENTRIES, () => {}, rows)
+    await waitFor(() => { expect(row('m1').textContent).toContain('Move clip clip 1') })
+    act(() => { dispose() })
+    await waitFor(() => { expect(row('m1').textContent).not.toContain('clip 1') })
   })
 
   it('asks for the steps of the history list', async () => {

@@ -1,53 +1,39 @@
 /**
- * Pure readings behind the History panel: the action rows of history entries (a plan approval folds the renders it
- * scheduled), the label of an action with its subject, the thumbnail of a record, relative times, and where selecting a
- * record focuses the center. Nothing here touches the DOM or the network, so the unit tests cover it directly.
+ * Pure readings behind the History panel: the action rows of history entries (a record folds the records it started),
+ * the label of an action with its subject, the thumbnail of a record, relative times, and where selecting a record
+ * focuses the center. Nothing here touches the DOM or the network, so the unit tests cover it directly.
  *
  * @module @dv/ui-history/rows
  */
+import { chainOf } from '@dv/ui-kit/chain.ts'
+import type { HistoryRow } from '@dv/ui-kit/registries.ts'
 import { operationLabel } from '@dv/ui-kit/tool-labels.ts'
 import type { Asset, HistoryEntry, ProjectRecord, WireOperation } from '@dv/ui-kit/types.ts'
 import type { DvWorkspaceEventMap } from '@dv/ui-kit/workspace-events.ts'
 
-/** One row of the panel: an operation entry and, for a plan approval, the entries of the records it scheduled. */
+/** One row of the panel: an operation entry and the entries of the loaded records it started. */
 export interface ActionRow {
   entry: HistoryEntry
-  /** The loaded records the approval scheduled, in `report.scheduled` order; empty for other records. */
+  /** The loaded records whose `started_by.record` is this row's record, in log order; empty for most records. */
   children: HistoryEntry[]
 }
 
-/** @returns the IDs a finished `plan.approve` record scheduled (`report.scheduled`). */
-function scheduledBy(record: ProjectRecord): string[] {
-  const scheduled = record.operation === 'plan.approve' ? record.report?.['scheduled'] : undefined
-  return Array.isArray(scheduled) ? scheduled.filter((id): id is string => typeof id === 'string') : []
-}
-
 /**
- * Turn history entries into panel rows: one row per step, newest first. The records a loaded
- * plan approval scheduled fold under the approval's row instead of standing alone.
+ * Turn history entries into panel rows: one row per step, newest first. A loaded record whose `started_by.record` is the
+ * record of a row folds under that row instead of standing alone, in log order (a plan approval's shot renders in shot
+ * order, then its timeline record).
  * @param entries - history entries, newest first.
  * @returns the rows, newest first.
  */
 export function actionRows(entries: readonly HistoryEntry[]): ActionRow[] {
-  const loaded = new Map(entries.map(entry => [entry.record.id, entry]))
-  const folded = new Map<string, string>()
-  for (const { record } of entries) {
-    for (const id of scheduledBy(record)) if (loaded.has(id)) folded.set(id, record.id)
+  const rows = new Map<string, ActionRow>()
+  // Oldest first: the runner appends a starter before it runs the records it starts, so the starter's row exists first.
+  for (const entry of [...entries].reverse()) {
+    const starter = rows.get(entry.record.started_by?.record ?? '')
+    if (starter === undefined) rows.set(entry.record.id, { entry, children: [] })
+    else starter.children.push(entry)
   }
-  const rows: ActionRow[] = []
-  for (const entry of entries) {
-    if (folded.has(entry.record.id)) continue
-    const row: ActionRow = { entry, children: [] }
-    rows.push(row)
-  }
-  // Folded records keep the approval's `report.scheduled` order: the shot renders in shot order, then the timeline.
-  for (const row of rows) {
-    for (const id of scheduledBy(row.entry.record)) {
-      const child = folded.get(id) === row.entry.record.id ? loaded.get(id) : undefined
-      if (child !== undefined) row.children.push(child)
-    }
-  }
-  return rows
+  return [...rows.values()].reverse()
 }
 
 /** @returns the text of a record field, or null. */
@@ -57,16 +43,34 @@ function field(fields: Record<string, unknown> | undefined, key: string): string
   return typeof value === 'string' && value !== '' ? value : null
 }
 
+/** What an action label reads besides its record. */
+export interface LabelContext {
+  /** The operation declarations of `/api/dv/operations`. */
+  operations: readonly WireOperation[]
+  /** The registered rows of `dvHistory.rows`. */
+  rows: readonly HistoryRow[]
+  /** The loaded records by ID, for the chain of a retake. */
+  records: ReadonlyMap<string, ProjectRecord>
+}
+
 /**
  * The label a row shows for its action: the operation label (`operationLabel` of `@dv/ui-kit`) followed by its subject.
- * Plans name their title or PlanId and version (`report.plan`, `report.version`), a plan's shot render names its shot
- * number (`params.shot`), and story bible records name the character, location or style.
+ * The subject comes from the registered row that matches the operation (an exact name first, then `'<key>.'`). Else
+ * plans name their title or PlanId and version (`report.plan`, `report.version`), story bible records name the
+ * character, location or style, and a record with a chain slot (`chainOf`) names the slot and its lane.
  * @param record - the operation record.
- * @param operations - the operation declarations of `/api/dv/operations`.
+ * @param context - the operations, the registered rows and the loaded records.
  * @returns the Chinese and English label.
  */
-export function actionLabel(record: ProjectRecord, operations: readonly WireOperation[]): readonly [string, string] {
-  const [zh, en] = operationLabel(record.operation, operations)
+export function actionLabel(record: ProjectRecord, context: LabelContext): readonly [string, string] {
+  const [zh, en] = operationLabel(record.operation, context.operations)
+  const operation = record.operation ?? ''
+  const row = context.rows.find(item => item.match === operation)
+    ?? context.rows.find(item => item.match.endsWith('.') && operation.startsWith(item.match))
+  if (row !== undefined) {
+    const subject = row.subject(record)
+    return subject === null ? [zh, en] : [`${zh}${subject[0]}`, `${en}${subject[1]}`]
+  }
   // A PlanId (`p1`); a plan named by its record ID comes from a project made before plans had IDs and is not shown.
   const named = field(record.report, 'plan') ?? field(record.params, 'plan')
   const plan = named !== null && /^p\d+$/.test(named) ? named : null
@@ -85,17 +89,16 @@ export function actionLabel(record: ProjectRecord, operations: readonly WireOper
       if (plan === null) return [zh, en]
       return version === null ? [`${zh} ${plan}`, `${en} ${plan}`] : [`${zh} ${plan} v${version}`, `${en} ${plan} v${version}`]
     }
-    case 'shot.render': {
-      const shot = field(record.params, 'shot')
-      return shot === null ? [zh, en] : [`${zh} ${shot}`, `${en} ${shot}`]
-    }
   }
   if (record.component === 'bible') {
     const name = field(record.params, 'name') ?? field(record.params, 'character') ?? field(record.params, 'location')
       ?? field(record.params, 'style')
     if (name !== null) return [`${zh}「${name}」`, `${en} “${name}”`]
   }
-  return [zh, en]
+  const chain = chainOf(record, context.records)
+  if (chain === null || chain.slot === null) return [zh, en]
+  const slot = chain.lane === undefined ? String(chain.slot) : `${String(chain.slot)} · ${chain.lane}`
+  return [`${zh} ${slot}`, `${en} ${slot}`]
 }
 
 /** The asset a row's thumbnail shows, and whether it is drawn as an image or as a video frame. */
@@ -112,7 +115,7 @@ export interface Thumbnail {
  * @param record - the record.
  * @param assets - the known assets by ID.
  * @param records - the loaded records by ID, to find the still of a video's maker.
- * @param children - the records folded under the row, in `report.scheduled` order.
+ * @param children - the records folded under the row, in log order.
  * @returns the thumbnail, or null.
  */
 export function thumbnailOf(

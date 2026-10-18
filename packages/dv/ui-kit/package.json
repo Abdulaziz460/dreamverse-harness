@@ -10,9 +10,11 @@
     "./*": "./src/client/*"
   },
   "peerDependencies": {
+    "@deepseek-ai/cordis": "workspace:~",
     "react": "^18.2.0"
   },
   "devDependencies": {
+    "@deepseek-ai/cordis": "workspace:~",
     "@types/react": "~18.3.1",
     "react": "^18.2.0"
   }

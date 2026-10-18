@@ -2,7 +2,7 @@
  * The History panel: the edit history of a project, read through `POST /api/dv/history`, like the History panel of an
  * image editor. It lists the steps of the history list, newest first. Each row shows the action with its subject
  * (修改分镜计划 p1 → v2, 渲染镜头 7), who did it (你, 智能体, 自动), how long ago, its status, a thumbnail on render rows, and for an
- * agent action the intent the agent gave for the call. The renders a plan approval scheduled fold under the approval's
+ * agent action the intent the agent gave for the call. The records that a record started (`started_by`) fold under its
  * row. The step at the current position carries 当前; the steps after it, which redo brings back, are greyed. Every other
  * row's ⋮ menu offers 回到这一步, which moves the current position to that step. Selecting a row plays its output under
  * the row and, for a step at or before the current position, focuses it on the canvas or its clip on the timeline. The
@@ -10,7 +10,7 @@
  *
  * @module @dv/ui-history/HistoryPanel
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
@@ -18,14 +18,15 @@ import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { DvClient, assetUrl } from '@dv/ui-kit/api.ts'
 import { useCurrentProject } from '@dv/ui-kit/current-project.ts'
 import { useText } from '@dv/ui-kit/locale.ts'
+import { createRegistry, type HistoryRow, type Registry } from '@dv/ui-kit/registries.ts'
 import { isGenerationRecord } from '@dv/ui-kit/state.ts'
-import type { Actor, Asset, HistoryEntry, HistoryQuery, ProjectRecord, RecordStatus, WireHistory, WireOperation } from '@dv/ui-kit/types.ts'
+import type { Actor, Asset, HistoryEntry, HistoryQuery, ProjectRecord, RecordStatus, WireHistory } from '@dv/ui-kit/types.ts'
 import { useOperations, useProjectState } from '@dv/ui-kit/useProject.ts'
 import {
   DV_HISTORY_FOCUS_EVENT, DV_TRAJECTORY_FOCUS_EVENT, dispatchWorkspaceEvent, type DvWorkspaceEventMap,
 } from '@dv/ui-kit/workspace-events.ts'
 import {
-  actionLabel, actionRows, centerFocus, clipTimelines, relativeTime, thumbnailOf, type ActionRow, type Thumbnail,
+  actionLabel, actionRows, centerFocus, clipTimelines, relativeTime, thumbnailOf, type ActionRow, type LabelContext, type Thumbnail,
 } from './rows.ts'
 import css from './HistoryPanel.module.css'
 
@@ -34,7 +35,12 @@ export interface HistoryPanelProps {
   projectId: string
   /** The API client; defaults to one over the page's fetch. */
   client?: DvClient
+  /** The history rows that plugins register (`dvHistory.rows`); defaults to none. */
+  rows?: Registry<HistoryRow>
 }
+
+/** The registry of a panel mounted without `dvHistory`. */
+const NO_ROWS = createRegistry<HistoryRow>(row => [row.match])
 
 /** Entries per page. */
 const PAGE = 50
@@ -173,6 +179,9 @@ export function HistoryPanel(props: HistoryPanelProps): ReactNode {
   const t = useText()
   const current = useProjectState(client, projectId)
   const operations = useOperations(client)
+  const registry = props.rows ?? NO_ROWS
+  const subscribe = useCallback((listener: () => void) => registry.subscribe(listener), [registry])
+  const registered = useSyncExternalStore(subscribe, () => registry.list())
   const [selected, setSelected] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [focusRecord, setFocusRecord] = useState<string | null>(null)
@@ -192,7 +201,11 @@ export function HistoryPanel(props: HistoryPanelProps): ReactNode {
   const query = useMemo((): HistoryQuery => ({ project: projectId }), [projectId])
   const { loaded, error, loadMore } = useHistory(client, query)
   const rows = useMemo(() => actionRows(loaded?.entries ?? []), [loaded])
-  const recordsById = useMemo(() => new Map((loaded?.entries ?? []).map(entry => [entry.record.id, entry.record])), [loaded])
+  // The loaded records and the records of the current state, so a retake finds its `based_on` root outside the window.
+  const recordsById = useMemo(
+    () => new Map([...records ?? [], ...(loaded?.entries ?? []).map(entry => entry.record)].map(item => [item.id, item])),
+    [records, loaded],
+  )
 
   // A `dv:history-focus` request: find the record the tool call wrote, then select it once loaded.
   const takeFocus = useCallback((focus: DvWorkspaceEventMap['dv:history-focus']) => {
@@ -255,7 +268,7 @@ export function HistoryPanel(props: HistoryPanelProps): ReactNode {
     const changes = loaded.entries.filter(entry => entry.record.operation !== 'proj.create')
     const shared = {
       assets: loaded.assets, records: recordsById, now, selected, onChoose: choose, rowRef, onJump: jump,
-      operations: operations.value ?? [],
+      labels: { operations: operations.value ?? [], rows: registered, records: recordsById },
       isGeneration: (record: ProjectRecord): boolean => isGenerationRecord(
         record, operations.value?.find(operation => operation.name === record.operation), id => loaded.assets.get(id)?.mime),
     }
@@ -416,14 +429,14 @@ interface RowContext {
   /** 回到这一步 on a row. */
   onJump: (record: string) => void
   isGeneration: (record: ProjectRecord) => boolean
-  /** The operation declarations of `/api/dv/operations`, which name the row labels. */
-  operations: readonly WireOperation[]
+  /** What the row labels read: the operation declarations, the registered rows and the records. */
+  labels: LabelContext
 }
 
 /**
  * One action row: the thumbnail, the action label and the time on the first line; who, the status, 当前 on the step at
- * the current position and the agent's intent on the second; a step after the current position is greyed. A plan
- * approval adds the toggle that shows the renders it scheduled, nested below it.
+ * the current position and the agent's intent on the second; a step after the current position is greyed. A row whose
+ * record started other loaded records adds the toggle that shows them, nested below it.
  * @param props - the row, the shared row context, and the approval's expanded state and toggle.
  * @returns the row and, while expanded, its nested rows.
  */
@@ -434,7 +447,7 @@ function Row(props: RowContext & { row: ActionRow; expanded: boolean; onToggle: 
   const renders = children.filter(child => props.isGeneration(child.record))
   const doneRenders = renders.filter(child => child.record.status === 'done').length
   const foldText = renders.length === 0
-    ? t(...actionLabel(children[0]?.record ?? row.entry.record, props.operations))
+    ? t(...actionLabel(children[0]?.record ?? row.entry.record, props.labels))
     : t(`渲染 ${String(renders.length)} 个镜头`, `Render ${String(renders.length)} shots`)
   return (
     <div className={css.group}>
@@ -497,7 +510,7 @@ function EntryRow(props: RowContext & { entry: HistoryEntry; nested: boolean }):
         <div style={{ minWidth: 0, opacity: dim }}>
           <div className={css.titleLine}>
             <span className={css.label}>
-              {t(...actionLabel(record, props.operations))}
+              {t(...actionLabel(record, props.labels))}
             </span>
             <span
               data-testid="dv-history-time" title={new Date(record.created_at).toLocaleString()} className={css.time}
@@ -578,13 +591,15 @@ function Details(props: { record: ProjectRecord; assets: ReadonlyMap<string, Ass
 /**
  * The tab body: the History panel of the project that the DreamVerse shell has open, beside the chat session whose
  * right panel holds the tab.
- * @param props - the tab's props and the injected client.
+ * @param props - the tab's props, the injected client and the history rows.
  * @returns the panel, or a notice while no project is open.
  */
-export function HistoryTabBody(props: PropsRuntime<'sidebar.right.pane.tab'> & { client: DvClient }): ReactNode {
+export function HistoryTabBody(
+  props: PropsRuntime<'sidebar.right.pane.tab'> & { client: DvClient; rows: Registry<HistoryRow> },
+): ReactNode {
   const project = useCurrentProject()
   const t = useText()
   if (project === null) return <p data-testid="dv-history-empty" className={css.note} style={{ padding: 12 }}>{t('先打开一个项目', 'Open a project first')}</p>
   // Keyed by project so a switch starts from an empty panel instead of showing the previous project's records.
-  return <HistoryPanel key={project} projectId={project} client={props.client} />
+  return <HistoryPanel key={project} projectId={project} client={props.client} rows={props.rows} />
 }

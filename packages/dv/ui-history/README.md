@@ -26,14 +26,14 @@ Use this package to give the web application a History panel beside the chat. Th
 
 Mount the plugin in a profile that stacks `dsh-web-app` (which provides the right Sidebar and the client module loader) and `@dv/api` (which serves the routes the panel calls). Build the browser bundle first: `pnpm run build` writes `lib/client.js`.
 
-The panel asks for the steps of the project's history list, newest first. Each row shows the operation label (`operationLabel` of `@dv/ui-kit`: the operation's `label` in `/api/dv/operations`, else its tool label, else the operation name) with its subject (修改分镜计划 p1 → v2, 渲染镜头 7 / Render shot 7, 新建角色「name」), who did it (你 / You, 智能体 / Agent, 自动 / Automatic), how long ago, the status, and, on a render row only (a record that `isGenerationRecord` of `@dv/ui-kit` accepts: an image, video, or audio generation), one thumbnail (the take's still, else a video frame, else an empty square that keeps render rows aligned); other rows are text only. An agent row also shows on its second line the record's own `intent`, the reason the agent gave for the call. The renders and the timeline record that a plan approval scheduled (`report.scheduled`) fold under the approval's row behind the toggle 渲染 n 个镜头 / Render n shots. The row of the current position carries 当前 / Current, and the rows after it are greyed: faded text and a black-and-white thumbnail. Every other row ends in a ⋮ button (更多操作 / More actions) whose menu offers 回到这一步 / Go back to this step (`/api/dv/undo` with `to` = that step), which moves the current position to that step, before or after the current one.
+The panel asks for the steps of the project's history list, newest first. Each row shows the operation label (`operationLabel` of `@dv/ui-kit`: the operation's `label` in `/api/dv/operations`, else its tool label, else the operation name) with its subject (修改分镜计划 p1 → v2, 渲染镜头 1 / Render shot 1, 新建角色「name」), who did it (你 / You, 智能体 / Agent, 自动 / Automatic), how long ago, the status, and, on a render row only (a record that `isGenerationRecord` of `@dv/ui-kit` accepts: an image, video, or audio generation), one thumbnail (the take's still, else a video frame, else an empty square that keeps render rows aligned); other rows are text only. An agent row also shows on its second line the record's own `intent`, the reason the agent gave for the call. The subject comes from the `HistoryRow` registered for the operation (an exact operation name first, then `'<key>.'`); else plan and story bible records name their plan or item; else a record with a chain slot names the slot, with ` · <lane>` when the chain has a lane (`chainOf` of `@dv/ui-kit`: the record's `started_by`, else that of its `based_on` root, so a canvas retake keeps its shot number). The loaded records whose `started_by.record` is a row's record, such as the renders and the timeline record of a plan approval, fold under that row in log order behind the toggle 渲染 n 个镜头 / Render n shots. The row of the current position carries 当前 / Current, and the rows after it are greyed: faded text and a black-and-white thumbnail. Every other row ends in a ⋮ button (更多操作 / More actions) whose menu offers 回到这一步 / Go back to this step (`/api/dv/undo` with `to` = that step), which moves the current position to that step, before or after the current one.
 
 ```yaml
 - id: dv-ui-history
   name: '@dv/ui-history'
 ```
 
-The Host half registers nothing. The browser half registers the `dv-history` tab type (a page the Sidebar's guide offers as "History") and the tab body under its own id `@dv/ui-history`, and opens the tab when a `dv:history-focus` window event arrives.
+The Host half registers nothing. The browser half provides the client service `dvHistory` (`DvHistory` of `@dv/ui-kit/registries.ts`), registers the `dv-history` tab type (a page the Sidebar's guide offers as "History") and the tab body under its own id `@dv/ui-history`, and opens the tab when a `dv:history-focus` window event arrives. A plugin's UI half names the records of its operations inside `ctx.inject(['dvHistory'], …)` with `ctx.dvHistory.rows.register({ match, subject })`, whose disposer it keeps; `match` is an operation name or `'<key>.'`, and a second row with the same `match` throws.
 
 | Gesture | Request or event |
 | --- | --- |
@@ -55,16 +55,16 @@ A `dv:history-focus` event `{session, toolCall}` finds the record that tool call
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-`HistoryPanel` reads the project's current state with `useProjectState` for the timelines and the records of the current state, and lists the history through `POST /api/dv/history`. `actionRows` folds the scheduled records under their approval, `actionLabel` names each record, and `centerFocus` decides what a selected row focuses (nothing for a greyed step). Each entry's `place` sets the 当前 mark, the grey rows, and the rows that offer 回到这一步. On `/dv/events`, an `update` event replaces the record in the loaded rows, and a `record` or `line` event refetches the loaded window, debounced by 200 ms.
+`HistoryPanel` reads the project's current state with `useProjectState` for the timelines and the records of the current state, and lists the history through `POST /api/dv/history`. `actionRows` folds each started record under the row of its starter, `actionLabel` names each record, and `centerFocus` decides what a selected row focuses (nothing for a greyed step). Each entry's `place` sets the 当前 mark, the grey rows, and the rows that offer 回到这一步. On `/dv/events`, an `update` event replaces the record in the loaded rows, and a `record` or `line` event refetches the loaded window, debounced by 200 ms.
 
 | File | Content |
 | --- | --- |
 | [`src/css-modules.d.ts`](src/css-modules.d.ts) | The type of the CSS Module imports |
-| [`src/client/index.ts`](src/client/index.ts) | Registrations and the tab opening on `dv:history-focus` |
+| [`src/client/index.ts`](src/client/index.ts) | The `dvHistory` service, registrations, and the tab opening on `dv:history-focus` |
 | [`src/client/definition.ts`](src/client/definition.ts) | The tab type |
 | [`src/client/HistoryPanel.tsx`](src/client/HistoryPanel.tsx) | The panel, its header with the undo and redo buttons, rows with their ⋮ menus, preview, and the tab body |
 | [`src/client/HistoryPanel.module.css`](src/client/HistoryPanel.module.css) | Styles of the panel |
-| [`src/client/rows.ts`](src/client/rows.ts) | Action rows and approval folds, labels with subjects, thumbnails, relative times, and center focus |
+| [`src/client/rows.ts`](src/client/rows.ts) | Action rows and the folds of started records, labels with subjects, thumbnails, relative times, and center focus |
 
 </details>
 
