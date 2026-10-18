@@ -238,7 +238,7 @@ describe('agent tools', () => {
     const refused = await fixture.call('dv_plan_approve', { reason: 'approve', prompt: 'kite' })
     expect(refused.isError && refused.error.message).toBe([
       'dv_plan_approve needs the user\'s agreement.', 'What it will do:', '1. kite (5 s)', 'Estimated GPU time: about 25 s.',
-      'Show this to the user and ask in the conversation, with the question in bold (for example **Render these shots now?**). '
+      'Show this to the user and ask in the conversation, with the question in bold (for example **Run this now?**). '
         + 'Wait for the user\'s answer, then call again with user_approved: true.',
     ].join('\n'))
     expect(fixture.project.listHistory({ project: projectId })).toHaveLength(before)
@@ -273,7 +273,7 @@ describe('agent tools', () => {
     expect(refused.isError && refused.error.message).toBe([
       'dv_shot_render_ref2va would bring this turn to about 80 GPU seconds, above the 60 s budget.', 'What it will do:', 'render b',
       'Estimated GPU time: about 40 s.',
-      'Show this to the user and ask in the conversation, with the question in bold (for example **Render these shots now?**). '
+      'Show this to the user and ask in the conversation, with the question in bold (for example **Run this now?**). '
         + 'Wait for the user\'s answer, then call again with user_requested: true.',
     ].join('\n'))
     const requested = value(await fixture.call('dv_shot_render_ref2va', { reason: 'second', prompt: 'b', user_requested: true }))
@@ -327,6 +327,19 @@ describe('agent tools', () => {
     expect(bound).not.toContain('selection')
   })
 
+  it('names the registered reference kinds in the naming rule of the dv:project prompt section', async () => {
+    const fixture = await start()
+    const section = async (): Promise<string | undefined> => (await fixture.context.systemPrompt.assemble({ agent: { id: 's1' } as never }))
+      .sections.find(entry => entry.name === 'dv:project')?.text
+    expect(await section()).toContain('an output of a record as <record>#<n>, an asset by its asset ID, and any other item by the ID')
+    fixture.project.registerComponent('test_bible')
+    const removeLocation = fixture.project.registerReferenceKind(testKind('test_location'))
+    fixture.project.registerReferenceKind(testKind('test_style'))
+    expect(await section()).toContain('<record>#<n>, a test_location or test_style version as <id>@<version>, an asset by its asset ID')
+    removeLocation()
+    expect(await section()).toContain('<record>#<n>, a test_style version as <id>@<version>, an asset by its asset ID')
+  })
+
   it('holds a session\'s calls until its held work settles, even when that work fails', async () => {
     const fixture = await start()
     await boundProject(fixture)
@@ -356,14 +369,14 @@ describe('agent tools', () => {
     }
     expect(fixture.project.listReferenceKinds()).toEqual([])
     const removeLocation = fixture.project.registerReferenceKind(testKind('test_location'))
-    expect(inputsText()).toContain('or <id>@<version> (a test_location version such as c1@1); a list')
+    expect(inputsText()).toContain('or <id>@<version> (a test_location version; dv_proj_state lists IDs); a list')
     fixture.project.registerReferenceKind(testKind('test_style'))
     fixture.project.registerReferenceKind(testKind('test_character'))
     expect(fixture.project.listReferenceKinds()).toEqual(['test_location', 'test_style', 'test_character'])
-    expect(inputsText()).toContain('(a test_location, test_style or test_character version such as c1@1)')
+    expect(inputsText()).toContain('(a test_location, test_style or test_character version; dv_proj_state lists IDs)')
     expect(() => fixture.project.registerReferenceKind(testKind('test_style'))).toThrow(expect.objectContaining({ code: 'kind_exists' }))
     removeLocation()
-    expect(inputsText()).toContain('(a test_style or test_character version such as c1@1)')
+    expect(inputsText()).toContain('(a test_style or test_character version; dv_proj_state lists IDs)')
   })
 
   it('parses input references: assets, record outputs, and versions of the one reference kind that has them', async () => {

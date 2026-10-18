@@ -108,7 +108,7 @@ const RESULT_SCHEMA = {
     },
     scheduled: {
       type: 'array', required: true, items: { type: 'string' },
-      description: 'Records this call scheduled, such as the shots of an approved plan.',
+      description: 'Records this call scheduled to run later, after the records they wait for.',
     },
     params: { type: 'json', required: true, description: 'The recorded params.' },
     report: {
@@ -275,6 +275,15 @@ export function callProject(argument: unknown, bound: ProjectId | null): Project
 }
 
 /**
+ * The registered reference kinds as one phrase of agent text, such as "test_location, test_style or test_character".
+ * @param kinds - the kinds in registration order.
+ * @returns the phrase; empty when no kind is registered.
+ */
+export function kindListText(kinds: readonly string[]): string {
+  return [kinds.slice(0, -1).join(', '), ...kinds.slice(-1)].filter(part => part !== '').join(' or ')
+}
+
+/**
  * The params every operation tool shares, as the model sees them.
  * @param spec - the operation.
  * @param kinds - the registered reference kinds, which the `inputs` text lists.
@@ -282,8 +291,7 @@ export function callProject(argument: unknown, bound: ProjectId | null): Project
  */
 function sharedParams(spec: OperationSpec, kinds: readonly string[]): ParameterSchemaSpec {
   // The `inputs` text names `<id>@<version>` only while a reference kind is registered, such as "a prop version".
-  const kindText = [kinds.slice(0, -1).join(', '), ...kinds.slice(-1)].filter(part => part !== '').join(' or ')
-  const versionText = kinds.length === 0 ? '' : `, or <id>@<version> (a ${kindText} version such as c1@1)`
+  const versionText = kinds.length === 0 ? '' : `, or <id>@<version> (a ${kindListText(kinds)} version; dv_proj_state lists IDs)`
   const roles = Object.entries(spec.inputs).map(([role, input]) => `${role}${input.required === true ? '' : '?'}: ${input.type}`
     + `${input.many === true ? '[]' : ''}${input.versioned === true ? ' (<asset> or <id>@<version>)' : ''}`)
   return {
@@ -304,9 +312,9 @@ function sharedParams(spec: OperationSpec, kinds: readonly string[]): ParameterS
     ...spec.readOnly === true ? {} : {
       supersedes: {
         type: 'array', items: { type: 'string' },
-        description: 'Records whose outputs this call replaces, such as an earlier take of the shot; their consumers become stale.',
+        description: 'Records whose outputs this call replaces, such as an earlier take; their consumers become stale.',
       },
-      based_on: { type: 'string', description: 'The record this call is a changed copy of; takes of one shot share it.' },
+      based_on: { type: 'string', description: 'The record this call is a changed copy of; the takes of one original share it.' },
     },
   }
 }
@@ -439,7 +447,7 @@ export class AgentTools {
         ? `${name} needs the user's agreement.`
         : `${name} would bring this turn to about ${String(Math.round(total))} GPU seconds, above the ${String(threshold)} s budget.`,
       'What it will do:', summary.text, `Estimated GPU time: about ${String(Math.round(summary.gpu_seconds))} s.`,
-      'Show this to the user and ask in the conversation, with the question in bold (for example **Render these shots now?**). '
+      'Show this to the user and ask in the conversation, with the question in bold (for example **Run this now?**). '
         + `Wait for the user's answer, then call again with ${flag}: true.`,
     ].join('\n'))
   }

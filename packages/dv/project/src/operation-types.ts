@@ -69,7 +69,7 @@ export interface OperationSpec {
    * not `never` and that has no `confirmSummary` (`invalid_params`).
    * @param call - the parsed call, after the operation's `prepareToolCall`.
    * @param state - the project's current state.
-   * @returns `text`: what the agent shows the user before asking (for `plan.approve`: one line per shot it renders);
+   * @returns `text`: what the agent shows the user before asking (such as one line per run that the call starts);
    *   `gpu_seconds`: the call's GPU estimate, which also counts against the turn's budget.
    */
   confirmSummary?(call: OperationToolCall, state: ProjectState): { text: string; gpu_seconds: number }

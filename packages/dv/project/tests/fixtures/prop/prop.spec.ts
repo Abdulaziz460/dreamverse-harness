@@ -102,7 +102,7 @@ describe('the prop fixture', () => {
     await run('prop.create', { prop: 'p1' }, [{ role: 'reference', ref: { asset: lamp } }])
     const inputsText = () => JSON.stringify(context.tools.schemas().find(tool => tool.name === 'dv_look_make')?.parameters)
     expect(dv.listReferenceKinds()).toEqual(['prop'])
-    expect(inputsText()).toContain('or <id>@<version> (a prop version such as c1@1)')
+    expect(inputsText()).toContain('or <id>@<version> (a prop version; dv_proj_state lists IDs)')
     // The agent names the version as p1@1; the record reads the prop's assets.
     const result = await context.tools.execute({
       callId: ToolCallId('call-1'), name: 'dv_look_make', arguments: { reason: 'use the lamp', inputs: { reference: ['p1@1'] } },
