@@ -21,7 +21,7 @@ describe('operationLabel', () => {
   })
 
   it('falls back to the tool label, then to the operation name, and names nothing for a record without an operation', () => {
-    expect(operationLabel('timeline.clip_move', OPERATIONS)).toEqual(['移动片段', 'Move clip'])
+    expect(operationLabel('asset.import', OPERATIONS)).toEqual(['导入素材', 'Import asset'])
     expect(operationLabel('story.approve', OPERATIONS)).toEqual(['story.approve', 'story.approve'])
     expect(operationLabel(null, OPERATIONS)).toEqual(['', ''])
   })

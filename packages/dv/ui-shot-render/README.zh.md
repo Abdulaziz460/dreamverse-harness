@@ -35,7 +35,7 @@ Host 半边不注册任何东西。浏览器半边以默认优先级 0 注册一
 
 | 卡片部分 | 值 |
 | --- | --- |
-| 标题 | `@dv/ui-kit` 的 `operationLabel('shot.render', …)`：操作在 `GET /api/dv/operations` 里的标签（渲染镜头 / Render shot），没有时用工具在 `DV_TOOL_LABELS` 里的条目，再没有时用 `shot.render` |
+| 标题 | `@dv/ui-kit` 的 `operationLabel('shot.render', …)`：操作在 `GET /api/dv/operations` 里的标签（渲染镜头 / Render shot），没有时用 `shot.render` |
 | 模型行（`data-testid="dv-composer-render-model"`） | 调用的 `model`，和按 `GET /api/dv/tasks` 里的标签显示的 `task`（没有标签时显示任务名），用 ` · ` 连接（例如任务 `ref2v` 显示 `fasth3 · 参考图生成` / `fasth3 · From references`） |
 | 提示词 | 调用的 `prompt` |
 | 状态 | 调用结束前为 渲染中… / Rendering…，之后为 已渲染 / Rendered；失败的调用为 未渲染 / Not rendered |

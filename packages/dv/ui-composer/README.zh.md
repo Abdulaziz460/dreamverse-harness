@@ -31,7 +31,7 @@ kind: "package-reference"
   name: '@dv/ui-composer'
 ```
 
-Host 半边不注册任何东西。浏览器半边在 `apply` 顶层提供 `dvMentions`：`kinds`，一个以 `id` 为键的 `@dv/ui-kit/registries.ts` 的 `Registry<MentionKind>`，插件 UI 半边在 `ctx.inject(['dvMentions'], …)` 中填充它。它注册 `@` 来源 `dv-project`；DSH 的 `commandUi` 服务挂载时，通过它注册 ＋ 菜单行 引用，其说明为 项目里的条目或素材，不点名任何引用类型；以及 UI 插槽条目 `conversation.input.left`（ID 为 `dv-composer-compose`，不渲染任何内容，让每个已挂载的会话输入框成为 `dv:compose` 的目标）、`conversation.input.permission`（一个空条目）、`conversation.chat.markdown`（一个 chain 条目，按 `/dv/assets/<id>` 路径匹配链接、图片和表格），并为 `DV_TOOL_LABELS` 里的每个工具注册一个优先级为 0.5 的 `tool.call.toolview` 条目 `ToolLabelRow`，所以插件自己的默认优先级 0 的条目会盖过它（`dv_shot_render` 由 `@dv/ui-shot-render` 的渲染卡片盖过）。它还为 `GET /api/dv/operations` 的每个操作注册一个优先级为 1 的 `ToolLabelRow`，以它的工具名为键，所以优先级更低的条目会盖过它；插槽声明时它读一次这个列表，每次打开项目时再读一次，列表变化时它移除这些行，再注册读到的列表的行。它为每个有名称的工具和每个操作在 DSH 的 `chat` 字典里加一条 `tool.name.<tool>`，运行中分组的标题读取它。
+Host 半边不注册任何东西。浏览器半边在 `apply` 顶层提供 `dvMentions`：`kinds`，一个以 `id` 为键的 `@dv/ui-kit/registries.ts` 的 `Registry<MentionKind>`，插件 UI 半边在 `ctx.inject(['dvMentions'], …)` 中填充它。它注册 `@` 来源 `dv-project`；DSH 的 `commandUi` 服务挂载时，通过它注册 ＋ 菜单行 引用，其说明为 项目里的条目或素材，不点名任何引用类型；以及 UI 插槽条目 `conversation.input.left`（ID 为 `dv-composer-compose`，不渲染任何内容，让每个已挂载的会话输入框成为 `dv:compose` 的目标）、`conversation.input.permission`（一个空条目）、`conversation.chat.markdown`（一个 chain 条目，按 `/dv/assets/<id>` 路径匹配链接、图片和表格），并为 `DV_TOOL_LABELS` 里的每个工具注册一个优先级为 0.5 的 `tool.call.toolview` 条目 `ToolLabelRow`，所以插件自己的默认优先级 0 的条目会盖过它。它还为 `GET /api/dv/operations` 的每个操作注册一个优先级为 1 的 `ToolLabelRow`，以它的工具名为键，所以优先级更低的条目会盖过它（`dv_shot_render` 由 `@dv/ui-shot-render` 的渲染卡片盖过）；插槽声明时它读一次这个列表，每次打开项目时再读一次，列表变化时它移除这些行，再注册读到的列表的行。它为每个有名称的工具和每个操作在 DSH 的 `chat` 字典里加一条 `tool.name.<tool>`，运行中分组的标题读取它。
 
 | 手势 | 请求或事件 |
 | --- | --- |

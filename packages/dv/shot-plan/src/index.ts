@@ -249,6 +249,7 @@ export default class DvShotPlan extends Service {
       name: 'plan.create',
       component: 'plan',
       version: '1',
+      label: { zh: '新建分镜计划', en: 'Create plan' },
       description: 'Propose a new plan for a separate story: for each shot its model from dv_models_list, its prompt written for it, its '
         + 'duration, and its inputs (references; continue_previous to start from the previous shot\'s last frame). The report names '
         + 'the new plan ID (p1, p2, …) and one line per shot. To extend, shorten or change an existing plan, call dv_plan_update '
@@ -277,6 +278,7 @@ export default class DvShotPlan extends Service {
       {
         ...create,
         name: 'plan.update',
+        label: { zh: '修改分镜计划', en: 'Update plan' },
         description: 'Write the next version of an existing plan: pass its plan ID and the complete plan (every shot, in order; '
           + 'a shot added after six shots is shot 7). Use it to extend, shorten or change the story. The report names the version '
           + 'and one line per shot. A version renders nothing by itself.',

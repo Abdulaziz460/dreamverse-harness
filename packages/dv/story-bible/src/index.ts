@@ -39,6 +39,9 @@ const MEANING: Record<BibleKind, string> = {
   style: 'a reusable visual look',
 }
 
+/** The Chinese name of each kind, in the operation labels that the interface shows. */
+const NAME_ZH: Record<BibleKind, string> = { character: '角色', location: '场景', style: '风格' }
+
 /** The `reference` input role of every Story bible operation. */
 const REFERENCE_INPUT = {
   reference: { type: 'image', many: true, description: 'The reference images of the version, in order.' },
@@ -83,6 +86,7 @@ function createOperation(kind: BibleKind, project: Pick<Context['dvProject'], 'k
     name: `bible.${kind}_create`,
     component: 'bible',
     version: '1',
+    label: { zh: `新建${NAME_ZH[kind]}`, en: `Create ${kind}` },
     description: `Create a ${kind} (${MEANING[kind]}) with its reference images. Writes version 1; a shot names it as the input `
       + `<${kind}>@1, which stands for those reference images. The ID must not name another character, location, style or any `
       + 'other item that an input names as <id>@<version>.',
@@ -118,6 +122,7 @@ function updateOperation(kind: BibleKind): OperationSpec {
     name: `bible.${kind}_update`,
     component: 'bible',
     version: '1',
+    label: { zh: `修改${NAME_ZH[kind]}`, en: `Update ${kind}` },
     description: `Update a ${kind}: new reference images, name, or description. Writes the next version, which keeps what the `
       + 'call does not change, and marks everything made with the previous version as stale.',
     inputs: REFERENCE_INPUT,

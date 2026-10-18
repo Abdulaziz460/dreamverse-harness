@@ -69,6 +69,6 @@ describe('addToolNames', () => {
     addToolNames({ dicts: new Map([['chat', new Map([['zh', zh], ['en', en]])]]) }, [APPROVE, PREVIEW])
     expect([zh['tool.name.dv_story_approve'], en['tool.name.dv_story_approve']]).toEqual(['批准分镜计划', 'Approve plan'])
     expect(zh['tool.name.dv_story_preview']).toBe('story.preview')
-    expect(zh['tool.name.dv_timeline_clip_move']).toBe('移动片段')
+    expect(zh['tool.name.dv_asset_import']).toBe('导入素材')
   })
 })

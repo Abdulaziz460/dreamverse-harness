@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to keep the characters, locations and styles of a project, each with its reference images. It registers six operations with `dvProject`, a create and an update per kind (`bible.character_create`, `bible.character_update`, and the same for `location` and `style`), the `bible` reducer that turns their records into versions, and the reference kinds `character`, `location` and `style`. Each call writes the next version of an ID. A shot names a version as the input `<id>@<version>`, which stands for that version's reference images. An update makes every record that read the previous version stale.
+Use this package to keep the characters, locations and styles of a project, each with its reference images. It registers six operations with `dvProject`, a create and an update per kind (`bible.character_create`, `bible.character_update`, and the same for `location` and `style`), the `bible` reducer that turns their records into versions, and the reference kinds `character`, `location` and `style`. Each call writes the next version of an ID. A shot names a version as the input `<id>@<version>`, which stands for that version's reference images. An update makes every record that read the previous version stale. Each operation declares the label that the interface shows in place of its tool name: 新建角色 / Create character and 修改角色 / Update character, and the same with 场景 for `location` and 风格 for `style`.
 
 ## Table of Contents
 

@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-用这个包在生成任何内容之前规划一段视频。一个分镜计划有一个 `PlanId`（`p1`、`p2`……）和编号的版本，每个镜头以 [`@dv/models`](../models/README.zh.md) 模型目录中的键写明渲染它的视频模型：`modality`、`task`、`provider` 和 `model`。`plan.create` 存储新分镜计划的版本 1，`plan.update` 存储下一个版本。智能体以 `dv_plan_create` 和 `dv_plan_update` 调用它们。工作流插件（例如 [`@dv/workflow-story`](../workflow-story/README.zh.md)）批准一个版本并渲染它的镜头。
+用这个包在生成任何内容之前规划一段视频。一个分镜计划有一个 `PlanId`（`p1`、`p2`……）和编号的版本，每个镜头以 [`@dv/models`](../models/README.zh.md) 模型目录中的键写明渲染它的视频模型：`modality`、`task`、`provider` 和 `model`。`plan.create` 存储新分镜计划的版本 1，`plan.update` 存储下一个版本。智能体以 `dv_plan_create` 和 `dv_plan_update` 调用它们。工作流插件（例如 [`@dv/workflow-story`](../workflow-story/README.zh.md)）批准一个版本并渲染它的镜头。这两个操作声明界面代替其工具名显示的标签：新建分镜计划 / Create plan 和 修改分镜计划 / Update plan。
 
 ## 目录
 

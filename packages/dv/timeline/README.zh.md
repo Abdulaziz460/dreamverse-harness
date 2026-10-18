@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-用本包保存项目的时间线：每条时间线是一个剪辑好的视频，按播放顺序保存片段；片段是带入点、出点和片段 ID（例如 `cl3`）的素材。本包注册十一个操作，它们成为智能体工具 `dv_timeline_*`：十个从不创建文件的编辑操作，以及经 `dvFfmpeg` 把一条时间线写成一个视频的 `timeline.export`。本包的 `timeline` 归约函数把编辑记录折叠成 `timeline` 切片。挂载 DSH 技能注册表时，本包还注册 `timeline-editing` 技能，它把剪辑说法对应到确切的 `dv_*` 调用。
+用本包保存项目的时间线：每条时间线是一个剪辑好的视频，按播放顺序保存片段；片段是带入点、出点和片段 ID（例如 `cl3`）的素材。本包注册十一个操作，它们成为智能体工具 `dv_timeline_*`：十个从不创建文件的编辑操作，以及经 `dvFfmpeg` 把一条时间线写成一个视频的 `timeline.export`。本包的 `timeline` 归约函数把编辑记录折叠成 `timeline` 切片。挂载 DSH 技能注册表时，本包还注册 `timeline-editing` 技能，它把剪辑说法对应到确切的 `dv_*` 调用。每个操作声明界面代替其工具名显示的标签，例如 `timeline.clip_move` 的 移动片段 / Move clip 和 `timeline.export` 的 导出时间线 / Export timeline。
 
 ## 目录
 

@@ -7,9 +7,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, waitFor, within } from '@testing-library/react'
 import { DvClient } from '@dv/ui-kit/api.ts'
 import { createRegistry, type HistoryRow, type Registry } from '@dv/ui-kit/registries.ts'
-import type { HistoryEntry, HistoryQuery, WireHistory, WireState } from '@dv/ui-kit/types.ts'
+import type { HistoryEntry, HistoryQuery, WireHistory, WireOperation, WireState } from '@dv/ui-kit/types.ts'
 import { DV_CANVAS_FOCUS_EVENT, DV_HISTORY_FOCUS_EVENT, DV_TIMELINE_FOCUS_EVENT } from '@dv/ui-kit/workspace-events.ts'
-import { asset, fixtureState, record, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
+import { asset, fixtureState, OPERATIONS, record, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
 import { HistoryPanel } from '../src/client/HistoryPanel.tsx'
 
 /**
@@ -40,6 +40,19 @@ const ENTRIES: HistoryEntry[] = [
   { record: record({ id: 'p1', turn: 't3', actor: 'agent', session: 's5', tool_call: 'call-p1', operation: 'plan.create' }), place: 'before' },
 ]
 
+/** The operations on the wire: the fixture's, a clip move and the story approval, with the labels their packages declare. */
+const WIRE_OPERATIONS: WireOperation[] = [
+  ...OPERATIONS.map(operation => operation.name === 'shot.render' ? { ...operation, label: { zh: '渲染镜头', en: 'Render shot' } } : operation),
+  {
+    name: 'timeline.clip_move', version: '2', description: 'Move a clip.', label: { zh: '移动片段', en: 'Move clip' }, inputs: {}, params: {}, outputs: [],
+    deterministic: false, resource: 'none', confirm: 'never',
+  },
+  {
+    name: 'story.approve', version: '1', description: 'Approve a plan version.', label: { zh: '批准分镜计划', en: 'Approve plan' }, inputs: {}, params: {},
+    outputs: [], deterministic: false, resource: 'none', confirm: 'always',
+  },
+]
+
 /**
  * Mount the panel over scripted routes; `/api/dv/history` answers from {@link ENTRIES}.
  * @param entries - the history the route serves.
@@ -54,6 +67,7 @@ function mount(
 ) {
   const queries: HistoryQuery[] = []
   const scripted = scriptedFetch({
+    operations: WIRE_OPERATIONS,
     // Timeline `t1` of the fixture holds clips cl1 and cl2, assigned by its create record; the clip move m1 is a record
     // of the current state.
     state: () => {
@@ -92,7 +106,7 @@ describe('HistoryPanel', () => {
     expect(ids).toEqual(['m1', 'g1', 'p1'])
     expect(row('g1').textContent).toContain('render the hero')
     expect(row('g1').textContent).toContain('Agent')
-    expect(row('m1').textContent).toContain('Move clip')
+    await waitFor(() => { expect(row('m1').textContent).toContain('Move clip') })
     expect(row('m1').textContent).toContain('You')
     expect(row('m1').textContent).not.toContain('render the hero')
     expect(row('g1').getAttribute('data-actor')).toBe('agent')
@@ -117,14 +131,14 @@ describe('HistoryPanel', () => {
         place: 'before',
       },
       {
-        record: record({ id: 'ap', actor: 'agent', operation: 'plan.approve', params: { plan: 'p1' }, report: { plan: 'p1', version: 1, scheduled: ['g1', 'g2'] } }),
+        record: record({ id: 'ap', actor: 'agent', operation: 'story.approve', params: { plan: 'p1' }, report: { plan: 'p1', version: 1, scheduled: ['g1', 'g2'] } }),
         place: 'before',
       },
     ]
     const { view, row } = mount(approval)
     await waitFor(() => { row('ap') })
     expect(view.container.querySelectorAll('[data-testid="dv-history-row"]').length).toBe(1)
-    expect(row('ap').textContent).toContain('Approve plan')
+    await waitFor(() => { expect(row('ap').textContent).toContain('Approve plan') })
     const fold = view.getByTestId('dv-history-fold')
     // The running render has no output yet, so it counts once the operation declarations arrive.
     await waitFor(() => { expect(fold.textContent).toContain('Render 2 shots (1/2)') })

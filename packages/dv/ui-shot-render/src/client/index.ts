@@ -28,7 +28,7 @@ export function apply(ctx: Context): void {
   const client = new DvClient()
   function RenderRow(props: ToolCallViewProps) {
     // The label of `shot.render` in `/api/dv/operations`; until the list loads, or when the read fails, `operationLabel`
-    // falls back to the tool's `DV_TOOL_LABELS` entry, else to the operation name.
+    // falls back to the operation name.
     const label = operationLabel('shot.render', useOperations(client).value ?? [])
     // Until the labels load, or when the read fails, the card shows the task name.
     const taskLabels = useTaskLabels(client).value ?? {}

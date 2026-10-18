@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to plan a video before anything is rendered. A plan has a `PlanId` (`p1`, `p2`, …) and numbered versions, and each shot names the video model that renders it by its key in the model catalog of [`@dv/models`](../models/README.md): `modality`, `task`, `provider` and `model`. `plan.create` stores version 1 of a new plan and `plan.update` stores the next version. The agent calls them as `dv_plan_create` and `dv_plan_update`. A workflow plugin, such as [`@dv/workflow-story`](../workflow-story/README.md), approves a version and renders its shots.
+Use this package to plan a video before anything is rendered. A plan has a `PlanId` (`p1`, `p2`, …) and numbered versions, and each shot names the video model that renders it by its key in the model catalog of [`@dv/models`](../models/README.md): `modality`, `task`, `provider` and `model`. `plan.create` stores version 1 of a new plan and `plan.update` stores the next version. The agent calls them as `dv_plan_create` and `dv_plan_update`. A workflow plugin, such as [`@dv/workflow-story`](../workflow-story/README.md), approves a version and renders its shots. The operations declare the labels that the interface shows in place of their tool names: 新建分镜计划 / Create plan and 修改分镜计划 / Update plan.
 
 ## Table of Contents
 

@@ -35,7 +35,7 @@ The Host half registers nothing. The browser half registers one `tool.call.toolv
 
 | Card part | Value |
 | --- | --- |
-| Title | `operationLabel('shot.render', …)` of `@dv/ui-kit`: the operation's label in `GET /api/dv/operations` (渲染镜头 / Render shot), else the `DV_TOOL_LABELS` entry of the tool, else `shot.render` |
+| Title | `operationLabel('shot.render', …)` of `@dv/ui-kit`: the operation's label in `GET /api/dv/operations` (渲染镜头 / Render shot), else `shot.render` |
 | Model line (`data-testid="dv-composer-render-model"`) | The call's `model` and its `task` by its label in `GET /api/dv/tasks`, else by its name, joined by ` · ` (for example `fasth3 · 参考图生成` / `fasth3 · From references` for task `ref2v`) |
 | Prompt | The call's `prompt` |
 | Status | 渲染中… / Rendering… until the call settles, then 已渲染 / Rendered, or 未渲染 / Not rendered for a failed call |

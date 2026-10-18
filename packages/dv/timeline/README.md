@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to keep the timelines of a project: each timeline is one edited video that holds clips in playback order, and a clip is an asset with in and out points and a clip ID such as `cl3`. The package registers eleven operations, which become the agent tools `dv_timeline_*`: ten edits that never create a file, and `timeline.export`, which writes a timeline to one video through `dvFfmpeg`. Its `timeline` reducer folds the edit records into the `timeline` slice. With the DSH skill registry mounted, it also registers the `timeline-editing` skill, which maps editing phrasings to exact `dv_*` calls.
+Use this package to keep the timelines of a project: each timeline is one edited video that holds clips in playback order, and a clip is an asset with in and out points and a clip ID such as `cl3`. The package registers eleven operations, which become the agent tools `dv_timeline_*`: ten edits that never create a file, and `timeline.export`, which writes a timeline to one video through `dvFfmpeg`. Its `timeline` reducer folds the edit records into the `timeline` slice. With the DSH skill registry mounted, it also registers the `timeline-editing` skill, which maps editing phrasings to exact `dv_*` calls. Each operation declares the label that the interface shows in place of its tool name, such as 移动片段 / Move clip for `timeline.clip_move` and 导出时间线 / Export timeline for `timeline.export`.
 
 ## Table of Contents
 

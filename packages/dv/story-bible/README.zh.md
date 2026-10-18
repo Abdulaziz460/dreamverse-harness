@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-使用本包保存项目的角色、场景和风格，每个都带参考图。它向 `dvProject` 注册六个操作，每种一个创建和一个更新（`bible.character_create`、`bible.character_update`，`location` 和 `style` 同理），把这些记录变成版本的 `bible` 归约函数，以及引用种类 `character`、`location` 和 `style`。每次调用写出一个 ID 的下一个版本。镜头以输入 `<id>@<version>` 指明一个版本，它代表该版本的参考图。更新会让每条读过上一版本的记录过期。
+使用本包保存项目的角色、场景和风格，每个都带参考图。它向 `dvProject` 注册六个操作，每种一个创建和一个更新（`bible.character_create`、`bible.character_update`，`location` 和 `style` 同理），把这些记录变成版本的 `bible` 归约函数，以及引用种类 `character`、`location` 和 `style`。每次调用写出一个 ID 的下一个版本。镜头以输入 `<id>@<version>` 指明一个版本，它代表该版本的参考图。更新会让每条读过上一版本的记录过期。每个操作声明界面代替其工具名显示的标签：新建角色 / Create character 和 修改角色 / Update character，`location` 用 场景、`style` 用 风格，其余相同。
 
 ## 目录
 

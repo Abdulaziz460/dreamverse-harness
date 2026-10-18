@@ -115,7 +115,7 @@ function shown(value: unknown): string {
  */
 function edit(
   spec: Pick<OperationSpec, 'name' | 'description' | 'params' | 'summarize'>
-    & Partial<Pick<OperationSpec, 'inputs' | 'version' | 'pendingInputRoles'>>,
+    & Partial<Pick<OperationSpec, 'inputs' | 'version' | 'pendingInputRoles' | 'label'>>,
   execute: OperationSpec['execute'],
 ): OperationSpec {
   return {
@@ -231,6 +231,7 @@ export default class DvTimeline extends Service {
     return [
       edit({
         name: OPERATIONS.create,
+        label: { zh: '新建时间线', en: 'Create timeline' },
         description: 'Create a timeline (one edited video of the project) from clips in order. Pass a new `timeline` ID (t2, t3, ...) '
           + 'and a `name`; omit the ID for the project\'s first timeline, t1. To replace the clips of an existing timeline, call '
           + 'dv_timeline_update. An empty `assets` list makes an empty timeline.',
@@ -245,6 +246,7 @@ export default class DvTimeline extends Service {
       }, execute),
       edit({
         name: OPERATIONS.update,
+        label: { zh: '修改时间线', en: 'Update timeline' },
         description: 'Replace all clips of an existing timeline with clips in order; its name stays. Every clip gets a new clip ID.',
         inputs: LAYOUT.inputs,
         pendingInputRoles: [...LAYOUT.pendingInputRoles],
@@ -253,6 +255,7 @@ export default class DvTimeline extends Service {
       }, execute),
       edit({
         name: OPERATIONS.rename,
+        label: { zh: '重命名时间线', en: 'Rename timeline' },
         version: '1',
         description: 'Change the name of a timeline.',
         params: {
@@ -263,6 +266,7 @@ export default class DvTimeline extends Service {
       }, execute),
       edit({
         name: OPERATIONS.delete,
+        label: { zh: '删除时间线', en: 'Delete timeline' },
         version: '1',
         description: 'Delete a whole timeline from the project. Its clip assets stay in the project. Only call this when the user '
           + 'asked to delete the timeline.',
@@ -271,6 +275,7 @@ export default class DvTimeline extends Service {
       }, execute),
       edit({
         name: OPERATIONS.insert,
+        label: { zh: '插入片段', en: 'Insert clip' },
         description: 'Insert an asset as a clip into a timeline at a position (1 = first); later clips shift. Use at = clip count + 1 '
           + 'to append. Inserting into a timeline that does not exist creates it. The clip gets a new clip ID.',
         params: {
@@ -282,18 +287,21 @@ export default class DvTimeline extends Service {
       }, execute),
       edit({
         name: OPERATIONS.move,
+        label: { zh: '移动片段', en: 'Move clip' },
         description: 'Move a clip to another position on its timeline (1 = first); the other clips shift.',
         params: { ...CLIP_PARAM, to: { type: 'integer', required: true, description: 'The position the clip takes.' } },
         summarize: record => `clip ${shown(record.params['clip'])} moved to ${shown(record.params['to'])}`,
       }, execute),
       edit({
         name: OPERATIONS.remove,
+        label: { zh: '移除片段', en: 'Remove clip' },
         description: 'Take a clip out of its timeline; later clips shift. The asset stays in the project.',
         params: { ...CLIP_PARAM },
         summarize: record => `clip ${shown(record.params['clip'])} removed`,
       }, execute),
       edit({
         name: OPERATIONS.split,
+        label: { zh: '拆分片段', en: 'Split clip' },
         description: 'Split one clip in two at a time inside its asset (seconds from the asset\'s start, not from the timeline\'s '
           + 'start). Both parts play the same asset: the first keeps the clip ID and ends at at_sec, the second gets a new clip ID '
           + 'and starts there.',
@@ -305,6 +313,7 @@ export default class DvTimeline extends Service {
       }, execute),
       edit({
         name: OPERATIONS.trim,
+        label: { zh: '裁剪片段', en: 'Trim clip' },
         description: 'Set the in and out points of a clip (seconds inside its asset) without changing the asset; no file is created. '
           + 'An omitted point plays from the asset\'s start or to its end.',
         params: {
@@ -316,6 +325,7 @@ export default class DvTimeline extends Service {
       }, execute),
       edit({
         name: OPERATIONS.replace,
+        label: { zh: '替换片段', en: 'Replace clip' },
         description: 'Put a different asset in a clip; the clip keeps its ID and its in and out points reset.',
         params: { ...CLIP_PARAM, asset: { type: 'string', required: true, description: 'The asset ID.' } },
         summarize: record => `clip ${shown(record.params['clip'])} replaced`,

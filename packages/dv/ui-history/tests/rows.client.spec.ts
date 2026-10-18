@@ -14,11 +14,29 @@ import {
 const entry = (fields: Partial<ProjectRecord> & { id: string }, place: HistoryEntry['place'] = 'before'): HistoryEntry => ({ record: record(fields), place })
 
 /**
- * What a label reads, with no operations on the wire unless given.
- * @param changes - the fields that differ from no operations, no registered rows and no records.
+ * An operation on the wire with the label that its host package declares.
+ * @param name - the operation name.
+ * @param zh - the Chinese label.
+ * @param en - the English label.
+ * @returns the declaration.
+ */
+const declared = (name: string, zh: string, en: string): WireOperation => ({
+  name, version: '1', description: name, label: { zh, en }, inputs: {}, params: {}, outputs: [], deterministic: false, resource: 'none', confirm: 'never',
+})
+
+/** The labelled operations that the label tests name. */
+const DECLARED: WireOperation[] = [
+  declared('plan.create', '新建分镜计划', 'Create plan'), declared('plan.update', '修改分镜计划', 'Update plan'),
+  declared('timeline.create', '新建时间线', 'Create timeline'), declared('timeline.update', '修改时间线', 'Update timeline'),
+  declared('bible.character_create', '新建角色', 'Create character'), declared('shot.render', '渲染镜头', 'Render shot'),
+]
+
+/**
+ * What a label reads, with the operations of {@link DECLARED} on the wire unless given.
+ * @param changes - the fields that differ from those operations, no registered rows and no records.
  * @returns the label context.
  */
-const labels = (changes: Partial<LabelContext> = {}): LabelContext => ({ operations: [], rows: [], records: new Map(), ...changes })
+const labels = (changes: Partial<LabelContext> = {}): LabelContext => ({ operations: DECLARED, rows: [], records: new Map(), ...changes })
 
 describe('actionRows', () => {
   it('folds the loaded records a record started under its row, in log order', () => {
@@ -47,9 +65,10 @@ describe('labels, thumbnails and times', () => {
       .toEqual(['新建分镜计划', 'Create plan'])
     expect(actionLabel(record({ id: 'c', operation: 'plan.update', params: { plan: 'p1' }, report: { plan: 'p1', version: 2 } }), labels()))
       .toEqual(['修改分镜计划', 'Update plan'])
-    // A workflow's registered row names the subject of its approval; a plan.approve record of an old log has none.
+    // A workflow's registered row names the subject of its approval; a plan.approve record of an old log has no subject, and
+    // no operation on the wire labels it.
     expect(actionLabel(record({ id: 'd', operation: 'plan.approve', params: { plan: 'p1' }, report: { plan: 'p1', version: 2 } }), labels()))
-      .toEqual(['批准分镜计划', 'Approve plan'])
+      .toEqual(['plan.approve', 'plan.approve'])
     expect(actionLabel(record({ id: 'tc', operation: 'timeline.create', params: { timeline: 't2' } }), labels())).toEqual(['新建时间线', 'Create timeline'])
     expect(actionLabel(record({ id: 'tu', operation: 'timeline.update', params: { timeline: 't2' } }), labels())).toEqual(['修改时间线', 'Update timeline'])
     expect(actionLabel(record({ id: 'g', component: 'bible', operation: 'bible.character_create', params: { character: 'c1', name: '阿明' } }), labels()))
@@ -108,14 +127,14 @@ describe('labels, thumbnails and times', () => {
 })
 
 describe('operation labels', () => {
-  it('labels an action by the label of its operation on the wire, and an unknown one by its name', () => {
+  it('labels an action by the label of its operation on the wire, else by its tool label, and an unknown one by its name', () => {
     const approve: WireOperation = {
       name: 'story.approve', version: '1', description: 'Approve a plan version.', label: { zh: '批准分镜计划', en: 'Approve plan' },
       inputs: {}, params: {}, outputs: [], deterministic: false, resource: 'none', confirm: 'always',
     }
     const operations = [approve]
     expect(actionLabel(record({ id: 's', operation: 'story.approve', params: { plan: 'p1' } }), labels({ operations }))).toEqual(['批准分镜计划', 'Approve plan'])
-    expect(actionLabel(record({ id: 'm', operation: 'timeline.clip_move' }), labels({ operations }))).toEqual(['移动片段', 'Move clip'])
+    expect(actionLabel(record({ id: 'm', operation: 'asset.import' }), labels({ operations }))).toEqual(['导入素材', 'Import asset'])
     expect(actionLabel(record({ id: 'o', operation: 'other.thing' }), labels({ operations }))).toEqual(['other.thing', 'other.thing'])
   })
 })
