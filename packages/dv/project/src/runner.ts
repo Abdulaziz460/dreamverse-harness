@@ -18,12 +18,13 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { validateArgs } from '@deepseek-ai/dsh-tools'
 import { discardedSteps } from './history.ts'
+import type { OperationSpec } from './operation-types.ts'
 import type { ReducerRegistry } from './reducers.ts'
 import type { RecordLineInput, RecordStore } from './record-store.ts'
 import type { Scheduler } from './scheduler.ts'
 import { ProjectError } from './shared.ts'
 import type {
-  AssetId, OperationContext, OperationSpec, ProjectId, ProjectRecord, ProjectState, RecordFailure, RecordId,
+  AssetId, OperationContext, ProjectId, ProjectRecord, ProjectState, RecordFailure, RecordId,
   RecordInput, RecordOrigin, RecordUpdate, RunRequest, RunResult,
 } from './types.ts'
 

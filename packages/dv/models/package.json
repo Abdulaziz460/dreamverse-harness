@@ -6,6 +6,7 @@
   "description": "Model catalog of DreamVerse: the provider-neutral dvModels registry that provider plugins register one entry per model and task into, plus the dv_models_list and dv_models_get tools and the video-model-selection skill.",
   "exports": {
     ".": "./src/index.ts",
+    "./types": "./src/types.ts",
     "./package.json": "./package.json"
   },
   "dependencies": {

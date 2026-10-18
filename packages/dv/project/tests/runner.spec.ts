@@ -9,12 +9,13 @@ import { brandString } from '@deepseek-ai/dsh-brand'
 import { describe, expect, it, vi } from 'vitest'
 import type { ProjectModules } from './support.ts'
 import { agentOrigin, createTestProject, readLines, startModules, userOrigin } from './support.ts'
+import type { OperationSpec } from '../src/operation-types.ts'
 import { RecordStore } from '../src/record-store.ts'
 import { projReducer, ReducerRegistry } from '../src/reducers.ts'
 import { Runner } from '../src/runner.ts'
 import { Scheduler } from '../src/scheduler.ts'
 import type {
-  AssetId, OperationSpec, ProjectId, ProjectRecord, RecordOrigin, RunRequest,
+  AssetId, ProjectId, ProjectRecord, RecordOrigin, RunRequest,
 } from '../src/types.ts'
 
 /**

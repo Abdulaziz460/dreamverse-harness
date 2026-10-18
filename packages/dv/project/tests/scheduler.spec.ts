@@ -6,7 +6,8 @@ import { brandString } from '@deepseek-ai/dsh-brand'
 import { describe, expect, it, vi } from 'vitest'
 import type { ProjectModules } from './support.ts'
 import { createTestProject, startModules, userOrigin } from './support.ts'
-import type { OperationContext, OperationSpec, ProjectId, ProjectRecord, RecordId, RunRequest } from '../src/types.ts'
+import type { OperationSpec } from '../src/operation-types.ts'
+import type { OperationContext, ProjectId, ProjectRecord, RecordId, RunRequest } from '../src/types.ts'
 
 /**
  * An operation spec with test defaults: one optional `prompt` parameter, the `reference` input role, no confirmation,

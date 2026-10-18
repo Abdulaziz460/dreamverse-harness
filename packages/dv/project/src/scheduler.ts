@@ -19,8 +19,9 @@
  *
  * @module @dv/project/scheduler
  */
+import type { OperationSpec } from './operation-types.ts'
 import type { RecordStore } from './record-store.ts'
-import type { OperationSpec, ProjectId, ProjectRecord, RecordId, RecordStatus } from './types.ts'
+import type { ProjectId, ProjectRecord, RecordId, RecordStatus } from './types.ts'
 
 /** The concurrency limits of the `cpu` and `gpu` resource classes. */
 export interface SchedulerLimits {

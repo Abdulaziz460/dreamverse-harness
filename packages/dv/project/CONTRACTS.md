@@ -1,6 +1,6 @@
 # @dv/project module contracts
 
-This file specifies the internal modules of the `dvProject` service: what each one does, its rules and errors, and the unit tests that pin it. The public types are in `src/types.ts`, the error codes in `src/shared.ts`, and the service surface with its JSDoc (the history list and its current position, lock scope, every method) in `src/index.ts`.
+This file specifies the internal modules of the `dvProject` service: what each one does, its rules and errors, and the unit tests that pin it. The public types are in `src/types.ts`, which is also the client face `@dv/project/types` and imports no host module, and in `src/operation-types.ts` (`OperationSpec` and `OperationToolCall`, which use DSH tool types); the error codes in `src/shared.ts`, and the service surface with its JSDoc (the history list and its current position, lock scope, every method) in `src/index.ts`.
 
 ## Contents
 

@@ -131,6 +131,8 @@
     { "path": "./packages/api/workspace-files/tsconfig.client.json" },
     { "path": "./packages/client/web" },
     { "path": "./packages/context/file-reference" },
+    { "path": "./packages/dv/project/tsconfig.client.json" },
+    { "path": "./packages/dv/models/tsconfig.client.json" },
     { "path": "./packages/dv/ui-kit" },
     { "path": "./packages/dv/ui-canvas" },
     { "path": "./packages/dv/ui-timeline" },

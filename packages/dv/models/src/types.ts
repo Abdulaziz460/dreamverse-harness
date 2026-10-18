@@ -7,7 +7,7 @@
  * @module @dv/models/types
  */
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
-import type { AssetId } from '@dv/project'
+import type { AssetId } from '@dv/project/types'
 
 /**
  * The generation primitives: one row per input and output signature, with the output modality, the facts a request is

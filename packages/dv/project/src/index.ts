@@ -41,6 +41,7 @@ import z from '@deepseek-ai/schemastery'
 import { PROMPT_SECTION, projectContext } from './agent-context.ts'
 import { AgentTools, parseInputRef, parseInputs, turnOf } from './agent-tools.ts'
 import { History } from './history.ts'
+import type { OperationSpec } from './operation-types.ts'
 import { projTools, type ProjToolDeps } from './proj-tools.ts'
 import { RecordStore } from './record-store.ts'
 import { projReducer, ReducerRegistry } from './reducers.ts'
@@ -50,12 +51,13 @@ import { ProjectError } from './shared.ts'
 import { Sessions } from './sessions.ts'
 import { Subscriptions } from './subscriptions.ts'
 import type {
-  AssetId, AssetStore, ComponentStates, ProjectLine, HistoryEntry, HistoryQuery, OperationSpec,
+  AssetId, AssetStore, ComponentStates, ProjectLine, HistoryEntry, HistoryQuery,
   ProjectEvent, ProjectId, ProjectInfo, ProjectRecord, ProjectState, RecordId, RecordInputRef, RecordOrigin, Reducer,
   ReferenceKindSpec, RunRequest, RunResult, SessionId,
 } from './types.ts'
 
 export * from './types.ts'
+export * from './operation-types.ts'
 export { ProjectError } from './shared.ts'
 export {
   citedAsset, citedInput, elementCitationUri, parsePromptCitations, promptAssets, replacePromptCitations, type PromptCitation,

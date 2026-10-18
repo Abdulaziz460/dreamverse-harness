@@ -26,10 +26,11 @@ import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import { defineTool, type ParameterSchemaSpec, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-session-projection'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
+import type { OperationSpec, OperationToolCall } from './operation-types.ts'
 import type { Sessions } from './sessions.ts'
 import { ProjectError } from './shared.ts'
 import type {
-  AssetId, AssetStore, HistoryEntry, HistoryQuery, OperationSpec, OperationToolCall, ProjectId, ProjectRecord, ProjectState, RecordId,
+  AssetId, AssetStore, HistoryEntry, HistoryQuery, ProjectId, ProjectRecord, ProjectState, RecordId,
   RecordInputRef, RecordOrigin, RunRequest, RunResult, SessionId, TurnId,
 } from './types.ts'
 
