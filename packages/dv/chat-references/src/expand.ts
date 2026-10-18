@@ -6,14 +6,13 @@
  * Mention URIs:
  * - `dv:asset/<AssetId>`: a stored asset.
  * - `dv:record/<RecordId>`: a record.
- * - `dv:character/<CharacterId>`, `dv:location/<LocationId>`, `dv:style/<StyleId>`: a character, location or style.
+ * - `dv:<kind>/<id>` for a registered reference kind (`dvProject.listReferenceKinds()`): the newest version of an ID.
  * - `dv:clip/<ClipId>`: a clip of a timeline; a clip ID is unique in the project.
  *
  * @module @dv/chat-references/expand
  */
 import { brandString } from '@deepseek-ai/dsh-brand'
-import { formatInputRef, toolNameOf, type AssetId, type ProjectId, type ProjectRecord, type ProjectState, type RecordId } from '@dv/project'
-import type { Character, Location, Style } from '@dv/story-bible'
+import { formatInputRef, toolNameOf, type AssetId, type ProjectId, type ProjectRecord, type ProjectState, type RecordId, type RecordInputRef } from '@dv/project'
 import type {} from '@dv/timeline'
 
 /** One `dv:` mention found in user text. */
@@ -61,6 +60,12 @@ export interface ExpansionSources {
   getState(projectId: ProjectId): ProjectState
   /** A record, or undefined when the project has no such record. */
   getRecord(projectId: ProjectId, record: RecordId): ProjectRecord | undefined
+  /** The registered reference kinds. */
+  listReferenceKinds(): readonly string[]
+  /** The newest version of an ID in a reference kind, or null. */
+  latestVersion(state: ProjectState, kind: string, id: string): number | null
+  /** The assets of a version, or null for an unknown version. */
+  assetsOf(state: ProjectState, ref: RecordInputRef): AssetId[] | null
 }
 
 /**
@@ -82,22 +87,21 @@ export function describeMention(mention: Mention, projectId: ProjectId, sources:
       const producer = state.components.proj.created_by[brandString<AssetId>(id)]
       return `${head}: asset ${id}${producerText(projectId, producer, sources)}`
     }
-    case 'character':
-    case 'location':
-    case 'style': {
-      const { characters, locations, styles } = state.components.bible
-      const byId: Record<string, ReadonlyArray<Character | Location | Style>> =
-        kind === 'character' ? characters : kind === 'location' ? locations : styles
-      const latest = byId[id]?.at(-1)
-      if (latest === undefined) return `${head}: no ${kind} ${id} in the current state`
-      const version = `${id}@${String(latest.version)}`
-      return `${head}: ${kind} ${version} "${latest.name}", reference images [${latest.references.join(', ')}]; pass it as input ${version}`
-    }
     case 'record':
       return `${head}:${producerText(projectId, brandString<RecordId>(id), sources)}`
     default:
-      return `${head}: unknown mention kind`
+      return sources.listReferenceKinds().includes(kind) ? `${head}: ${versionText(state, kind, id, sources)}` : `${head}: unknown mention kind`
   }
+}
+
+/** The newest version of an ID in a reference kind and the assets of that version, as the input text that names it. */
+function versionText(state: ProjectState, kind: string, id: string, sources: ExpansionSources): string {
+  const version = sources.latestVersion(state, kind, id)
+  if (version === null) return `no ${kind} ${id} in the current state`
+  const fields: Record<string, string | number> = { [kind]: id, version }
+  const assets = sources.assetsOf(state, fields as RecordInputRef) ?? []
+  const text = `${id}@${String(version)}`
+  return `${kind} ${text}, reference assets [${assets.join(', ')}]; pass it as input ${text}`
 }
 
 /**

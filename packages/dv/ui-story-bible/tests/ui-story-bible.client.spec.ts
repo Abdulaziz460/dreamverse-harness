@@ -1,12 +1,16 @@
 // @vitest-environment jsdom
-/** The story bible's canvas node kind, version kinds and references in use, and their registration and removal. */
+/**
+ * The story bible's canvas node kind, version kinds, references in use and `@` menu kinds, and their registration and
+ * removal.
+ */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
+import { projectItems } from '@dv/ui-composer/src/client/mention.ts'
 import { createRegistry } from '@dv/ui-kit/registries.ts'
-import type { ChainAnchor, DvCanvas, NodeKind, TakesInUse, VersionKind } from '@dv/ui-kit/registries.ts'
+import type { ChainAnchor, DvCanvas, DvMentions, MentionKind, NodeKind, TakesInUse, VersionKind } from '@dv/ui-kit/registries.ts'
 import type { WireState } from '@dv/ui-kit/types.ts'
 import { fixtureState, record } from '../../ui-kit/tests/fixture.client.tsx'
-import { apply, bibleNodeKind, bibleReferencesInUse, bibleVersionKinds } from '../src/client/index.ts'
+import { apply, bibleMentionKinds, bibleNodeKind, bibleReferencesInUse, bibleVersionKinds } from '../src/client/index.ts'
 import { apply as hostApply } from '../src/index.ts'
 
 afterEach(() => { document.documentElement.lang = '' })
@@ -73,6 +77,33 @@ describe('bibleReferencesInUse', () => {
   })
 })
 
+describe('bibleMentionKinds', () => {
+  it('lists the newest version of each character, location and style with its name, description start and first reference', () => {
+    document.documentElement.lang = 'zh-CN'
+    const state = bibleState()
+    expect(bibleMentionKinds.map(kind => [kind.id, kind.kind, kind.order, kind.section()])).toEqual([
+      ['@dv/ui-story-bible:character', 'character', 1, '角色'],
+      ['@dv/ui-story-bible:location', 'location', 2, '场景和风格'],
+      ['@dv/ui-story-bible:style', 'style', 3, '场景和风格'],
+    ])
+    expect(bibleMentionKinds.map(kind => kind.items(state))).toEqual([
+      [{ uri: 'dv:character/hero', label: 'Hero', description: '', thumb: 'shot1-last.png' }],
+      [{ uri: 'dv:location/alley', label: 'alley', description: '', thumb: 'alley.png' }],
+      [{ uri: 'dv:style/noir', label: 'Noir', description: '' }],
+    ])
+    document.documentElement.lang = 'en'
+    expect(bibleMentionKinds.map(kind => kind.section())).toEqual(['Characters', 'Locations and styles', 'Locations and styles'])
+  })
+
+  it('gives the composer\'s @ list the items of the base: characters, then locations and styles, before the assets', () => {
+    document.documentElement.lang = 'zh-CN'
+    const items = projectItems(fixtureState(), bibleMentionKinds)
+    const hero = items.find(item => item.uri === 'dv:character/hero')
+    expect([hero?.label, hero?.section, hero?.description, hero?.icon !== undefined]).toEqual(['Hero', '角色', 'A tired detective.', true])
+    expect(items.map(item => item.section)).toEqual(['片段', '片段', '角色', ...Array<string>(7).fill('素材')])
+  })
+})
+
 describe('ui-story-bible apply', () => {
   it('keeps the host Loader entry inert', () => {
     expect(hostApply).not.toThrow()
@@ -90,5 +121,16 @@ describe('ui-story-bible apply', () => {
     expect(canvas.versionKinds.list()).toEqual(bibleVersionKinds)
     await fiber.dispose()
     expect([canvas.nodeKinds.list(), canvas.takesInUse.list(), canvas.versionKinds.list()]).toEqual([[], [], []])
+  })
+
+  it('registers its mention kinds once dvMentions is present, and the plugin disposal removes them', async () => {
+    const ctx = new Context()
+    const mentions: DvMentions = { kinds: createRegistry<MentionKind>(kind => [kind.id]) }
+    const fiber = ctx.plugin({ apply })
+    await fiber.await()
+    ctx.provide('dvMentions', mentions)
+    await vi.waitFor(() => { expect(mentions.kinds.list()).toEqual(bibleMentionKinds) })
+    await fiber.dispose()
+    expect(mentions.kinds.list()).toEqual([])
   })
 })

@@ -114,6 +114,9 @@ export default class DvChatReferences extends Service {
           return undefined
         }
       },
+      listReferenceKinds: () => project.listReferenceKinds(),
+      latestVersion: (state, kind, id) => project.latestVersion(state, kind, id),
+      assetsOf: (state, ref) => project.assetsOf(state, ref),
     }
   }
 

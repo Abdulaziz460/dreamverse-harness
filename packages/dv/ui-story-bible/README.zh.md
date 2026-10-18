@@ -1,5 +1,5 @@
 ---
-description: "DreamVerse 故事设定的浏览器半边：画布节点种类，把每个角色、场景和风格按最新版本画出来；引用种类 character、location 和 style 的版本种类；最新版本用作引用的输出所属的记录；以及故事设定节点的编辑器主体。"
+description: "DreamVerse 故事设定的浏览器半边：画布节点种类，把每个角色、场景和风格按最新版本画出来；引用种类 character、location 和 style 的版本种类；最新版本用作引用的输出所属的记录；故事设定节点的编辑器主体；以及对话输入框 @ 菜单的提及类型。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-使用本包在 `@dv/ui-canvas` 的画布上显示故事设定（`@dv/story-bible`）。它在 `dvCanvas` 中注册一个节点种类，把每个角色、场景和风格按最新版本画成节点 `bible:<id>`；为引用种类 `character`、`location` 和 `style` 各注册一个版本种类；再注册一个 `TakesInUse`，让被最新版本用作参考的生成结果（画布上的 `take` 节点）留在画布上。它还把故事设定节点的编辑器主体注册为自己的 `dv.canvas.editor` 条目。画布只通过已注册的版本种类读取带版本的条目：从条目连到读取它某个版本的 `take` 节点的边、版本编辑器的参考标签、素材选择窗口提供的条目，以及分镜计划编辑器的参考列表。
+使用本包在 `@dv/ui-canvas` 的画布上显示故事设定（`@dv/story-bible`）。它在 `dvCanvas` 中注册一个节点种类，把每个角色、场景和风格按最新版本画成节点 `bible:<id>`；为引用种类 `character`、`location` 和 `style` 各注册一个版本种类；再注册一个 `TakesInUse`，让被最新版本用作参考的生成结果（画布上的 `take` 节点）留在画布上。它还把故事设定节点的编辑器主体注册为自己的 `dv.canvas.editor` 条目，并为每个引用种类在 `@dv/ui-composer` 的 `dvMentions` 中注册一个提及类型，让对话输入框的 `@` 菜单列出每个条目。画布只通过已注册的版本种类读取带版本的条目：从条目连到读取它某个版本的 `take` 节点的边、版本编辑器的参考标签、素材选择窗口提供的条目，以及分镜计划编辑器的参考列表。
 
 ## 目录
 
@@ -24,7 +24,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-在叠了 `dsh-web-app`、`@dv/api`、`@dv/story-bible` 和 `@dv/ui-canvas` 的 profile 里挂载插件，先用 `pnpm run build` 构建浏览器 bundle（写出 `lib/client.js`）。
+在叠了 `dsh-web-app`、`@dv/api`、`@dv/story-bible`、`@dv/ui-canvas` 和 `@dv/ui-composer` 的 profile 里挂载插件，先用 `pnpm run build` 构建浏览器 bundle（写出 `lib/client.js`）。
 
 ```yaml
 - id: dv-ui-story-bible
@@ -37,8 +37,9 @@ kind: "package-reference"
 | `bibleVersionKinds` | `dvCanvas.versionKinds` | 种类 `character`、`location`、`style` 各一项：`node(id)` 为 `bible:<id>`；`latest` 列出每个条目的最新版本；`name` 和 `assets` 给出某个版本的名称和引用，未知版本给出 null 和 `[]` |
 | `bibleReferencesInUse` | `dvCanvas.takesInUse` | `id: '@dv/ui-story-bible'`；`uses` 给出创建每个最新版本的每个引用的记录 |
 | `BibleEditor` | 插槽 `dv.canvas.editor`，键 `@dv/ui-story-bible` | seed 所画条目的编辑器主体：最新版本的每个参考（图片，或视频的第一帧），点击打开画布的预览（`host.preview`），参考多于一个时可以移除一个，因为不带参考的 `bible.<kind>_update` 会保留当前的参考；该版本的描述；以及"添加素材"，它打开画布只含素材的选择窗口（`host.pickAssets`）并追加选中的素材。每次修改都通过 `host.run` 运行 `bible.<kind>_update`，下一版本的全部参考作为输入角色 `reference` |
+| `bibleMentionKinds` | `dvMentions.kinds` | 每个种类一项，顺序 1 为 `character`（分组 角色），2 为 `location`，3 为 `style`（同一个分组 场景和风格）；`id` 为 `@dv/ui-story-bible:<kind>`；每个有版本的条目一项：地址 `dv:<kind>/<id>`，最新版本的名字（没有时用条目 ID）作为标签，其描述的前 40 个字符，以及第一个参考作为 `thumb` |
 
-Host 半边不注册任何东西。浏览器半边在 `ctx.inject(['dvCanvas'], …)` 内注册这五个描述符，在 `ctx.inject(['slots'], …)` 内注册编辑器条目，所以没有这两个服务时也能加载，每项注册随其服务或随插件一起移除。
+Host 半边不注册任何东西。浏览器半边在 `ctx.inject(['dvCanvas'], …)` 内注册这五个画布描述符，在 `ctx.inject(['slots'], …)` 内注册编辑器条目，在 `ctx.inject(['dvMentions'], …)` 内注册三个提及类型，所以没有这些服务时也能加载，每项注册随其服务或随插件一起移除。
 
 -----
 
@@ -50,7 +51,7 @@ Host 半边不注册任何东西。浏览器半边在 `ctx.inject(['dvCanvas'], 
 | 文件 | 内容 |
 | --- | --- |
 | [`src/index.ts`](src/index.ts) | 不做事的 Host Loader 入口 |
-| [`src/client/index.ts`](src/client/index.ts) | `bibleNodeKind`、`bibleVersionKinds`、`bibleReferencesInUse` 和各项注册 |
+| [`src/client/index.ts`](src/client/index.ts) | `bibleNodeKind`、`bibleVersionKinds`、`bibleReferencesInUse`、`bibleMentionKinds` 和各项注册 |
 | [`src/client/kinds.ts`](src/client/kinds.ts) | 引用种类及其切片字段和标签，以及节点 ID `bible:<id>` |
 | [`src/client/BibleEditor.tsx`](src/client/BibleEditor.tsx) | `dv.canvas.editor` 条目 `BibleEditor` |
 

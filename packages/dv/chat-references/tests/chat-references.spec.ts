@@ -134,14 +134,14 @@ describe('mention expansion', () => {
     })
 
     const messages = await preStep('make @[Lead](dv:character/c1) wave')
+    const assets = picture.outputs.join(', ')
     expect(messages).toHaveLength(2)
     expect(messages[1]?.source).toMatchObject({ kind: 'dv-mentions' })
-    expect(textOf(messages[1])).toContain('character c1@2 "Lead renamed"')
-    expect(textOf(messages[1])).toContain('pass it as input c1@2')
+    expect(textOf(messages[1])).toContain(`character c1@2, reference assets [${assets}]; pass it as input c1@2`)
     // After an undo of the update, the mention reads version 1 again.
     await fixture.project.undo(info.id)
     expect(fixture.project.getState(info.id).components.bible.characters[brandString<CharacterId>('c1')]).toHaveLength(1)
-    expect(textOf((await preStep('make @[Lead](dv:character/c1) wave'))[1])).toContain('character c1@1 "Lead"')
+    expect(textOf((await preStep('make @[Lead](dv:character/c1) wave'))[1])).toContain(`character c1@1, reference assets [${assets}]`)
     expect(update.record?.status).toBe('done')
     // A message without mentions enters unchanged.
     expect(await preStep('hello')).toHaveLength(1)

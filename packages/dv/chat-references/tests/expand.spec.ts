@@ -1,7 +1,7 @@
 /** Expansion of composer `dv:` mentions into concrete record and asset IDs. */
 import { describe, expect, it } from 'vitest'
 import { brandString } from '@deepseek-ai/dsh-brand'
-import type { AssetId, ProjectId, ProjectRecord, ProjectState, RecordId, SessionId, TurnId } from '@dv/project'
+import { versionRefOf, type AssetId, type ProjectId, type ProjectRecord, type ProjectState, type RecordId, type SessionId, type TurnId } from '@dv/project'
 import type { CharacterId } from '@dv/story-bible'
 import type { ClipId, TimelineId } from '@dv/timeline'
 import { expansionBlock, formatMention, parseMentions, type ExpansionSources } from '../src/expand.ts'
@@ -24,7 +24,10 @@ const shot: ProjectRecord = {
   outputs: [vid, brandString<AssetId>('frame1')], based_on: null, supersedes: [], deterministic: false, status: 'done',
   created_at: '2026-10-05T00:00:00Z',
 }
-const lead = { id: brandString<CharacterId>('c1'), version: 1, name: 'Lead', description: '', references: [img], created_by: shot.id }
+/** The newest versions and their assets in the fake kernel's reference kinds; `test_prop` stands for a kind of another plugin. */
+const versions: Record<string, Record<string, { version: number; assets: AssetId[] }>> = {
+  character: { c1: { version: 1, assets: [img] } }, location: {}, test_prop: { p1: { version: 3, assets: [vid, img] } },
+}
 const sources: ExpansionSources = {
   getState: (): ProjectState => ({
     project: { id: project, title: 'p', created_at: '' }, head: shot.id,
@@ -40,10 +43,16 @@ const sources: ExpansionSources = {
           ],
         }],
       },
-      bible: { characters: { [lead.id]: [lead] }, locations: {}, styles: {} },
     } as ProjectState['components'],
   }),
   getRecord: (_project, id) => id === shot.id ? shot : undefined,
+  listReferenceKinds: () => Object.keys(versions),
+  latestVersion: (_state, kind, id) => versions[kind]?.[id]?.version ?? null,
+  assetsOf: (_state, ref) => {
+    const named = versionRefOf(ref)
+    const latest = named === null ? undefined : versions[named.kind]?.[named.id]
+    return latest !== undefined && latest.version === named?.version ? latest.assets : null
+  },
 }
 
 describe('dv mentions', () => {
@@ -63,18 +72,28 @@ describe('dv mentions', () => {
       .toContain('clip cl3, clip 3 of timeline t1, a placeholder clip (no asset until its render is done), its render made by record rec-shot')
   })
 
-  it('describes assets, characters, records, and unknown mentions', () => {
+  it('describes assets, versions of any registered reference kind, records, and unknown mentions', () => {
     const text = ['@[a](dv:asset/img1)', '@[b](dv:character/c1)', '@[c](dv:character/c9)', '@[g](dv:location/c1)',
-      '@[d](dv:record/rec-shot)', '@[e](dv:record/none)', '@[f](dv:other/x)'].join(' ')
+      '@[h](dv:test_prop/p1)', '@[d](dv:record/rec-shot)', '@[e](dv:record/none)', '@[f](dv:other/x)'].join(' ')
     const block = expansionBlock(text, project, sources) ?? ''
     expect(block).toContain('asset img1, imported (no producing record)')
-    expect(block).toContain('character c1@1 "Lead", reference images [img1]; pass it as input c1@1')
+    expect(block).toContain('(dv:character/c1): character c1@1, reference assets [img1]; pass it as input c1@1')
     expect(block).toContain('no character c9 in the current state')
     expect(block).toContain('no location c1 in the current state')
+    expect(block).toContain('(dv:test_prop/p1): test_prop p1@3, reference assets [vid1, img1]; pass it as input p1@3')
     expect(block).toContain('(dv:record/rec-shot): made by record rec-shot')
     expect(block).toContain('record none not found')
     expect(block).toContain('unknown mention kind')
     expect(expansionBlock('@[a](dv:asset/img1)', null, sources)).toContain('call dv_proj_open first')
+  })
+
+  it('pins the host text of a version mention: the newest version, its assets, and the input text', () => {
+    expect(expansionBlock('@[Lead](dv:character/c1) @[x](dv:character/c9) @[Prop](dv:test_prop/p1)', project, sources)).toMatchInlineSnapshot(`
+      "The user referenced these project items:
+      - Lead (dv:character/c1): character c1@1, reference assets [img1]; pass it as input c1@1
+      - x (dv:character/c9): no character c9 in the current state
+      - Prop (dv:test_prop/p1): test_prop p1@3, reference assets [vid1, img1]; pass it as input p1@3"
+    `)
   })
 
   it('returns null for text without mentions', () => {

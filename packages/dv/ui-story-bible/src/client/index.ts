@@ -1,15 +1,15 @@
 /**
  * Browser half of the story bible: the canvas node kind that draws each character, location and style at its newest
  * version, one version kind per reference kind (`character`, `location`, `style`), the records whose outputs the
- * newest versions use as references, and the editor body of a story bible node (the `dv.canvas.editor` entry). Each
- * reads only the `bible` slice and the `proj` records.
+ * newest versions use as references, the editor body of a story bible node (the `dv.canvas.editor` entry), and one
+ * mention kind per reference kind for the composer's `@` menu. Each reads only the `bible` slice and the `proj` records.
  *
  * @module @dv/ui-story-bible/client
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import { pickText } from '@dv/ui-kit/locale.ts'
-import type { NodeKind, NodeSeed, TakesInUse, VersionKind } from '@dv/ui-kit/registries.ts'
+import type { MentionKind, NodeKind, NodeSeed, TakesInUse, VersionKind } from '@dv/ui-kit/registries.ts'
 import type { Character, StoryBibleState, WireState } from '@dv/ui-kit/types.ts'
 import { BibleEditor } from './BibleEditor.tsx'
 import { bibleNode, KINDS } from './kinds.ts'
@@ -72,9 +72,31 @@ export const bibleReferencesInUse: TakesInUse = {
 }
 
 /**
+ * The `@` menu kinds of `character` (section 角色) and of `location` and `style` (one section 场景和风格), in that order:
+ * each item is the newest version of an ID, with its name (else its ID), the start of its description, and its first
+ * reference as the thumbnail.
+ */
+export const bibleMentionKinds: readonly MentionKind[] = KINDS.map(({ kind, field }, index) => ({
+  id: `${bibleNodeKind.id}:${kind}`,
+  kind,
+  order: index + 1,
+  section: () => field === 'characters' ? pickText('角色', 'Characters') : pickText('场景和风格', 'Locations and styles'),
+  items: state => Object.entries(state.components.bible[field]).flatMap(([id, versions]) => {
+    const latest = versions.at(-1)
+    if (latest === undefined) return []
+    const thumb = latest.references[0]
+    return [{
+      uri: `dv:${kind}/${encodeURIComponent(id)}`, label: latest.name || id, description: latest.description.slice(0, 40),
+      ...thumb === undefined ? {} : { thumb },
+    }]
+  }),
+}))
+
+/**
  * Client plugin body: while `dvCanvas` is present, register the node kind, the references in use and the three version
  * kinds; while the slot registry is present, register the editor body of the node kind as its `dv.canvas.editor`
- * entry. Each registration leaves with its service or with the plugin.
+ * entry; while `dvMentions` is present, register the three mention kinds. Each registration leaves with its service or
+ * with the plugin.
  * @param ctx - client root context.
  */
 export function apply(ctx: ClientContext): void {
@@ -89,5 +111,10 @@ export function apply(ctx: ClientContext): void {
     scope.effect(() => scope.slots.inject('dv.canvas.editor', () => scope.slots.register(
       { name: 'dv.canvas.editor', key: bibleNodeKind.id }, BibleEditor,
     )), 'ui-story-bible: editor')
+  })
+  ctx.inject(['dvMentions'], (scope) => {
+    for (const kind of bibleMentionKinds) {
+      scope.effect(() => scope.dvMentions.kinds.register(kind), `ui-story-bible: mention kind ${kind.kind}`)
+    }
   })
 }

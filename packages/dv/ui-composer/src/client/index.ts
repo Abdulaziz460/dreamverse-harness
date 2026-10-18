@@ -1,6 +1,7 @@
 /**
  * Browser half of the DreamVerse composer additions:
- * - an `@` source listing the bound project's clips, characters, and assets;
+ * - `dvMentions`, the registry of the mention kinds that plugin UI halves add to the `@` source;
+ * - an `@` source listing the bound project's clips, the items of every registered mention kind, and assets;
  * - a 引用 row in the composer's ＋ menu that opens that `@` list at the end of the draft;
  * - an invisible `conversation.input.left` entry that makes each session's composer a `dv:compose` target;
  * - thumbnail cards for the project's video and image assets in settled chat Markdown (`chat-media.ts`);
@@ -27,6 +28,7 @@ import { DvClient } from '@dv/ui-kit/api.ts'
 import { DV_COMPOSE_EVENT, type DvComposeDetail } from '@dv/ui-kit/compose.ts'
 import { getCurrentProject } from '@dv/ui-kit/current-project.ts'
 import { pickText } from '@dv/ui-kit/locale.ts'
+import { createRegistry, type MentionKind } from '@dv/ui-kit/registries.ts'
 import { registerChatMedia } from './chat-media.ts'
 import { deliverCompose, mountComposer } from './compose.ts'
 import { MENTION_SOURCE, projectMentionSource } from './mention.ts'
@@ -65,11 +67,14 @@ interface CommandMenu {
 }
 
 /**
- * Register the composer additions.
+ * Provide `dvMentions` and register the composer additions.
  * @param ctx - client root context.
  */
 export function apply(ctx: ClientContext): void {
-  ctx.effect(() => ctx.inputTriggers.registerSource(projectMentionSource()), 'dv-composer: @ source')
+  // At apply's top level, never inside an effect: other plugins register into the registry from their own fibers.
+  const mentions = { kinds: createRegistry<MentionKind>(kind => [kind.id]) }
+  ctx.reflect.provide('dvMentions', mentions)
+  ctx.effect(() => ctx.inputTriggers.registerSource(projectMentionSource(mentions)), 'dv-composer: @ source')
   registerChatMedia(ctx)
 
   /** The input facade of one session, while its scope and conversation service exist. */
@@ -97,7 +102,7 @@ export function apply(ctx: ClientContext): void {
     scope.effect(() => commands.register({
       name: 'reference',
       label: () => pickText('引用', 'Reference'),
-      description: () => pickText('项目里的片段、角色、场景、风格或素材', 'A clip, character, location, style, or asset of the project'),
+      description: () => pickText('项目里的条目或素材', 'An item or asset of the project'),
       icon: IconLinkOutlineRegular,
       available: () => getCurrentProject() !== null,
       // The ＋ menu closes itself after running the action, so the `@` list opens on the next task.

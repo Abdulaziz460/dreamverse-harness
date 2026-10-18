@@ -3,7 +3,7 @@
  * service that the UI-core package which reads it provides at its `apply` top level: `@dv/ui-history` provides
  * `dvHistory`, whose rows give the subject of a history row, and `@dv/ui-canvas` provides `dvCanvas`, whose node kinds,
  * chain anchors, takes in use and version kinds describe the canvas nodes of plugin data. A UI half registers inside
- * `ctx.inject(['dvHistory'], …)` or `ctx.inject(['dvCanvas'], …)` and keeps the disposer that `register` returns.
+ * `ctx.inject([<service>], …)` of `dvHistory`, `dvCanvas` or `dvMentions` (`@dv/ui-composer`) and keeps its disposers.
  *
  * @module @dv/ui-kit/registries
  */
@@ -162,10 +162,24 @@ export interface SeedEditorHost {
   preview(asset: string, opener: Element | null): void
 }
 
+/** The registry of the `@` menu, which `@dv/ui-composer` provides as `ctx.dvMentions`; `kinds` is keyed by `id`. */
+export interface DvMentions { kinds: Registry<MentionKind> }
+/** One kind of project item that the `@` menu lists, read from its plugin's own slice. */
+export interface MentionKind {
+  id: string
+  /** The kind of the inserted address `dv:<kind>/<id>`. */
+  kind: string
+  /** Section order in the `@` menu; the core lists assets last. */
+  order: number
+  section(): string
+  /** The items of a state; `thumb` is the asset whose image, or a video's first frame, the menu shows as the icon. */
+  items(state: WireState): Array<{ uri: string; label: string; description?: string; thumb?: string }>
+}
 declare module '@deepseek-ai/cordis' {
   interface Context {
     dvCanvas: DvCanvas
     dvHistory: DvHistory
+    dvMentions: DvMentions
   }
 }
 
