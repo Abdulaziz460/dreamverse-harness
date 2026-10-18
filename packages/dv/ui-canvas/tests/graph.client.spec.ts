@@ -92,7 +92,7 @@ function drawn(state: WireState): string[][] {
 
 describe('buildCanvasGraph', () => {
   it('draws characters, locations, styles, plans, and takes, and hides reference imports, exports, still grabs, and timeline records', () => {
-    const graph = buildCanvasGraph(fixtureState())
+    const graph = buildCanvasGraph(fixtureState(), undefined, OPERATIONS)
     expect(graph.nodes.map(node => [node.id, node.kind])).toEqual([
       ['bible:hero', 'bible'], ['plan:p1', 'plan'], ['g1', 'take'], ['g2', 'take'], ['g3', 'take'],
     ])
@@ -136,14 +136,14 @@ describe('buildCanvasGraph', () => {
       id: 'g9', operation: 'shot.render', deterministic: false, params: { prompt: 'alone' },
       inputs: [{ role: 'reference', ref: { asset: 'used.png' }, resolved_asset: 'used.png' }],
     }))
-    const graph = buildCanvasGraph(state, new Set(['listed.png', 'side.png', 'ref.png']))
+    const graph = buildCanvasGraph(state, new Set(['listed.png', 'side.png', 'ref.png']), OPERATIONS)
     expect(graph.nodes.filter(node => node.kind === 'asset').map(node => node.id)).toEqual(['u4'])
     expect(graph.nodes.find(node => node.id === 'bible:hero')?.references).toEqual(['ref.png', 'side.png'])
     expect(graph.edges.filter(edge => edge.to === 'g9')).toEqual([])
     expect(graph.assetNodes).toMatchObject({ 'listed.png': 'u4', 'side.png': 'bible:hero' })
     expect([graph.assetNodes['pool.png'], graph.assetNodes['used.png']]).toEqual([undefined, undefined])
     // On the list, used.png is drawn with an edge to the take that reads it.
-    const listed = buildCanvasGraph(state, new Set(['listed.png', 'used.png']))
+    const listed = buildCanvasGraph(state, new Set(['listed.png', 'used.png']), OPERATIONS)
     expect(listed.edges).toContainEqual({ from: 'u3', to: 'g9', kind: 'reference' })
   })
 
@@ -180,7 +180,7 @@ describe('buildCanvasGraph', () => {
     if (g2 === undefined) throw new Error('fixture lacks g2')
     const shots = Array.from({ length: 22 }, (_, index) => ({ ...g2, id: `s${String(index)}`, inputs: [], params: { prompt: 'p', shot: index + 1 }, outputs: [] }))
     full.components.proj.records = [...records.filter(record => record.operation !== 'shot.render'), ...shots]
-    const graph = buildCanvasGraph(full)
+    const graph = buildCanvasGraph(full, undefined, OPERATIONS)
     const takes = graph.nodes.filter(node => node.kind === 'take')
     expect(new Set(takes.map(node => `${String(node.x)},${String(node.y)}`)).size).toBe(22)
     const width = Math.max(...takes.map(node => node.x)) - Math.min(...takes.map(node => node.x))
@@ -229,7 +229,7 @@ describe('buildCanvasGraph', () => {
     expect(drawn(pending).filter(([, kind]) => kind === 'take').map(([id]) => id)).toEqual(['r1', 'r2', 'r3', 'r4', 's7', 'w5', 'r6'].sort(byRecordOrder))
   })
 
-  it('draws each record of a generation operation that no node kind draws as a take, titled by its slot, else its operation label', () => {
+  it('draws each generation record as a take, titled by its slot, else its operation label; off the wire its own facts decide', () => {
     const generation = (name: string, type: string, label: WireOperation['label']): WireOperation => ({
       name, version: '1', description: name, inputs: {}, params: {}, outputs: [{ role: type, type }], deterministic: false, resource: 'gpu', confirm: 'never',
       ...label === undefined ? {} : { label },
@@ -253,14 +253,16 @@ describe('buildCanvasGraph', () => {
     expect(byId.get('i2')).toMatchObject({ kind: 'take', title: '2', label: 'Generate image', thumb: 'cat2.png', take: 2 })
     expect(byId.get('v1')).toMatchObject({ kind: 'take', title: '', label: 'audio.generate', thumb: null, video: 'line.wav', durationSec: 2 })
     expect(graph.edges).toContainEqual({ from: 'i1', to: 'i2', kind: 'take' })
-    // The export and the render takes keep their nodes as before; the placed take output gets no node of its own.
+    // The CPU export is no take; a render take reads its operation label by the same rule; the placed take output gets no node.
     expect(byId.has('c9')).toBe(false)
-    expect(byId.get('g1')).toMatchObject({ kind: 'take', title: '', take: 1 })
-    expect(byId.get('g1')?.label).toBeUndefined()
+    expect(byId.get('g1')).toMatchObject({ kind: 'take', title: '', label: 'shot.render', take: 1 })
     expect(graph.nodes.filter(node => node.kind === 'asset')).toEqual([])
     expect(graph.assetNodes).toMatchObject({ 'cat.png': 'i1', 'line.wav': 'v1' })
-    // Without the declarations, the canvas draws none of these records.
-    expect(buildCanvasGraph(state).nodes.map(node => node.id)).not.toContain('i1')
+    // Without the declarations, a record that is not deterministic and output media is a take, so the old export is one;
+    // the running retake g3 has no output yet and is none.
+    const offWire = buildCanvasGraph(state).nodes.map(node => node.id)
+    expect(offWire).toEqual(expect.arrayContaining(['g1', 'g2', 'i1', 'i2', 'v1', 'c9']))
+    expect(offWire).not.toContain('g3')
   })
 })
 
@@ -285,7 +287,7 @@ describe('T1c: the canvas writes a reference of any kind', () => {
   }
 
   it('T1c.1: a take input { zz: z1, version: 3 } reads as the reference chip z1@3, never undefined@', () => {
-    const take = buildCanvasGraph(unknownKindState()).nodes.find(node => node.id === 'g9')
+    const take = buildCanvasGraph(unknownKindState(), undefined, OPERATIONS).nodes.find(node => node.id === 'g9')
     // The take editor's chips and the retry request write each input with formatInputRef.
     const chips = take?.record?.inputs.map(input => formatInputRef(input.ref))
     expect(chips).toEqual(['z1@3'])
@@ -293,7 +295,7 @@ describe('T1c: the canvas writes a reference of any kind', () => {
   })
 
   it('T1c.2: a version of a kind without a canvas node links from the node of its asset; a character version links from its bible node', () => {
-    const graph = buildCanvasGraph(unknownKindState(), new Set(['zz.png']))
+    const graph = buildCanvasGraph(unknownKindState(), new Set(['zz.png']), OPERATIONS)
     expect(graph.edges).toContainEqual({ from: 'u9', to: 'g9', kind: 'reference' })
     expect(graph.edges).toContainEqual({ from: 'bible:hero', to: 'g1', kind: 'reference' })
   })

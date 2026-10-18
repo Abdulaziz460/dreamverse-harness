@@ -7,7 +7,7 @@
  */
 import type { DvClient } from '@dv/ui-kit/api.ts'
 import { DV_CURRENT_PROJECT_EVENT, getCurrentProject } from '@dv/ui-kit/current-project.ts'
-import { isRenderOperation } from '@dv/ui-kit/state.ts'
+import { isGenerationRecord } from '@dv/ui-kit/state.ts'
 
 /** The media kinds that the chat cards draw. */
 export type AssetKind = 'video' | 'image'
@@ -16,7 +16,7 @@ export type AssetKind = 'video' | 'image'
 export interface AssetEntry {
   readonly kind: AssetKind
   /**
-   * The `shot` param of the `shot.render` record whose outputs include the asset, the number that the canvas titles the
+   * The `shot` param of the generation record whose outputs include the asset, the number that the canvas titles the
    * take 镜头 N / Shot N by; null for other assets and for a take without one.
    */
   readonly shot: number | null
@@ -67,7 +67,7 @@ async function fetchKinds(client: DvClient, project: string, signal: AbortSignal
   const shots = new Map<string, number>()
   for (const record of state.components.proj.records) {
     const shot = record.params['shot']
-    if (!isRenderOperation(record.operation) || typeof shot !== 'number') continue
+    if (typeof shot !== 'number' || !isGenerationRecord(record, undefined, id => state.assets.find(item => item.id === id)?.mime)) continue
     for (const output of record.outputs) shots.set(output, shot)
   }
   const kinds = new Map<string, AssetEntry>()

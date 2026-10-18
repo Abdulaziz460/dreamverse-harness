@@ -12,7 +12,7 @@ import type {
   WireOperation,
 } from '@dv/ui-kit/types.ts'
 import { versionRefOf } from '@dv/ui-kit/references.ts'
-import { isRenderOperation } from '@dv/ui-kit/state.ts'
+import { isGenerationOperation, isGenerationRecord } from '@dv/ui-kit/state.ts'
 
 /** What a node represents; the canvas colors nodes by it. */
 export type CanvasNodeKind = 'bible' | 'asset' | 'plan' | 'take'
@@ -43,7 +43,7 @@ export interface CanvasNode {
   bibleId?: string
   /** For plan nodes, the `PlanId` (`p1`). */
   planId?: string
-  /** For a take of a generation operation other than the render operation, the operation label; shown when `title` is empty. */
+  /** For a take whose operation `/api/dv/operations` lists, the operation label; shown when `title` is empty. */
   label?: string
   title: string
   subtitle: string
@@ -91,25 +91,15 @@ const COLUMN = 240
 /** Row pitch; it leaves room for a take card (147 at 100%) whose text has grown at a low zoom. */
 export const ROW = 200
 
-/** A `shot.render` record, whose outputs are the takes the creator judges. */
-function isRender(record: ProjectRecord): boolean {
-  return isRenderOperation(record.operation)
-}
-
-/** The output types of a generation operation whose records the canvas draws as takes. */
-const MEDIA_TYPES: ReadonlySet<string> = new Set(['image', 'video', 'audio'])
-
 /**
- * The generation operations that the canvas draws as takes besides the render operation: not deterministic, GPU, with
- * an image, video or audio output.
+ * The generation operations ({@link isGenerationOperation}), whose records the canvas draws as takes.
  * @param operations - the operation declarations.
  * @param language - the interface language.
  * @returns operation name → its label in the interface language, else its name.
  */
 function generationLabels(operations: readonly WireOperation[], language: DvLanguage): Map<string, string> {
   return new Map(operations
-    .filter(operation => !operation.deterministic && operation.resource === 'gpu' && !isRenderOperation(operation.name)
-      && operation.outputs.some(output => MEDIA_TYPES.has(output.type)))
+    .filter(isGenerationOperation)
     .map(operation => [operation.name, operation.label?.[language] ?? operation.name]))
 }
 
@@ -138,9 +128,10 @@ function approvalLayout(version: PlanVersion, records: ReadonlyMap<string, Proje
  *   version, or read as an input by a drawn take.
  * Takes of shots a later plan version removed, and takes of earlier versions that nothing uses, are left out.
  * @param state - a project state.
+ * @param isRender - whether a record generated media ({@link isGenerationRecord}); its outputs are takes the creator judges.
  * @returns the record IDs.
  */
-function shownTakes(state: WireState): Set<string> {
+function shownTakes(state: WireState, isRender: (record: ProjectRecord) => boolean): Set<string> {
   const proj = state.components.proj
   const records = new Map(proj.records.map(record => [record.id, record]))
   const renders = proj.records.filter(isRender)
@@ -245,11 +236,11 @@ export function bibleVersions(state: WireState, id: string): Character[] | Locat
  * Every image or video on the project's canvas (`placed`) gets one node, unless a story bible node (a reference image) or
  * a take node (a take output) already shows it: drawn from its first `asset.import` record of the current state when
  * there is one, else as `asset:<id>` with no record (an import that an undo went back past, a still, an export). A take that
- * reads an asset off the canvas has no edge from it. A record of a generation operation that `operations` lists (see
- * {@link generationLabels}) is a take titled by its `started_by` slot, else by its operation label.
+ * reads an asset off the canvas has no edge from it. A take is a generation record ({@link isGenerationRecord}), titled by
+ * its `started_by` slot, else its `shot` param, else its operation label.
  * @param state - a project state.
  * @param placed - the assets on the canvas; defaults to the state's `asset` slice.
- * @param operations - the operation declarations; none by default, which draws no such take.
+ * @param operations - the operation declarations; none by default, so each record's own facts decide whether it is a take.
  * @param language - the language of the operation labels.
  * @returns the nodes and edges.
  */
@@ -264,6 +255,8 @@ export function buildCanvasGraph(
   const isVideo = (id: string | undefined): boolean => id !== undefined && assets.get(id)?.mime.startsWith('video/') === true
   const isAudio = (id: string | undefined): boolean => id !== undefined && assets.get(id)?.mime.startsWith('audio/') === true
   const labels = generationLabels(operations, language)
+  const isRender = (record: ProjectRecord): boolean =>
+    isGenerationRecord(record, operations.find(operation => operation.name === record.operation), id => assets.get(id)?.mime)
   const flagsOf = (record: ProjectRecord | null): CanvasNodeFlags => ({
     stale: record !== null && proj.stale[record.id] !== undefined,
     rendering: record !== null && (record.status === 'pending' || record.status === 'running'),
@@ -272,7 +265,7 @@ export function buildCanvasGraph(
   })
   const nodes: CanvasNode[] = []
   const byRecord = new Set<string>()
-  const takes = shownTakes(state)
+  const takes = shownTakes(state, isRender)
   // The import node of each drawn imported asset.
   const importNodes = new Map<string, string>()
   // A reference image of a character, location or style belongs to that node, so its import is not drawn twice.
@@ -313,10 +306,10 @@ export function buildCanvasGraph(
         video: isVideo(imported) ? imported : null, durationSec: assets.get(imported)?.duration_sec ?? null,
         record, flags: flagsOf(record), badges: [], take: null, x: 0, y: 0,
       })
-    } else if ((isRender(record) && takes.has(record.id)) || label !== undefined) {
+    } else if (isRender(record) && takes.has(record.id)) {
       const video = record.outputs.find(id => isVideo(id) || isAudio(id)) ?? null
       const shot = typeof record.params['shot'] === 'number' ? record.params['shot'] : null
-      const slot = label === undefined ? shot : record.started_by?.slot ?? null
+      const slot = record.started_by?.slot ?? shot
       nodes.push({
         id: record.id, kind: 'take', title: slot === null ? '' : String(slot), ...label === undefined ? {} : { label },
         subtitle: typeof record.params['prompt'] === 'string' ? record.params['prompt'] : '',

@@ -18,9 +18,9 @@ import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { DvClient, assetUrl } from '@dv/ui-kit/api.ts'
 import { useCurrentProject } from '@dv/ui-kit/current-project.ts'
 import { useText } from '@dv/ui-kit/locale.ts'
-import { isRenderOperation } from '@dv/ui-kit/state.ts'
+import { isGenerationRecord } from '@dv/ui-kit/state.ts'
 import type { Actor, Asset, HistoryEntry, HistoryQuery, ProjectRecord, RecordStatus, WireHistory } from '@dv/ui-kit/types.ts'
-import { useProjectState } from '@dv/ui-kit/useProject.ts'
+import { useOperations, useProjectState } from '@dv/ui-kit/useProject.ts'
 import {
   DV_HISTORY_FOCUS_EVENT, DV_TRAJECTORY_FOCUS_EVENT, dispatchWorkspaceEvent, type DvWorkspaceEventMap,
 } from '@dv/ui-kit/workspace-events.ts'
@@ -172,6 +172,7 @@ export function HistoryPanel(props: HistoryPanelProps): ReactNode {
   const client = useMemo(() => props.client ?? new DvClient(), [props.client])
   const t = useText()
   const current = useProjectState(client, projectId)
+  const operations = useOperations(client)
   const [selected, setSelected] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [focusRecord, setFocusRecord] = useState<string | null>(null)
@@ -254,6 +255,8 @@ export function HistoryPanel(props: HistoryPanelProps): ReactNode {
     const changes = loaded.entries.filter(entry => entry.record.operation !== 'proj.create')
     const shared = {
       assets: loaded.assets, records: recordsById, now, selected, onChoose: choose, rowRef, onJump: jump,
+      isGeneration: (record: ProjectRecord): boolean => isGenerationRecord(
+        record, operations.value?.find(operation => operation.name === record.operation), id => loaded.assets.get(id)?.mime),
     }
     body = (
       <>
@@ -411,6 +414,7 @@ interface RowContext {
   rowRef: (record: string) => (element: HTMLElement | null) => void
   /** 回到这一步 on a row. */
   onJump: (record: string) => void
+  isGeneration: (record: ProjectRecord) => boolean
 }
 
 /**
@@ -424,7 +428,7 @@ function Row(props: RowContext & { row: ActionRow; expanded: boolean; onToggle: 
   const { row, expanded } = props
   const t = useText()
   const children = row.children
-  const renders = children.filter(child => isRenderOperation(child.record.operation))
+  const renders = children.filter(child => props.isGeneration(child.record))
   const doneRenders = renders.filter(child => child.record.status === 'done').length
   const foldText = renders.length === 0
     ? t(...actionLabel(children[0]?.record ?? row.entry.record))
@@ -461,7 +465,7 @@ function EntryRow(props: RowContext & { entry: HistoryEntry; nested: boolean }):
   const status = t(...STATUSES[record.status])
   // Only a render row has a thumbnail column, so render rows line up even when one rendered nothing (an empty square);
   // other rows stay text so the list reads cleanly.
-  const render = isRenderOperation(record.operation)
+  const render = props.isGeneration(record)
   const thumbnail = render ? thumbnailOf(record, assets, props.records) : null
   // The intent the agent gave for its call; a call without one records the operation name, which the label already shows.
   // A human action's intent repeats its label, so it stays in the tooltip.

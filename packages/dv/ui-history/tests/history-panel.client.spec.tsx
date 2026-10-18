@@ -31,7 +31,7 @@ const ENTRIES: HistoryEntry[] = [
   {
     record: record({
       id: 'g1', turn: 't3', actor: 'agent', session: 's5', tool_call: 'call-g1', operation: 'shot.render', outputs: ['shot1.mp4'],
-      intent: 'render the hero',
+      intent: 'render the hero', deterministic: false,
       inputs: [{ role: 'reference', ref: { asset: 'ref.png' }, resolved_asset: 'ref.png' }],
     }),
     place: 'before',
@@ -114,7 +114,8 @@ describe('HistoryPanel', () => {
     expect(view.container.querySelectorAll('[data-testid="dv-history-row"]').length).toBe(1)
     expect(row('ap').textContent).toContain('Approve plan p1 v1')
     const fold = view.getByTestId('dv-history-fold')
-    expect(fold.textContent).toContain('Render 2 shots (1/2)')
+    // The running render has no output yet, so it counts once the operation declarations arrive.
+    await waitFor(() => { expect(fold.textContent).toContain('Render 2 shots (1/2)') })
     fireEvent.click(fold)
     expect(fold.getAttribute('aria-expanded')).toBe('true')
     expect(row('g1').textContent).toContain('Render shot 1')
@@ -166,7 +167,8 @@ describe('HistoryPanel', () => {
     const { row } = mount([failed, ...ENTRIES])
     await waitFor(() => { row('f1') })
     const columns = (id: string): string => row(id).querySelector<HTMLElement>('[style*="grid-template-columns"]')?.style.gridTemplateColumns ?? ''
-    expect(columns('f1')).toMatch(/^40px /)
+    // The failed render has no output, so its operation declaration marks it a render row.
+    await waitFor(() => { expect(columns('f1')).toMatch(/^40px /) })
     expect(row('f1').querySelector('[data-testid="dv-history-thumb"]')).toBeNull()
     expect(columns('m1')).toBe('minmax(0, 1fr) auto')
   })

@@ -39,7 +39,7 @@ import { DV_TIMELINE_INSERT_EVENT } from '@dv/ui-kit/workspace-events.ts'
 | `form.ts` | `fieldsOf(params, values)`、`paramsOf(fields)`、`FieldParseError`：每个 schema 属性一个控件，带类型转换 |
 | `timeline.ts` | `FALLBACK_CLIP_SECONDS`、`timelineName(timeline, numbered)`、`formatSeconds` |
 | `references.ts` | `versionRefOf(ref)` 和 `formatInputRef(ref)`：存储的版本引用的类型、ID 和版本，以及任一存储的输入引用的引用文本，不点名任何引用类型；`shotReferences(version, shot)`、`referenceAssets(state, references)`、`isPicture(asset)`、`pictureParts(prompt)`：一个镜头发给视频模型的各种媒体类型的参考素材，其中哪些是图片（按输入顺序编号为 `Picture 1`、`Picture 2`……），以及在这些标记处切开的提示词；生成任务为 `t2v` 的镜头没有参考 |
-| `state.ts` | `assetIndex`、`videoAssets` |
+| `state.ts` | `assetIndex`、`videoAssets`；`isGenerationOperation(op)`（非确定性、资源为 `gpu`、有图片、视频或音频输出）和 `isGenerationRecord(record, op, mimeOf)`（给出 `op` 时由声明决定，否则由记录决定：非确定性，并有图片、视频或音频输出）：各视图区分生成记录所用的唯一规则 |
 | `useProject.ts` | `useProjects`、`useOperations`、`useProjectState`：每次项目事件都重新拉取的加载器；`useLoader(load, deps)` 是它们共用的请求流程，会中止过期的请求，并在重新加载时保留上一次的值 |
 | `useView.ts` | `useViewSession(client, surface, session?)`：项目选择、项目的当前状态、操作、最近一次失败和项目栏回调；`sessionFromLocation` 从页面地址的 `?session=` 读对话，让视图打开该对话的项目 |
 | `ProjectBar.tsx` | 侧栏的栏（测试 ID `dv-kit-project-bar`）：项目选择器、新建项目按钮和撤销，用 `--dv-*` 主题变量画成 28 px 的次要控件；文案以 `labels` 传入，由所属插件先本地化 |
