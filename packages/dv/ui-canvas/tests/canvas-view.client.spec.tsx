@@ -6,10 +6,12 @@ import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { assetUrl, DvClient } from '@dv/ui-kit/api.ts'
 import { DV_COMPOSE_EVENT } from '@dv/ui-kit/compose.ts'
 import type { DvComposeDetail } from '@dv/ui-kit/compose.ts'
+import type { DvCanvas } from '@dv/ui-kit/registries.ts'
 import type { WireOperation, WireState } from '@dv/ui-kit/types.ts'
 import { DV_ASSET_DRAG_TYPE, DV_CANVAS_FOCUS_EVENT } from '@dv/ui-kit/workspace-events.ts'
 import { asset, fixtureState, OPERATIONS, record, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
 import { CanvasView } from '../src/client/CanvasView.tsx'
+import { createDvCanvas, planApprovalAnchor } from '../src/client/dv-canvas.ts'
 import { NODE_WIDTH } from '../src/client/graph.ts'
 import { EDITOR_RECT_KEY } from '../src/client/NodeEditor.tsx'
 import type { CanvasTranslate } from '../src/client/NodeCard.tsx'
@@ -30,9 +32,13 @@ afterEach(() => {
  * @param edit - changes to the fixture state, applied to every state the route serves.
  * @param holdOperations - whether `POST /api/dv/operation` stays unanswered, as a render does until it ends.
  * @param operations - the operation declarations the route serves; the fixture's by default.
+ * @param canvas - the `dvCanvas` registries the view reads; none by default.
  * @returns the rendered view, the recorded writes, and a node lookup.
  */
-function mount(withTranslate = true, edit: (state: WireState) => void = () => undefined, holdOperations = false, operations = OPERATIONS) {
+function mount(
+  withTranslate = true, edit: (state: WireState) => void = () => undefined, holdOperations = false, operations = OPERATIONS,
+  canvas?: DvCanvas,
+) {
   const scripted = scriptedFetch({
     state: () => {
       const state = fixtureState()
@@ -56,7 +62,7 @@ function mount(withTranslate = true, edit: (state: WireState) => void = () => un
   }
   const client = new DvClient(fetchWithLayout)
   const t: CanvasTranslate = makeTranslate(zh)
-  const view = render(<CanvasView projectId="p1" client={client} session="s5" {...withTranslate ? { t } : {}} />)
+  const view = render(<CanvasView projectId="p1" client={client} session="s5" {...withTranslate ? { t } : {}} {...canvas === undefined ? {} : { canvas }} />)
   const node = (id: string): HTMLElement => {
     const element = view.container.querySelector(`[data-node-id="${id}"]`)
     if (!(element instanceof HTMLElement)) throw new Error(`no node ${id}`)
@@ -81,6 +87,24 @@ describe('CanvasView', () => {
     fireEvent.pointerUp(view.getByTestId('dv-canvas-view'), { pointerId: 1 })
     await waitFor(() => { expect(layoutWrites).toHaveLength(2) }, { timeout: 2000 })
     expect(layoutWrites[1]).toMatchObject({ project: 'p1', positions: { g2: { x: 720 + 50, y: 0 + 30 } } })
+  })
+
+  it('reads the chain anchors of its registries: an anchor links and titles the takes of its chains until its disposal', async () => {
+    const canvas = createDvCanvas()
+    const { view, node } = mount(true, (state) => {
+      state.components.proj.records = state.components.proj.records.map(entry => entry.id === 'g1' ? { ...entry, started_by: { record: 'a1', slot: 1 } } : entry)
+    }, false, OPERATIONS, canvas)
+    const edge = (): Element | null => view.container.querySelector('path[data-edge="plan:p1>g1"]')
+    await waitFor(() => { node('g1') })
+    expect(edge()).toBeNull()
+    let dispose = (): void => undefined
+    act(() => { dispose = canvas.chainAnchors.register(planApprovalAnchor) })
+    // The retake g3 keeps the chain of its root g1, so both read 镜头 1 and hang off plan:p1.
+    await waitFor(() => { expect(edge()).not.toBeNull() })
+    expect(view.container.querySelector('path[data-edge="plan:p1>g3"]')).not.toBeNull()
+    expect([node('g1'), node('g3')].map(element => element.getAttribute('aria-label'))).toEqual(['镜头 1 · 第 1 次', '镜头 1 · 第 2 次'])
+    act(() => { dispose() })
+    await waitFor(() => { expect(edge()).toBeNull() })
   })
 
   it('keeps the node selected after its editor closes; a click on empty canvas then clears the selection', async () => {

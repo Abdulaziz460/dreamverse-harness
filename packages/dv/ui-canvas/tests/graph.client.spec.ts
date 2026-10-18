@@ -1,9 +1,14 @@
 /** Canvas nodes and edges derived from the shared project state. */
 import { describe, expect, it } from 'vitest'
+import type { ChainAnchor, TakesInUse } from '@dv/ui-kit/registries.ts'
 import type { PlanVersion, ProjectRecord, WireOperation, WireState } from '@dv/ui-kit/types.ts'
 import { formatInputRef } from '@dv/ui-kit/references.ts'
 import { asset, fixtureState, OPERATIONS, record } from '../../ui-kit/tests/fixture.client.tsx'
-import { buildCanvasGraph, freePositions, NODE_WIDTH, ROW } from '../src/client/graph.ts'
+import { buildCanvasGraph, freePositions, NODE_WIDTH, ROW, slotFrames } from '../src/client/graph.ts'
+
+/** A chain anchor of each approval operation: the records an approval started hang off the node of its plan. */
+const anchorOf = (starter: string): ChainAnchor => ({ starter, anchor: approval => `plan:${String(approval.params['plan'])}` })
+const APPROVAL = anchorOf('plan.approve')
 
 /** Six shot prompts of plan p1 version 1; versions 2 and 3 change shot 3 and add shot 7, version 4 returns to these. */
 const PROMPTS = ['rain', 'alley', 'door', 'stairs', 'roof', 'dawn']
@@ -18,12 +23,15 @@ const PROMPTS = ['rain', 'alley', 'door', 'stairs', 'roof', 'dawn']
  */
 function rollbackProject(until?: string): WireState {
   const hero = { role: 'reference', ref: { character: 'hero', version: 1 }, resolved_asset: 'ref.png' }
+  // The approval of version n is a<n>: it starts each render, with its shot as slot, and its timeline record; a retake
+  // has no started_by of its own.
   const render = (id: string, version: number, shot: number, basedOn: string | null = null): ProjectRecord => record({
     id, operation: 'shot.render', deterministic: false, inputs: [hero], based_on: basedOn, outputs: [`${id}.mp4`, `${id}.png`],
     params: { prompt: `shot ${String(shot)} v${String(version)}`, plan: 'p1', plan_version: version, shot },
+    ...basedOn === null ? { started_by: { record: `a${String(version)}`, slot: shot } } : {},
   })
   const layout = (id: string, operation: string, clips: string[]): ProjectRecord => record({
-    id, operation, params: { timeline: 't1', plan: 'p1' },
+    id, operation, params: { timeline: 't1', plan: 'p1' }, started_by: { record: `a${id.slice(1)}`, slot: null },
     inputs: clips.map(clip => ({ role: 'clip', ref: { record: clip, output: 0 }, resolved_asset: `${clip}.mp4` })),
   })
   const approve = (id: string, version: number, scheduled: string[]): ProjectRecord =>
@@ -87,7 +95,7 @@ function byRecordOrder(a: string | string[], b: string | string[]): number {
  * @returns the pairs, in node order.
  */
 function drawn(state: WireState): string[][] {
-  return buildCanvasGraph(state).nodes.map(node => [node.id, node.kind])
+  return buildCanvasGraph(state, undefined, [], 'zh', [APPROVAL]).nodes.map(node => [node.id, node.kind])
 }
 
 describe('buildCanvasGraph', () => {
@@ -190,7 +198,7 @@ describe('buildCanvasGraph', () => {
   })
 
   it('shows the latest plan version and the current take of each of its shots, not every take ever rendered', () => {
-    const graph = buildCanvasGraph(rollbackProject())
+    const graph = buildCanvasGraph(rollbackProject(), undefined, [], 'zh', [APPROVAL])
     // v4 has 6 shots and its approval reused every v1 take: no shot 7, no v2 or v3 take, no retake of the removed shot.
     expect(graph.nodes.map(node => [node.id, node.kind])).toEqual([
       ['bible:hero', 'bible'], ['plan:p1', 'plan'], ...['r1', 'r2', 'r3', 'r4', 'r5', 'r6'].map(id => [id, 'take']),
@@ -199,7 +207,7 @@ describe('buildCanvasGraph', () => {
     expect([plan?.subtitle, plan?.record?.id]).toEqual(['6', 'q4'])
     expect(graph.nodes.filter(node => node.kind === 'take').map(node => [node.title, node.take]))
       .toEqual(['1', '2', '3', '4', '5', '6'].map(shot => [shot, null]))
-    expect(graph.edges.filter(edge => edge.kind === 'plan').map(edge => edge.to)).toEqual(['r1', 'r2', 'r3', 'r4', 'r5', 'r6'])
+    expect(graph.edges.filter(edge => edge.kind === 'chain').map(edge => [edge.from, edge.to])).toEqual(['r1', 'r2', 'r3', 'r4', 'r5', 'r6'].map(id => ['plan:p1', id]))
     // Assets of takes the canvas leaves out have no node, so dropping one on the canvas finds none.
     expect(graph.assetNodes['s7.mp4']).toBeUndefined()
     expect(graph.assetNodes['r3.mp4']).toBe('r3')
@@ -223,13 +231,14 @@ describe('buildCanvasGraph', () => {
     const replaced = drawn(rollbackProject('k1')).map(([id]) => id)
     expect(replaced).toContain('r3')
     expect(replaced).not.toContain('s3')
-    // v4 written but not approved yet: the timeline still plays the v3 takes, so they stay; v4 has no takes of its own.
+    // v4 written but not approved yet: the timeline still plays the v3 takes, so they stay with the retake x7 of the played
+    // s7; v4 has no takes of its own.
     const pending = rollbackProject('q4')
     expect(pending.components.plan.plans['p1']?.at(-1)?.approved_by).toBeNull()
-    expect(drawn(pending).filter(([, kind]) => kind === 'take').map(([id]) => id)).toEqual(['r1', 'r2', 'r3', 'r4', 's7', 'w5', 'r6'].sort(byRecordOrder))
+    expect(drawn(pending).filter(([, kind]) => kind === 'take').map(([id]) => id)).toEqual(['r1', 'r2', 'r3', 'r4', 's7', 'x7', 'w5', 'r6'].sort(byRecordOrder))
   })
 
-  it('draws each generation record as a take, titled by its slot, else its operation label; off the wire its own facts decide', () => {
+  it('draws each generation record as a take, titled by its operation label without an anchored chain; off the wire its own facts decide', () => {
     const generation = (name: string, type: string, label: WireOperation['label']): WireOperation => ({
       name, version: '1', description: name, inputs: {}, params: {}, outputs: [{ role: type, type }], deterministic: false, resource: 'gpu', confirm: 'never',
       ...label === undefined ? {} : { label },
@@ -250,7 +259,9 @@ describe('buildCanvasGraph', () => {
     const graph = buildCanvasGraph(state, new Set(['cat.png']), operations, 'en')
     const byId = new Map(graph.nodes.map(node => [node.id, node]))
     expect(byId.get('i1')).toMatchObject({ kind: 'take', title: '', label: 'Generate image', subtitle: 'a cat', thumb: 'cat.png', video: null, take: 1 })
-    expect(byId.get('i2')).toMatchObject({ kind: 'take', title: '2', label: 'Generate image', thumb: 'cat2.png', take: 2 })
+    // The starter w1 of i2's chain is not loaded, so the chain has no anchor and i2 is a free take.
+    expect(byId.get('i2')).toMatchObject({ kind: 'take', title: '', label: 'Generate image', thumb: 'cat2.png', take: 2 })
+    expect(byId.get('i2')?.chain).toBeUndefined()
     expect(byId.get('v1')).toMatchObject({ kind: 'take', title: '', label: 'audio.generate', thumb: null, video: 'line.wav', durationSec: 2 })
     expect(graph.edges).toContainEqual({ from: 'i1', to: 'i2', kind: 'take' })
     // The CPU export is no take; a render take reads its operation label by the same rule; the placed take output gets no node.
@@ -263,6 +274,78 @@ describe('buildCanvasGraph', () => {
     const offWire = buildCanvasGraph(state).nodes.map(node => node.id)
     expect(offWire).toEqual(expect.arrayContaining(['g1', 'g2', 'i1', 'i2', 'v1', 'c9']))
     expect(offWire).not.toContain('g3')
+  })
+})
+
+describe('chain grouping', () => {
+  /**
+   * The shared fixture plus the chains of two workflows on plan p1: the story approval st0 started n1 (slot 2), and the
+   * later story approval st1 started h1 (slot 1), which the canvas retake h2 is based on; the ad approval ad1 started a
+   * 9:16 take v9 and a 16:9 take v16 of slot 1. The starter zz1 of o1 is not loaded. Each take outputs one image.
+   * @returns the state.
+   */
+  function chainState(): WireState {
+    const state = fixtureState()
+    const take = (id: string, startedBy: ProjectRecord['started_by'], basedOn: string | null = null): ProjectRecord => record({
+      id, operation: 'shot.render', deterministic: false, based_on: basedOn, outputs: [`${id}.png`],
+      ...startedBy === undefined ? {} : { started_by: startedBy },
+    })
+    state.components.proj.records.push(
+      record({ id: 'st0', operation: 'story.approve', params: { plan: 'p1' } }), take('n1', { record: 'st0', slot: 2 }),
+      record({ id: 'st1', operation: 'story.approve', params: { plan: 'p1' } }), take('h1', { record: 'st1', slot: 1 }), take('h2', undefined, 'h1'),
+      record({ id: 'ad1', operation: 'ad.approve', params: { plan: 'p1' } }),
+      take('v9', { record: 'ad1', slot: 1, lane: '9:16' }), take('v16', { record: 'ad1', slot: 1, lane: '16:9' }),
+      take('o1', { record: 'zz1', slot: 2 }),
+    )
+    for (const id of ['n1', 'h1', 'h2', 'v9', 'v16', 'o1']) {
+      state.assets.push(asset(`${id}.png`, 'image/png', id))
+      state.components.proj.created_by[`${id}.png`] = id
+    }
+    return state
+  }
+  const ANCHORS = [anchorOf('story.approve'), anchorOf('ad.approve')]
+
+  it('draws the chain of the newest starter of each operation on a node, every free take, and the records a TakesInUse uses', () => {
+    const takes = (inUse: TakesInUse[] = []): string[] => buildCanvasGraph(chainState(), undefined, OPERATIONS, 'zh', ANCHORS, inUse)
+      .nodes.filter(node => node.kind === 'take').map(node => node.id)
+    // st1 replaced st0 on plan:p1, so n1 is left out; the story chain and the ad chain both show; o1, g1, g2 and g3 are free takes.
+    expect(takes()).toEqual(['g1', 'g2', 'g3', 'h1', 'h2', 'v9', 'v16', 'o1'])
+    expect(takes([{ id: 'test-uses', uses: () => ['n1'] }])).toEqual(['g1', 'g2', 'g3', 'n1', 'h1', 'h2', 'v9', 'v16', 'o1'])
+    // Without anchors no chain is anchored, so n1 is a free take as well.
+    expect(buildCanvasGraph(chainState(), undefined, OPERATIONS).nodes.some(node => node.id === 'n1')).toBe(true)
+  })
+
+  it('titles a take by the slot and lane of its anchored chain, numbers takes by anchor, slot and lane, and fills slot frames', () => {
+    const graph = buildCanvasGraph(chainState(), undefined, OPERATIONS, 'en', ANCHORS)
+    const byId = new Map(graph.nodes.map(node => [node.id, node]))
+    // The retake h2 has no started_by and keeps the slot of its root h1; two lanes of one slot are two groups.
+    expect(['h1', 'h2', 'v9', 'v16', 'o1'].map(id => [byId.get(id)?.title, byId.get(id)?.take])).toEqual([
+      ['1', 1], ['1', 2], ['1 · 9:16', null], ['1 · 16:9', null], ['', null],
+    ])
+    expect(byId.get('o1')).toMatchObject({ label: 'shot.render' })
+    expect(graph.edges.filter(edge => edge.kind === 'chain').map(edge => [edge.from, edge.to]))
+      .toEqual(['h1', 'h2', 'v9', 'v16'].map(id => ['plan:p1', id]))
+    // Slot 1 shows the newest finished take of an anchored chain on plan:p1 with slot 1; slot 2 has none, since o1 is free.
+    expect(slotFrames(graph.nodes, 'plan:p1', 2)).toEqual([{ thumb: 'v16.png', video: null }, null])
+  })
+
+  it('lays out six takes in two lanes by anchor, slot (null last), lane in first-record order, then record order', () => {
+    const state = fixtureState()
+    // The ad approval ad1 writes its 9:16 lane first; each lane writes slot null, then 2, then 1.
+    const take = (id: string, slot: number | null, lane: string): ProjectRecord =>
+      record({ id, operation: 'shot.render', deterministic: false, started_by: { record: 'ad1', slot, lane } })
+    state.components.proj.records.push(
+      record({ id: 'ad1', operation: 'ad.approve', params: { plan: 'p1' } }),
+      take('m0', null, '9:16'), take('m2', 2, '9:16'), take('m1', 1, '9:16'),
+      take('w2', 2, '16:9'), take('w0', null, '16:9'), take('w1', 1, '16:9'),
+    )
+    const graph = buildCanvasGraph(state, undefined, OPERATIONS, 'zh', [anchorOf('ad.approve')])
+    // Column 2 top to bottom, then its next sub-column: the free take g1 and its retake g3 come first, as the first records.
+    const placed = graph.nodes.filter(node => ['g1', 'g3', 'm0', 'm1', 'm2', 'w0', 'w1', 'w2'].includes(node.id))
+      .sort((a, b) => a.x - b.x || a.y - b.y).map(node => node.id)
+    expect(placed).toEqual(['g1', 'g3', 'm1', 'w1', 'm2', 'w2', 'm0', 'w0'])
+    // The nodes keep record order, so take numbers and slot frames read it.
+    expect(graph.nodes.filter(node => node.kind === 'take').map(node => node.id)).toEqual(['g1', 'g2', 'g3', 'm0', 'm2', 'm1', 'w2', 'w0', 'w1'])
   })
 })
 

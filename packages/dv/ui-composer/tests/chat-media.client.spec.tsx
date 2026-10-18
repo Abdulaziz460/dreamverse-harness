@@ -172,7 +172,15 @@ describe('ChatMediaView', () => {
 })
 
 /** A record of a project state, in the fields the index reads. */
-interface StateRecord { operation: string; deterministic: boolean; params: Record<string, unknown>; outputs: string[] }
+interface StateRecord {
+  id: string
+  operation: string
+  deterministic: boolean
+  params: Record<string, unknown>
+  outputs: string[]
+  based_on: null
+  started_by?: { record: string; slot: number }
+}
 
 /** A project state with the given assets and records, in the fields the index reads. */
 function state(assets: Array<[string, string]>, records: StateRecord[] = []) {
@@ -182,9 +190,10 @@ function state(assets: Array<[string, string]>, records: StateRecord[] = []) {
   }
 }
 
-/** A take record of `shot.render`, which is not deterministic, with the given `shot` param and outputs. */
+/** A take record of `shot.render`, which is not deterministic, started by the approval a1 at the given slot, with outputs. */
 const take = (shot: number | undefined, ...outputs: string[]): StateRecord => ({
-  operation: 'shot.render', deterministic: false, params: shot === undefined ? {} : { shot }, outputs,
+  id: outputs[0] ?? '', operation: 'shot.render', deterministic: false, params: {}, outputs, based_on: null,
+  ...shot === undefined ? {} : { started_by: { record: 'a1', slot: shot } },
 })
 
 /** Serve `/api/dv/state` from `states`, keyed by project; other projects fail. */
@@ -254,13 +263,14 @@ describe('followAssetKinds', () => {
     stop()
   })
 
-  it('gives each take video the shot number of its render record', async () => {
+  it('gives each take video the chain slot of its render record', async () => {
     const events = fakeEvents()
     const assets: Array<[string, string]> = [
       ['v1.mp4', 'video/mp4'], ['v2.mp4', 'video/mp4'], ['v3.mp4', 'video/mp4'], ['s1.png', 'image/png'], ['v4.mp4', 'video/mp4'],
     ]
     const records = (fourth: number): StateRecord[] => [
-      take(3, 'v1.mp4', 's1.png'), take(undefined, 'v2.mp4'), { operation: 'timeline.trim', deterministic: true, params: { shot: 5 }, outputs: ['v3.mp4'] },
+      take(3, 'v1.mp4', 's1.png'), take(undefined, 'v2.mp4'),
+      { id: 'k1', operation: 'timeline.trim', deterministic: true, params: {}, outputs: ['v3.mp4'], based_on: null, started_by: { record: 'a1', slot: 5 } },
       take(fourth, 'v4.mp4'),
     ]
     const states: Record<string, unknown> = { p1: state(assets, records(4)) }

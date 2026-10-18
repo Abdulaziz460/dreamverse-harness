@@ -18,12 +18,12 @@
  * image and video files imports them with `place`, and the asset node's "从画布移除" runs `asset.unplace`. Each of these
  * is a record, so History lists it and undo takes it back.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { CSSProperties, DragEvent as ReactDragEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import { DvClient } from '@dv/ui-kit/api.ts'
 import { useLanguage } from '@dv/ui-kit/locale.ts'
 import { formatInputRef } from '@dv/ui-kit/references.ts'
-import type { DvCanvas } from '@dv/ui-kit/registries.ts'
+import type { DvCanvas, Registry } from '@dv/ui-kit/registries.ts'
 import type { WireTaskLabels } from '@dv/ui-kit/tool-labels.ts'
 import type { CanvasViewport, NodePosition, OperationRequest } from '@dv/ui-kit/types.ts'
 import { DV_ASSET_DRAG_TYPE, DV_CANVAS_FOCUS_EVENT } from '@dv/ui-kit/workspace-events.ts'
@@ -31,7 +31,8 @@ import type { DvWorkspaceEventMap } from '@dv/ui-kit/workspace-events.ts'
 import { readStored, writeStored } from '@dv/ui-kit/storage.ts'
 import { useOperations, useProjectState, useTaskLabels } from '@dv/ui-kit/useProject.ts'
 import { useZoomPresence } from '@dv/ui-kit/zoom.ts'
-import { buildCanvasGraph, freePositions, NODE_WIDTH, planShotFrames, ROW } from './graph.ts'
+import { createDvCanvas } from './dv-canvas.ts'
+import { buildCanvasGraph, freePositions, NODE_WIDTH, ROW, slotFrames } from './graph.ts'
 import type { CanvasEdge, CanvasNode } from './graph.ts'
 import { NodeCard, nodeHeight, nodeTitle } from './NodeCard.tsx'
 import type { CanvasTranslate } from './NodeCard.tsx'
@@ -48,7 +49,7 @@ export interface CanvasViewProps {
   session?: string | null
   /** The `dvCanvas` translate; when omitted, the dictionary of the DSH interface language that `<html lang>` names. */
   t?: CanvasTranslate
-  /** The `dvCanvas` registries that plugin UI halves fill for this view. */
+  /** The `dvCanvas` registries that plugin UI halves fill for this view; without them, every take is a free take. */
   canvas?: DvCanvas
 }
 
@@ -67,7 +68,18 @@ const NO_TASK_LABELS: WireTaskLabels = {}
 
 /** Edge stroke per kind: the kind color of the node the edge leaves (a reference leaves a character or an asset). */
 const EDGE_COLOR: Record<CanvasEdge['kind'], string> = {
-  reference: 'var(--dv-kind-character)', first_frame: 'var(--dv-kind-take)', plan: 'var(--dv-kind-plan)', take: 'var(--dv-kind-take)',
+  reference: 'var(--dv-kind-character)', first_frame: 'var(--dv-kind-take)', chain: 'var(--dv-kind-plan)', take: 'var(--dv-kind-take)',
+}
+/** The registries of a view mounted without `dvCanvas`: empty, so every take is a free take. */
+const NO_CANVAS = createDvCanvas()
+
+/**
+ * @param registry - a registry.
+ * @returns its descriptors, read again on each change.
+ */
+function useRegistry<D>(registry: Registry<D>): readonly D[] {
+  const subscribe = useCallback((listener: () => void) => registry.subscribe(listener), [registry])
+  return useSyncExternalStore(subscribe, () => registry.list())
 }
 /** Canvas dot grid pitch at 100%, in canvas units. */
 const GRID = 20
@@ -189,16 +201,18 @@ function withoutKeys<V>(map: ReadonlyMap<string, V>, keys: readonly string[]): M
 
 /**
  * The canvas.
- * @param props - the project, chat session, and optional client and translate.
+ * @param props - the project, chat session, and optional client, translate and registries.
  * @returns the element.
  */
-export function CanvasView({ projectId, client: given, session = null, t: givenT }: CanvasViewProps): ReactNode {
+export function CanvasView({ projectId, client: given, session = null, t: givenT, canvas = NO_CANVAS }: CanvasViewProps): ReactNode {
   const client = useMemo(() => given ?? new DvClient(), [given])
   const language = useLanguage()
   const t = givenT ?? translates[language]
   const base = useProjectState(client, projectId)
   const operations = useOperations(client)
   const taskLabels = useTaskLabels(client)
+  const anchors = useRegistry(canvas.chainAnchors)
+  const inUse = useRegistry(canvas.takesInUse)
   // This view's placements whose record the project state does not show yet: asset ID → on the canvas.
   const [inFlight, setInFlight] = useState<ReadonlyMap<string, boolean>>(new Map())
   // The project's canvas, with this view's placements in flight already applied.
@@ -234,14 +248,14 @@ export function CanvasView({ projectId, client: given, session = null, t: givenT
   // The previous project's state stays loaded until the next project's arrives; the canvas draws only this project's.
   const graph = useMemo(() => {
     if (base.value === null || base.value.project.id !== projectId) return null
-    return { state: base.value, ...buildCanvasGraph(base.value, placed, operations.value ?? [], language) }
-  }, [base.value, placed, projectId, operations.value, language])
-  // Each plan node's latest version and its shots' frames, for the plan card's version label, mini grid, and duration.
-  // Memoized on the graph, because a pan or zoom re-renders the view on every pointer move.
+    return { state: base.value, ...buildCanvasGraph(base.value, placed, operations.value ?? [], language, anchors, inUse) }
+  }, [base.value, placed, projectId, operations.value, language, anchors, inUse])
+  // Each plan node's latest version and its slot frames, one per shot, for the plan card's version label, mini grid, and
+  // duration. Memoized on the graph, because a pan or zoom re-renders the view on every pointer move.
   const plans = useMemo(() => new Map(graph === null ? [] : graph.nodes.flatMap((node) => {
     const latest = node.planId === undefined ? undefined : graph.state.components.plan.plans[node.planId]?.at(-1)
     if (latest === undefined || node.planId === undefined) return []
-    return [[node.id, { latest, frames: planShotFrames(graph.nodes, node.planId, latest.shots.length) }] as const]
+    return [[node.id, { latest, frames: slotFrames(graph.nodes, node.id, latest.shots.length) }] as const]
   })), [graph])
 
   const [positions, setPositions] = useState<Record<string, NodePosition>>({})

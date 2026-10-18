@@ -12,7 +12,7 @@ import { assetUrl } from '@dv/ui-kit/api.ts'
 import { clockText } from '@dv/ui-kit/timeline.ts'
 import type { PlanVersion, Shot } from '@dv/ui-kit/types.ts'
 import { NODE_WIDTH } from './graph.ts'
-import type { CanvasNode, PlanShotFrame } from './graph.ts'
+import type { CanvasNode, SlotFrame } from './graph.ts'
 import type {} from './locales.ts'
 
 /** The canvas namespace translate. */
@@ -87,7 +87,7 @@ export interface NodeCardProps {
   /** For a plan node, the plan's latest version. */
   plan?: PlanVersion
   /** For a plan node, the frame of each shot of the latest version; null for a shot without one. */
-  frames?: Array<PlanShotFrame | null>
+  frames?: Array<SlotFrame | null>
   /** For a failed take, renders it again; omitted when the canvas is read-only. */
   onRetry?: () => void
   /** For a failed take, true while its retry is starting: the retry button is disabled and reads 渲染中…. */

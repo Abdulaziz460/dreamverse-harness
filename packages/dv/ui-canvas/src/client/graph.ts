@@ -1,12 +1,14 @@
 /**
  * Canvas nodes and edges derived from a project state. The canvas shows the project's current state only: a
  * node is an item a creator works with now: a character, a location or a style at its current version, an imported asset
- * on the project's canvas list (see {@link buildCanvasGraph}), a plan at its latest version, the current take of each
- * shot of that version, a take that is not part of a plan, a take whose outputs are in use, and every record of a
- * generation operation that no other node kind draws. Deterministic edits (still grabs, timeline records) do not become
+ * on the project's canvas list (see {@link buildCanvasGraph}), a plan at its latest version, and the generation records
+ * that make up the current state: the takes of the newest chain on each anchor node, every take without an anchored
+ * chain, and every take whose outputs are in use. Deterministic edits (still grabs, timeline records) do not become
  * nodes; a timeline trim shows as a badge on the take it shortened.
  */
+import { chainOf } from '@dv/ui-kit/chain.ts'
 import type { DvLanguage } from '@dv/ui-kit/locale.ts'
+import type { ChainAnchor, TakesInUse } from '@dv/ui-kit/registries.ts'
 import type {
   Character, Clip, Location, NodePosition, PlanVersion, ProjectRecord, RecordInput, StoryBibleState, Style, WireState,
   WireOperation,
@@ -59,15 +61,26 @@ export interface CanvasNode {
   flags: CanvasNodeFlags
   /** Short labels of deterministic edits applied to the node's asset, such as `trim`. */
   badges: string[]
-  /** For takes of one shot that has several takes, this take's 1-based number; null for a single take. */
+  /** For a take in a group of several takes (see {@link numberTakes}), this take's 1-based number; null otherwise. */
   take: number | null
+  /** For a take, its anchored chain; absent for a free take. */
+  chain?: AnchoredChain
   /** The default position when the user has not placed the node. */
   x: number
   y: number
 }
 
-/** How one node fed another. */
-export type CanvasEdgeKind = 'reference' | 'first_frame' | 'plan' | 'take'
+/** The anchored chain of a take: the record that started it, the node that record hangs it off, its slot and lane. */
+export interface AnchoredChain {
+  starter: string
+  /** The anchor node ID, such as `plan:p1`. */
+  anchor: string
+  slot: number | null
+  lane?: string
+}
+
+/** How one node fed another; a `chain` edge hangs a take off the anchor node of its chain. */
+export type CanvasEdgeKind = 'reference' | 'first_frame' | 'chain' | 'take'
 
 /** One "used as input" edge. */
 export interface CanvasEdge {
@@ -103,35 +116,84 @@ function generationLabels(operations: readonly WireOperation[], language: DvLang
     .map(operation => [operation.name, operation.label?.[language] ?? operation.name]))
 }
 
-/**
- * The timeline record that the approval of a plan version wrote: its `clip` inputs name the take of each shot in shot
- * order, and a shot the approval left unchanged names the earlier take it reused.
- * @param version - the plan version.
- * @param records - the records of the state by ID.
- * @returns the record, or undefined when the version is not approved.
- */
-function approvalLayout(version: PlanVersion, records: ReadonlyMap<string, ProjectRecord>): ProjectRecord | undefined {
-  const scheduled = version.approved_by === null ? undefined : records.get(version.approved_by)?.report?.['scheduled']
-  if (!Array.isArray(scheduled)) return undefined
-  return scheduled.map(id => typeof id === 'string' ? records.get(id) : undefined)
-    .find(record => record?.operation?.startsWith('timeline.') === true)
+/** The anchored chains of a project's records ({@link anchorChains}). */
+interface ChainIndex {
+  /** The anchored chain of a record; null for a record without a chain and for a chain without an anchor. */
+  anchored: (record: ProjectRecord) => AnchoredChain | null
+  /** The newest starter record of each starter operation on each anchor node. */
+  newest: ReadonlySet<string>
 }
 
 /**
- * The render records the canvas draws, which make up the current state of the project:
- * - for each shot of each plan's latest version, its current take together with the retakes of the same original take.
- *   The current take is the take the shot's clip on the plan's timeline plays (the clip at the shot's position, when it
- *   plays a take of that shot), else the newest done take of that shot and version or the earlier take the version's
- *   approval reused, else the newest take still rendering;
- * - every take that is not part of a plan, with its retakes;
- * - every take whose outputs are in use: played by a timeline clip, named as a reference by a current story bible or plan
- *   version, or read as an input by a drawn take.
- * Takes of shots a later plan version removed, and takes of earlier versions that nothing uses, are left out.
+ * Anchor the chains of a project's records. The chain of a record (`chainOf`: its own `started_by`, else the
+ * `started_by` of its `based_on` root) is anchored when its starter record is loaded and a `ChainAnchor` is registered
+ * for the starter's operation.
+ * @param records - the loaded records by ID, in log order.
+ * @param anchors - the registered chain anchors.
+ * @returns the index.
+ */
+function anchorChains(records: ReadonlyMap<string, ProjectRecord>, anchors: readonly ChainAnchor[]): ChainIndex {
+  const anchorOf = new Map(anchors.map(anchor => [anchor.starter, anchor]))
+  // The anchor node of each loaded starter, and the newest starter of each operation on each anchor node.
+  const nodeOf = new Map<string, string>()
+  const newest = new Map<string, string>()
+  for (const record of records.values()) {
+    const anchor = anchorOf.get(record.operation ?? '')
+    if (anchor === undefined) continue
+    const node = anchor.anchor(record)
+    nodeOf.set(record.id, node)
+    newest.set(`${anchor.starter}>${node}`, record.id)
+  }
+  return {
+    anchored: (record) => {
+      const chain = chainOf(record, records)
+      const anchor = chain === null ? undefined : nodeOf.get(chain.record)
+      if (chain === null || anchor === undefined) return null
+      return { starter: chain.record, anchor, slot: chain.slot, ...chain.lane === undefined ? {} : { lane: chain.lane } }
+    },
+    newest: new Set(newest.values()),
+  }
+}
+
+/**
+ * The records whose outputs the core's own reads of the story bible, plan and timeline slices find in use: the
+ * producers of the references of each current story bible and plan version, and the record of each timeline clip.
  * @param state - a project state.
- * @param isRender - whether a record generated media ({@link isGenerationRecord}); its outputs are takes the creator judges.
+ * @param plans - the latest version of each plan.
  * @returns the record IDs.
  */
-function shownTakes(state: WireState, isRender: (record: ProjectRecord) => boolean): Set<string> {
+function coreUses(state: WireState, plans: readonly PlanVersion[]): string[] {
+  const proj = state.components.proj
+  const clipRecord = (clip: Clip): string | undefined =>
+    clip.source?.record ?? (clip.asset === null ? undefined : proj.created_by[clip.asset])
+  const references = [
+    ...bibleItems(state).flatMap(({ versions }) => versions.at(-1)?.references ?? []),
+    ...plans.flatMap(latest => [...latest.references ?? [], ...latest.shots.flatMap(shot => shot.references ?? [])]),
+  ]
+  return [
+    ...state.components.timeline.timelines.flatMap(timeline => timeline.clips.map(clipRecord)),
+    ...references.map(reference => proj.created_by[reference]),
+  ].filter(id => id !== undefined)
+}
+
+/**
+ * The generation records the canvas draws, which make up the current state of the project:
+ * - for each anchor node and each starter operation, the records of the chain that the newest starter of that operation
+ *   on that node started, so the chains of two workflows on one node both show;
+ * - every record in use (`used`), walking up deterministic edits such as a still grab or a timeline export;
+ * - every generation record without an anchored chain (a free take);
+ * - for each drawn record, the records it read its inputs from and its `based_on` family (root and retakes).
+ * Records of an earlier starter's chain that nothing uses are left out, so an undo or a jump to an earlier step changes
+ * what the canvas shows.
+ * @param state - a project state.
+ * @param isRender - whether a record generated media ({@link isGenerationRecord}); its outputs are takes the creator judges.
+ * @param chains - the anchored chains of the records.
+ * @param used - the records whose outputs are in use: timeline clips, references, and the `uses` of each `TakesInUse`.
+ * @returns the record IDs.
+ */
+function drawnTakes(
+  state: WireState, isRender: (record: ProjectRecord) => boolean, chains: ChainIndex, used: readonly string[],
+): Set<string> {
   const proj = state.components.proj
   const records = new Map(proj.records.map(record => [record.id, record]))
   const renders = proj.records.filter(isRender)
@@ -144,6 +206,8 @@ function shownTakes(state: WireState, isRender: (record: ProjectRecord) => boole
     }
     return current
   }
+  const families = new Map<string, string[]>()
+  for (const render of renders) families.set(rootOf(render.id), [...families.get(rootOf(render.id)) ?? [], render.id])
   // A version reference may carry any kind key, so only a reference without `version` is a record output.
   const producerOf = (input: RecordInput): string | undefined => !('version' in input.ref) && 'record' in input.ref
     ? input.ref.record : input.resolved_asset === null ? undefined : proj.created_by[input.resolved_asset]
@@ -154,56 +218,21 @@ function shownTakes(state: WireState, isRender: (record: ProjectRecord) => boole
     const input = record.inputs.find(entry => producerOf(entry) !== undefined)
     return input === undefined ? undefined : sourceOf(producerOf(input), depth + 1)
   }
-  const clipRecord = (clip: Clip): string | undefined =>
-    clip.source?.record ?? (clip.asset === null ? undefined : proj.created_by[clip.asset])
-  const used: string[] = []
-  const use = (recordId: string | undefined): void => {
+  const takeOf = (recordId: string | undefined): string[] => {
     const source = sourceOf(recordId)
-    if (source !== undefined && isRender(source)) used.push(source.id)
+    return source !== undefined && isRender(source) ? [source.id] : []
   }
-  for (const timeline of state.components.timeline.timelines) {
-    for (const clip of timeline.clips) use(clipRecord(clip))
-  }
-  for (const { versions } of bibleItems(state)) for (const reference of versions.at(-1)?.references ?? []) use(proj.created_by[reference])
+  const newestOrFree = renders.filter((render) => {
+    const chain = chains.anchored(render)
+    return chain === null || chains.newest.has(chain.starter)
+  })
+  const queue = [...newestOrFree.map(render => render.id), ...used.flatMap(takeOf)]
   const shown = new Set<string>()
-  const addFamily = (root: string): void => { for (const render of renders) if (rootOf(render.id) === root) shown.add(render.id) }
-  for (const [planId, versions] of Object.entries(state.components.plan.plans)) {
-    const latest = versions.at(-1)
-    if (latest === undefined) continue
-    const references = [...latest.references ?? [], ...latest.shots.flatMap(shot => shot.references ?? [])]
-    for (const reference of references) use(proj.created_by[reference])
-    const layout = approvalLayout(latest, records)
-    const pointed = layout?.inputs.filter(input => input.role === 'clip')
-      .map(input => !('version' in input.ref) && 'record' in input.ref ? input.ref.record : undefined) ?? []
-    const timelineId = layout?.params['timeline'] ?? 't1'
-    const clips = layout === undefined ? [] : state.components.timeline.timelines.find(timeline => timeline.id === timelineId)?.clips ?? []
-    latest.shots.forEach((_shot, index) => {
-      const shot = index + 1
-      const own = renders.filter(render => render.params['plan'] === planId && render.params['plan_version'] === latest.version
-        && render.params['shot'] === shot).map(render => render.id)
-      const roots = new Set([...own, pointed[index]].flatMap(id => id === undefined || !records.has(id) ? [] : [rootOf(id)]))
-      const candidates = renders.filter(render => roots.has(rootOf(render.id)))
-      const clip = clips[index]
-      const played = clip === undefined ? undefined : sourceOf(clipRecord(clip))
-      const playsShot = played !== undefined && isRender(played)
-        && (roots.has(rootOf(played.id)) || (played.params['plan'] === planId && played.params['shot'] === shot))
-      const current = playsShot ? played : candidates.findLast(render => render.status === 'done') ?? candidates.at(-1)
-      if (current !== undefined) addFamily(rootOf(current.id))
-    })
-  }
-  for (const render of renders) if (typeof records.get(rootOf(render.id))?.params['plan'] !== 'string') shown.add(render.id)
-  // Takes in use, and the takes a drawn take read its inputs from.
-  const queue = [...shown, ...used]
-  const visited = new Set<string>()
   for (let id = queue.pop(); id !== undefined; id = queue.pop()) {
     const record = records.get(id)
-    if (visited.has(id) || record === undefined) continue
-    visited.add(id)
+    if (shown.has(id) || record === undefined) continue
     shown.add(id)
-    for (const input of record.inputs) {
-      const source = sourceOf(producerOf(input))
-      if (source !== undefined && isRender(source)) queue.push(source.id)
-    }
+    queue.push(...record.inputs.flatMap(input => takeOf(producerOf(input))), ...families.get(rootOf(id)) ?? [])
   }
   return shown
 }
@@ -237,16 +266,20 @@ export function bibleVersions(state: WireState, id: string): Character[] | Locat
  * a take node (a take output) already shows it: drawn from its first `asset.import` record of the current state when
  * there is one, else as `asset:<id>` with no record (an import that an undo went back past, a still, an export). A take that
  * reads an asset off the canvas has no edge from it. A take is a generation record ({@link isGenerationRecord}), titled by
- * its `started_by` slot, else its `shot` param, else its operation label.
+ * the slot and lane of its anchored chain, else by its operation label; a take of an anchored chain hangs off the
+ * chain's anchor node by a `chain` edge.
  * @param state - a project state.
  * @param placed - the assets on the canvas; defaults to the state's `asset` slice.
  * @param operations - the operation declarations; none by default, so each record's own facts decide whether it is a take.
  * @param language - the language of the operation labels.
+ * @param anchors - the registered chain anchors; none by default, so every take is a free take.
+ * @param inUse - the registered `TakesInUse` descriptors, whose records are drawn.
  * @returns the nodes and edges.
  */
 export function buildCanvasGraph(
   state: WireState, placed: ReadonlySet<string> = new Set(state.components.asset.placed),
   operations: readonly WireOperation[] = [], language: DvLanguage = 'zh',
+  anchors: readonly ChainAnchor[] = [], inUse: readonly TakesInUse[] = [],
 ): CanvasGraph {
   const proj = state.components.proj
   const assets = new Map(state.assets.map(asset => [asset.id, asset]))
@@ -265,7 +298,14 @@ export function buildCanvasGraph(
   })
   const nodes: CanvasNode[] = []
   const byRecord = new Set<string>()
-  const takes = shownTakes(state, isRender)
+  const chains = anchorChains(records, anchors)
+  // The latest version of each plan: the plan nodes, and the plan references in use until a UI package reports them.
+  const plans = Object.entries(state.components.plan.plans).flatMap(([planId, versions]) => {
+    const latest = versions.at(-1)
+    return latest === undefined ? [] : [{ planId, latest }]
+  })
+  const used = [...coreUses(state, plans.map(plan => plan.latest)), ...inUse.flatMap(descriptor => descriptor.uses(state))]
+  const takes = drawnTakes(state, isRender, chains, used)
   // The import node of each drawn imported asset.
   const importNodes = new Map<string, string>()
   // A reference image of a character, location or style belongs to that node, so its import is not drawn twice.
@@ -285,9 +325,7 @@ export function buildCanvasGraph(
     })
   }
   // One node per plan, showing its latest version; the editor switches between versions.
-  for (const [planId, versions] of Object.entries(state.components.plan.plans)) {
-    const latest = versions.at(-1)
-    if (latest === undefined) continue
+  for (const { planId, latest } of plans) {
     const record = records.get(latest.created_by) ?? null
     nodes.push({
       id: `plan:${planId}`, kind: 'plan', planId, title: latest.title ?? '', subtitle: String(latest.shots.length), thumb: null, references: [], video: null,
@@ -308,10 +346,11 @@ export function buildCanvasGraph(
       })
     } else if (isRender(record) && takes.has(record.id)) {
       const video = record.outputs.find(id => isVideo(id) || isAudio(id)) ?? null
-      const shot = typeof record.params['shot'] === 'number' ? record.params['shot'] : null
-      const slot = record.started_by?.slot ?? shot
+      const chain = chains.anchored(record)
+      const slot = chain?.slot ?? null
+      const title = slot === null ? '' : chain?.lane === undefined ? String(slot) : `${String(slot)} · ${chain.lane}`
       nodes.push({
-        id: record.id, kind: 'take', title: slot === null ? '' : String(slot), ...label === undefined ? {} : { label },
+        id: record.id, kind: 'take', title, ...label === undefined ? {} : { label }, ...chain === null ? {} : { chain },
         subtitle: typeof record.params['prompt'] === 'string' ? record.params['prompt'] : '',
         thumb: record.outputs.find(id => isImage(id)) ?? null, references: [], video,
         durationSec: video === null ? null : assets.get(video)?.duration_sec ?? null,
@@ -366,13 +405,13 @@ export function buildCanvasGraph(
       const from = bibleId !== undefined && nodeIds.has(`bible:${bibleId}`) ? `bible:${bibleId}` : nodeOfAsset(input.resolved_asset)
       addEdge(from, node.id, input.role === 'first_frame' ? 'first_frame' : 'reference')
     }
-    // A take an approved plan scheduled hangs off that plan's node; an unchanged shot keeps the take an earlier version rendered.
-    if (typeof record.params['plan'] === 'string') addEdge(`plan:${record.params['plan']}`, node.id, 'plan')
+    // A take of an anchored chain hangs off the chain's anchor node; a retake hangs there through its root.
+    if (node.chain !== undefined) addEdge(node.chain.anchor, node.id, 'chain')
     if (record.based_on !== null) addEdge(record.based_on, node.id, 'take')
   }
   addBadges(state, nodes, nodeOfAsset)
   numberTakes(nodes, edges)
-  layout(nodes, edges)
+  layout(inTakeOrder(nodes), edges)
   const assetNodes: Record<string, string> = {}
   for (const asset of state.assets) {
     const node = nodeOfAsset(asset.id)
@@ -382,8 +421,9 @@ export function buildCanvasGraph(
 }
 
 /**
- * Number the takes of each shot, so an original take and its retakes read differently on the canvas. Takes of the
- * same plan shot, and takes linked by a take edge to such a take, are takes of one shot, numbered in record order.
+ * Number the takes of each group, so an original take and its retakes read differently on the canvas. Takes linked by
+ * a take edge are one group; otherwise a take of an anchored chain is grouped by the chain's anchor, slot and lane, and a
+ * free take is its own group. A group of more than one take is numbered in record order.
  * @param nodes - the drawn nodes; takes get their `take` set in place.
  * @param edges - the edges; a take edge links a retake to its source take.
  */
@@ -393,8 +433,8 @@ function numberTakes(nodes: CanvasNode[], edges: CanvasEdge[]): void {
   const groupOf = (node: CanvasNode, depth = 0): string => {
     const base = byId.get(baseOf.get(node.id) ?? '')
     if (base !== undefined && depth < 64) return groupOf(base, depth + 1)
-    const plan = node.record?.params['plan']
-    return node.title === '' ? node.id : `${typeof plan === 'string' ? plan : ''}#${node.title}`
+    const chain = node.chain
+    return chain === undefined ? node.id : `${chain.anchor}#${String(chain.slot)}#${chain.lane ?? ''}`
   }
   const groups = new Map<string, CanvasNode[]>()
   for (const node of nodes) {
@@ -405,6 +445,29 @@ function numberTakes(nodes: CanvasNode[], edges: CanvasEdge[]): void {
   for (const members of groups.values()) {
     if (members.length > 1) members.forEach((node, index) => { node.take = index + 1 })
   }
+}
+
+/**
+ * The order in which the layout places the drawn takes: by the anchor of their chain in first-record order (a free take
+ * is its own group at its own record), then slot (null last), then lane in first-record order, then record order. Take
+ * numbers and slot frames read the record order of the nodes, so the order goes to the layout in a copy.
+ * @param nodes - the drawn nodes, takes in record order.
+ * @returns a copy of the nodes with the takes in that order; every other node keeps its place.
+ */
+function inTakeOrder(nodes: readonly CanvasNode[]): CanvasNode[] {
+  const takes = nodes.filter(node => node.kind === 'take')
+  // The position of the first take with each key, among the takes in record order.
+  const firstOf = (key: (node: CanvasNode) => string): ((node: CanvasNode) => number) => {
+    const first = new Map<string, number>()
+    takes.forEach((node, index) => { if (!first.has(key(node))) first.set(key(node), index) })
+    return node => first.get(key(node)) ?? 0
+  }
+  const anchor = firstOf(node => node.chain?.anchor ?? node.id)
+  const lane = firstOf(node => node.chain?.lane ?? '')
+  const slot = (node: CanvasNode): number => node.chain?.slot ?? Number.MAX_SAFE_INTEGER
+  // The sort is stable, so takes with equal keys keep their record order.
+  const ordered = takes.toSorted((a, b) => anchor(a) - anchor(b) || slot(a) - slot(b) || lane(a) - lane(b)).values()
+  return nodes.map(node => node.kind === 'take' ? ordered.next().value ?? node : node)
 }
 
 /**
@@ -483,24 +546,24 @@ function layout(nodes: CanvasNode[], edges: CanvasEdge[]): void {
   }
 }
 
-/** The media a plan node's mini grid shows for one shot. */
-export interface PlanShotFrame {
+/** The media a node's frame grid shows for one slot. */
+export interface SlotFrame {
   thumb: string | null
   video: string | null
 }
 
 /**
- * The frame of each shot of a plan, for the plan node's mini grid: the newest finished take node of that plan and shot
- * (a retake carries the plan and shot of its source take) that has an image or a video.
+ * The frame of each slot of a node's frame grid: the newest finished take node whose anchored chain hangs off that node
+ * with that slot (a retake has the chain of its root) and that has an image or a video.
  * @param nodes - the drawn nodes, in record order.
- * @param planId - the plan (`p1`).
- * @param shotCount - the number of shots of the plan's latest version.
- * @returns one entry per shot, null for a shot without a drawn finished take.
+ * @param nodeId - the node of the grid, such as `plan:p1`.
+ * @param slots - the number of slots, such as the shot count of a plan's latest version.
+ * @returns one entry per slot, null for a slot without a drawn finished take.
  */
-export function planShotFrames(nodes: readonly CanvasNode[], planId: string, shotCount: number): Array<PlanShotFrame | null> {
-  return Array.from({ length: shotCount }, (_unused, index) => {
-    const take = nodes.findLast(node => node.kind === 'take' && node.record?.status === 'done' && node.record.params['plan'] === planId
-      && node.record.params['shot'] === index + 1 && (node.thumb !== null || node.video !== null))
+export function slotFrames(nodes: readonly CanvasNode[], nodeId: string, slots: number): Array<SlotFrame | null> {
+  return Array.from({ length: slots }, (_unused, index) => {
+    const take = nodes.findLast(node => node.kind === 'take' && node.record?.status === 'done' && node.chain?.anchor === nodeId
+      && node.chain.slot === index + 1 && (node.thumb !== null || node.video !== null))
     return take === undefined ? null : { thumb: take.thumb, video: take.video }
   })
 }
