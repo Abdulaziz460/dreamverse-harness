@@ -14,7 +14,7 @@ This file is the recipe for one DreamVerse component package under `packages/dv`
 
 ## 1. What a component is
 
-A component owns one capability: its implementation, its data, its operations, the reducer that turns its records into its state slice, and (through Project) the agent tool of each operation. It depends only on `@dv/project` (to register and run operations) and on the asset pool (to read and import assets); outside tools such as ffmpeg come through `@dv/ffmpeg`. A component never imports another component's package for code. It reads another component's state only through `ProjectState`; a type-only import of another component (for its `ComponentStates` slice) is allowed. It runs another component's operation only through `dvProject.run` by name.
+A component owns one capability: its implementation, its data, its operations, the reducer that turns its records into its state slice, and (through Project) the agent tool of each operation. It depends only on `@dv/project` (to register and run operations) and on the asset pool (to read and import assets); outside tools such as ffmpeg come through `@dv/ffmpeg`. A component never imports another component's package for code. It reads another component's state only through `ProjectState`; a type-only import of another component (for its `ComponentStates` slice) is allowed. It runs another component's operation only through `dvProject.run` by name. A workflow package (`workflow-*`, such as `@dv/workflow-story`) instead depends on domain services: it lists them in `static inject`, calls their methods (`ctx.dvShotPlan.shots`), and runs no other component's operation by name.
 
 ## 2. Package layout
 
