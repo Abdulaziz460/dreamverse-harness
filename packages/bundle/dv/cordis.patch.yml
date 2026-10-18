@@ -95,6 +95,9 @@
     - id: dv-ui-composer
       name: '@dv/ui-composer'
 
+    - id: dv-ui-shot-render
+      name: '@dv/ui-shot-render'
+
     - id: dv-ui-canvas
       name: '@dv/ui-canvas'
 

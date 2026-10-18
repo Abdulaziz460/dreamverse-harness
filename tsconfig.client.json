@@ -145,6 +145,7 @@
     { "path": "./packages/dv/ui-workflow-story" },
     { "path": "./packages/dv/ui-story-bible" },
     { "path": "./packages/dv/ui-shot-plan" },
+    { "path": "./packages/dv/ui-shot-render" },
     { "path": "./apps/web" }
   ]
 }

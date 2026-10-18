@@ -5,8 +5,7 @@
  * - a 引用 row in the composer's ＋ menu that opens that `@` list at the end of the draft;
  * - an invisible `conversation.input.left` entry that makes each session's composer a `dv:compose` target;
  * - thumbnail cards for the project's video and image assets in settled chat Markdown (`chat-media.ts`);
- * - the `dv_shot_render` tool card, which shows the model and generation task, the prompt, status, and rendered video;
- * - creator-facing names for the other `dv_*` tools and for every operation of `/api/dv/operations` in their chat rows
+ * - creator-facing names for the `dv_*` tools and for every operation of `/api/dv/operations` in their chat rows
  *   and in the running group title;
  * - 在历史中查看 on every settled row whose tool is not read-only, including failed calls, which dispatches
  *   `dv:history-focus`;
@@ -24,7 +23,6 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type { ToolCallViewProps } from '@deepseek-ai/dsh-client-ui-tool/client'
 import { createElement, useEffect, type ComponentType } from 'react'
-import { DvClient } from '@dv/ui-kit/api.ts'
 import { DV_COMPOSE_EVENT, type DvComposeDetail } from '@dv/ui-kit/compose.ts'
 import { getCurrentProject } from '@dv/ui-kit/current-project.ts'
 import { pickText } from '@dv/ui-kit/locale.ts'
@@ -33,9 +31,8 @@ import { registerChatMedia } from './chat-media.ts'
 import { deliverCompose, mountComposer } from './compose.ts'
 import { MENTION_SOURCE, projectMentionSource } from './mention.ts'
 import { DV_TOOL_LABELS } from '@dv/ui-kit/tool-labels.ts'
-import { useTaskLabels } from '@dv/ui-kit/useProject.ts'
 import { registerOperationRows } from './tool-labels.ts'
-import { RenderCard, ToolLabelRow } from './views.tsx'
+import { ToolLabelRow } from './views.tsx'
 // The DreamVerse look of the DSH composer card in the 对话 tab; the bundle injects the sheet when the plugin loads.
 import './composer.css'
 
@@ -44,9 +41,6 @@ export { uriOf } from './compose.ts'
 
 /** The branded session ID the session-scoped DSH UI slots receive. */
 type SessionId = ToolCallViewProps['sessionId']
-
-/** The agent tool of the Shot render operation `shot.render`. */
-const RENDER_TOOL = 'dv_shot_render'
 
 /** Required services: the trigger registry, the sessions, the slots, and the right sidebar that holds 对话. */
 export const inject = ['inputTriggers', 'sessions', 'slots', 'sidebarRight']
@@ -123,18 +117,8 @@ export function apply(ctx: ClientContext): void {
   // hidden: an empty entry at a lower priority shadows the permission picker.
   ctx.slots.inject('conversation.input.permission', () => ctx.slots.register({ name: 'conversation.input.permission', priority: -1 }, () => null))
 
-  const client = new DvClient()
-  function RenderRow(props: ToolCallViewProps) {
-    const label = DV_TOOL_LABELS[props.toolName] ?? [props.toolName, props.toolName]
-    // Until the labels load, or when the read fails, the card shows the task name.
-    const taskLabels = useTaskLabels(client).value ?? {}
-    return createElement(RenderCard, {
-      toolName: props.toolName, label, taskLabels, sessionId: props.sessionId, callId: props.callId, phase: props.phase, block: props.block,
-    })
-  }
-  ctx.slots.inject('tool.call.toolview', () => ctx.slots.register({ name: 'tool.call.toolview', key: RENDER_TOOL }, RenderRow))
-
-  // Every other labelled tool shows its creator-facing name in its chat row and in the running group title.
+  // Every labelled tool shows its creator-facing name in its chat row and in the running group title. The row sits at
+  // priority 0.5: a plugin's own row at the default priority 0 wins over it, and it wins over the operation rows at 1.
   function LabelRow(props: ToolCallViewProps) {
     const label = DV_TOOL_LABELS[props.toolName] ?? [props.toolName, props.toolName]
     return createElement(ToolLabelRow, {
@@ -142,8 +126,7 @@ export function apply(ctx: ClientContext): void {
     })
   }
   for (const name of Object.keys(DV_TOOL_LABELS)) {
-    if (name === RENDER_TOOL) continue
-    ctx.slots.inject('tool.call.toolview', () => ctx.slots.register({ name: 'tool.call.toolview', key: name }, LabelRow))
+    ctx.slots.inject('tool.call.toolview', () => ctx.slots.register({ name: 'tool.call.toolview', key: name, priority: 0.5 }, LabelRow))
   }
   // Every operation of /api/dv/operations gets its row and its name in the running group title.
   registerOperationRows(ctx)

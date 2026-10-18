@@ -43,9 +43,10 @@ export function addToolNames(locale: unknown, operations: readonly WireOperation
 /**
  * Register a chat row and a dictionary name for every operation tool. While DSH's `tool.call.toolview` slot is declared,
  * the list of `GET /api/dv/operations` is read, and read again whenever a project opens (`dv:current-project`). Each
- * operation gets a `ToolLabelRow` keyed by its tool name at priority 1, so an entry at the default priority 0 (the render
- * card, a `DV_TOOL_LABELS` row, a plugin's own row) wins over it. When a read list differs from the shown one, every row
- * is disposed before the rows of the read list are registered, because two entries with one key and one priority throw.
+ * operation gets a `ToolLabelRow` keyed by its tool name at priority 1, so a lower entry (a plugin's own row at the
+ * default priority 0, such as the render card of `@dv/ui-shot-render`, or a `DV_TOOL_LABELS` row at 0.5) wins over it.
+ * When a read list differs from the shown one, every row is disposed before the rows of the read list are registered,
+ * because two entries with one key and one priority throw.
  * @param ctx - the composer's client context, which injects `slots`.
  */
 export function registerOperationRows(ctx: Context): void {

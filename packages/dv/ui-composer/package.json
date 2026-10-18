@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Chat composer additions of DreamVerse: the dvMentions registry of mention kinds; the @ source and the Reference row for project clips, the items of the registered mention kinds, and assets; thumbnail cards for project videos and images in chat Markdown; the render tool cards; tool rows with creator-facing names and a Show in history link; and the dv:compose prefill.",
+  "description": "Chat composer additions of DreamVerse: the dvMentions registry of mention kinds; the @ source and the Reference row for project clips, the items of the registered mention kinds, and assets; thumbnail cards for project videos and images in chat Markdown; tool rows with creator-facing names and a Show in history link; and the dv:compose prefill.",
   "exports": {
     ".": "./src/index.ts",
     "./client": {

@@ -35,6 +35,7 @@
     "@dv/ui-skills": "workspace:*",
     "@dv/ui-shell": "workspace:*",
     "@dv/ui-shot-plan": "workspace:*",
+    "@dv/ui-shot-render": "workspace:*",
     "@dv/ui-story-bible": "workspace:*",
     "@dv/ui-timeline": "workspace:*",
     "@dv/ui-workflow-story": "workspace:*",
