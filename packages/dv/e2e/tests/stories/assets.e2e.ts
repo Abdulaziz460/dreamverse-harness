@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { crc32, deflateSync } from 'node:zlib'
 import type { Browser, BrowserContext, Locator, Page } from 'playwright'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import type { ProjectRecord, WireState } from '@dv/ui-kit/types.ts'
+import type { ProjectRecord, WireState } from '../wire-state.ts'
 import { bootHarness, escapeRegExp, playwright, waitFor, type BootedHarness } from '../harness.ts'
 import { assetIdOf, startScriptedModel, type ScriptedModel, type ScriptedRule } from '../scripted-model.ts'
 

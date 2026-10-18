@@ -18,6 +18,9 @@
       "path": "../../client/ui-slots"
     },
     {
+      "path": "../story-bible/tsconfig.client.json"
+    },
+    {
       "path": "../ui-kit"
     }
   ]

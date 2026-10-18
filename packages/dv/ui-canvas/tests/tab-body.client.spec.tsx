@@ -7,6 +7,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/react'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
+import type { AssetId, RecordId } from '@dv/project/types'
+import type { LocationId } from '@dv/story-bible/types'
 import { DvClient } from '@dv/ui-kit/api.ts'
 import type { NodeKind } from '@dv/ui-kit/registries.ts'
 import { bibleVersionKinds } from '@dv/ui-story-bible/src/client/index.ts'
@@ -61,7 +63,7 @@ describe('canvas tab body', () => {
     state.components.proj.records = state.components.proj.records.map(entry => entry.id === 'g1'
       ? { ...entry, inputs: [...entry.inputs, { role: 'reference', ref: { asset: 'shot2-last.png' }, resolved_asset: 'shot2-last.png' }] }
       : entry)
-    state.components.bible.locations['alley'] = [{ id: 'alley', version: 1, name: 'Alley', description: '', references: ['ref.png'], created_by: 'e1' }]
+    state.components.bible.locations['alley' as LocationId] = [{ id: 'alley' as LocationId, version: 1, name: 'Alley', description: '', references: ['ref.png' as AssetId], created_by: 'e1' as RecordId }]
     const canvas = createDvCanvas()
     for (const kind of bibleVersionKinds) canvas.versionKinds.register(kind)
     const t: CanvasTranslate = makeTranslate(zh)

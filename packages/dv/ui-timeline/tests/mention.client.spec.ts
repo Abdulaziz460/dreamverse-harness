@@ -3,6 +3,8 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
+import type { AssetId, RecordId } from '@dv/project/types'
+import type { ClipId, TimelineId } from '@dv/timeline/types'
 import { projectItems } from '@dv/ui-composer/src/client/mention.ts'
 import { assetUrl } from '@dv/ui-kit/api.ts'
 import type { WireState } from '@dv/ui-kit/types.ts'
@@ -19,9 +21,9 @@ afterEach(() => { document.documentElement.lang = '' })
 function clipState(): WireState {
   const state = fixtureState()
   state.assets.push(asset('imported.mp4', 'video/mp4', null, 3))
-  state.components.timeline.timelines.push({ id: 't2', name: '片尾', clips: [
-    { id: 'cl3', asset: 'imported.mp4', source: null, in_sec: null, out_sec: null },
-    { id: 'cl4', asset: null, source: { record: 'g3', output: 0 }, in_sec: null, out_sec: null },
+  state.components.timeline.timelines.push({ id: 't2' as TimelineId, name: '片尾', clips: [
+    { id: 'cl3' as ClipId, asset: 'imported.mp4' as AssetId, source: null, in_sec: null, out_sec: null },
+    { id: 'cl4' as ClipId, asset: null, source: { record: 'g3' as RecordId, output: 0 }, in_sec: null, out_sec: null },
   ] })
   return state
 }

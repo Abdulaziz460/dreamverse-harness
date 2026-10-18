@@ -5,7 +5,7 @@
  * @module @dv/story-bible/types
  */
 import type { Branded } from '@deepseek-ai/dsh-brand'
-import type { AssetId, RecordId } from '@dv/project'
+import type { AssetId, RecordId } from '@dv/project/types'
 
 /** The ID of a character, chosen by the caller of `bible.character_create`, such as `c1`. */
 export type CharacterId = Branded<'DvCharacterId'>
@@ -68,7 +68,7 @@ export interface StoryBibleState {
   styles: Record<StyleId, Style[]>
 }
 
-declare module '@dv/project' {
+declare module '@dv/project/types' {
   interface ComponentStates {
     /** Characters, locations and styles with their versions (the Story bible component). */
     bible: StoryBibleState

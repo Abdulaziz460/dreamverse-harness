@@ -9,11 +9,14 @@
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
+import type { Character, Location, StoryBibleState, Style } from '@dv/story-bible/types'
 import { pickText } from '@dv/ui-kit/locale.ts'
 import type { HistoryRow, MentionKind, NodeKind, NodeSeed, TakesInUse, VersionKind } from '@dv/ui-kit/registries.ts'
-import type { Character, StoryBibleState, WireState } from '@dv/ui-kit/types.ts'
+import type { WireState } from '@dv/ui-kit/types.ts'
 import { BibleEditor } from './BibleEditor.tsx'
-import { bibleNode, KINDS } from './kinds.ts'
+import { bibleNode, itemsOf, KINDS } from './kinds.ts'
+
+declare module '@dv/ui-kit/types.ts' { interface ComponentStates { bible: StoryBibleState } }
 
 /**
  * @param state - a project state.
@@ -22,8 +25,8 @@ import { bibleNode, KINDS } from './kinds.ts'
  * @param version - the version number.
  * @returns the version, or undefined when the slice has no such item or version.
  */
-function versionOf(state: WireState, field: keyof StoryBibleState, id: string, version: number): Character | undefined {
-  return state.components.bible[field][id]?.find(entry => entry.version === version)
+function versionOf(state: WireState, field: keyof StoryBibleState, id: string, version: number): Character | Location | Style | undefined {
+  return itemsOf(state, field)[id]?.find(entry => entry.version === version)
 }
 
 /**
@@ -34,7 +37,7 @@ export const bibleVersionKinds: readonly VersionKind[] = KINDS.map(({ kind, fiel
   kind,
   label,
   node: bibleNode,
-  latest: state => Object.entries(state.components.bible[field]).flatMap(([id, versions]) => {
+  latest: state => Object.entries(itemsOf(state, field)).flatMap(([id, versions]) => {
     const latest = versions.at(-1)
     return latest === undefined ? [] : [{ id, version: latest.version }]
   }),
@@ -55,7 +58,7 @@ export const bibleNodeKind: NodeKind = {
   column: 0,
   nodes(state) {
     const records = new Map(state.components.proj.records.map(record => [record.id, record]))
-    return KINDS.flatMap(({ field, label }) => Object.entries(state.components.bible[field]).flatMap(([id, versions]): NodeSeed[] => {
+    return KINDS.flatMap(({ field, label }) => Object.entries(itemsOf(state, field)).flatMap(([id, versions]): NodeSeed[] => {
       const latest = versions.at(-1)
       if (latest === undefined) return []
       return [{
@@ -71,7 +74,7 @@ export const bibleReferencesInUse: TakesInUse = {
   id: '@dv/ui-story-bible',
   uses(state) {
     const createdBy = state.components.proj.created_by
-    return KINDS.flatMap(({ field }) => Object.values(state.components.bible[field]))
+    return KINDS.flatMap(({ field }) => Object.values(itemsOf(state, field)))
       .flatMap(versions => versions.at(-1)?.references ?? []).flatMap(reference => createdBy[reference] ?? [])
   },
 }
@@ -86,7 +89,7 @@ export const bibleMentionKinds: readonly MentionKind[] = KINDS.map(({ kind, fiel
   kind,
   order: index + 1,
   section: () => field === 'characters' ? pickText('角色', 'Characters') : pickText('场景和风格', 'Locations and styles'),
-  items: state => Object.entries(state.components.bible[field]).flatMap(([id, versions]) => {
+  items: state => Object.entries(itemsOf(state, field)).flatMap(([id, versions]) => {
     const latest = versions.at(-1)
     if (latest === undefined) return []
     const thumb = latest.references[0]

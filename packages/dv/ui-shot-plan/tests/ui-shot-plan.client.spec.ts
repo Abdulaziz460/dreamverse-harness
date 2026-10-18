@@ -5,6 +5,8 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
+import type { RecordId } from '@dv/project/types'
+import type { PlanId } from '@dv/shot-plan/types'
 import { createRegistry } from '@dv/ui-kit/registries.ts'
 import type { ChainAnchor, DvCanvas, DvHistory, HistoryRow, NodeKind, TakesInUse, VersionKind } from '@dv/ui-kit/registries.ts'
 import type { WireState } from '@dv/ui-kit/types.ts'
@@ -31,11 +33,11 @@ function canvasRegistries(): DvCanvas {
  */
 function secondVersion(): WireState {
   const state = fixtureState()
-  const [v1] = state.components.plan.plans['p1'] ?? []
+  const [v1] = state.components.plan.plans['p1' as PlanId] ?? []
   const shot = v1?.shots[0]
   if (v1 === undefined || shot === undefined) throw new Error('fixture lacks plan p1')
   const shots = [1, 2, 3].map(duration => ({ ...shot, duration_sec: duration, ...duration === 2 ? { references: ['shot2.mp4', 'missing.png'] } : {} }))
-  state.components.plan.plans['p1'] = [v1, { ...v1, version: 2, references: ['shot1-last.png', 'hero@1'], shots, created_by: 'q2' }]
+  state.components.plan.plans['p1' as PlanId] = [v1, { ...v1, version: 2, references: ['shot1-last.png', 'hero@1'], shots, created_by: 'q2' as RecordId }]
   state.components.proj.records.push(record({ id: 'q2', operation: 'plan.update', params: { plan: 'p1' }, report: { plan: 'p1', version: 2 } }))
   return state
 }

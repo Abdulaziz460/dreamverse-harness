@@ -47,13 +47,13 @@ The Host half registers nothing. The browser half registers the five canvas desc
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
 
-Every canvas and mention descriptor reads the `bible` slice and the `proj` records of the wire state, typed by the client copy `StoryBibleState` of `@dv/ui-kit/types.ts`; the History row reads only the params of its record. The default card of `@dv/ui-canvas` draws each seed: the kind dot, the seed's label, the first image or video reference at 40 × 40 with "+N" for more, and the title. A seed has no subtitle, so the card shows no description.
+Every canvas and mention descriptor reads the `bible` slice and the `proj` records of the wire state, typed by `StoryBibleState` of the client face `@dv/story-bible/types`, which `src/client/index.ts` merges into the client `ComponentStates` of `@dv/ui-kit`; the History row reads only the params of its record. The default card of `@dv/ui-canvas` draws each seed: the kind dot, the seed's label, the first image or video reference at 40 × 40 with "+N" for more, and the title. A seed has no subtitle, so the card shows no description.
 
 | File | Content |
 | --- | --- |
 | [`src/index.ts`](src/index.ts) | The inert Host Loader entry |
 | [`src/client/index.ts`](src/client/index.ts) | `bibleNodeKind`, `bibleVersionKinds`, `bibleReferencesInUse`, `bibleMentionKinds`, `bibleHistoryRow`, and the registrations |
-| [`src/client/kinds.ts`](src/client/kinds.ts) | The reference kinds with their slice fields and labels, and the node ID `bible:<id>` |
+| [`src/client/kinds.ts`](src/client/kinds.ts) | The reference kinds with their slice fields and labels, `itemsOf` (the versions of one kind by plain string ID), and the node ID `bible:<id>` |
 | [`src/client/BibleEditor.tsx`](src/client/BibleEditor.tsx) | `BibleEditor`, the `dv.canvas.editor` entry |
 
 -----
@@ -82,4 +82,3 @@ None; the package sends nothing to a model.
 <a id="known-limitations-and-deferred-work"></a>
 
 - **Editor only in the center canvas** — only the `dv.center.view` entry of `@dv/ui-canvas` declares `dv.canvas.editor`. The canvas tab body of the right Sidebar renders no entry, so its story bible editor shows only its header.
-- **Copied slice type** — the package reads the `bible` slice through the client copy `StoryBibleState` of `@dv/ui-kit/types.ts`, not through a client type of `@dv/story-bible`.

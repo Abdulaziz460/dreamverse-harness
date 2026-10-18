@@ -3,7 +3,11 @@
 import { describe, expect, it } from 'vitest'
 import type { ChainAnchor, NodeKind, TakesInUse } from '@dv/ui-kit/registries.ts'
 import type { DvLanguage } from '@dv/ui-kit/locale.ts'
-import type { PlanVersion, ProjectRecord, WireOperation, WireState } from '@dv/ui-kit/types.ts'
+import type { AssetId, RecordId } from '@dv/project/types'
+import type { PlanId, PlanVersion } from '@dv/shot-plan/types'
+import type { CharacterId } from '@dv/story-bible/types'
+import type { ClipId, TimelineId } from '@dv/timeline/types'
+import type { ProjectRecord, WireOperation, WireState } from '@dv/ui-kit/types.ts'
 import { formatInputRef } from '@dv/ui-kit/references.ts'
 import { bibleNodeKind, bibleReferencesInUse, bibleVersionKinds } from '@dv/ui-story-bible/src/client/index.ts'
 import { asset, fixtureState, OPERATIONS, record } from '../../ui-kit/tests/fixture.client.tsx'
@@ -101,22 +105,22 @@ function rollbackProject(until?: string): WireState {
   const shots = (count: number, changed: Record<number, string> = {}): PlanVersion['shots'] =>
     Array.from({ length: count }, (_, index) => ({ prompt: changed[index + 1] ?? PROMPTS[index] ?? 'end', modality: 'video' as const, task: 'ref2v' as const, provider: 'fastvideo', model: 'fasth3' }))
   const versions: PlanVersion[] = [
-    { version: 1, shots: shots(6), created_by: 'q1' },
-    { version: 2, shots: shots(7, { 3: 'door, closer' }), created_by: 'q2' },
-    { version: 3, shots: shots(7, { 3: 'door, closer', 5: 'roof, wider' }), created_by: 'q3' },
-    { version: 4, shots: shots(6), created_by: 'q4' },
+    { version: 1, shots: shots(6), created_by: 'q1' as RecordId },
+    { version: 2, shots: shots(7, { 3: 'door, closer' }), created_by: 'q2' as RecordId },
+    { version: 3, shots: shots(7, { 3: 'door, closer', 5: 'roof, wider' }), created_by: 'q3' as RecordId },
+    { version: 4, shots: shots(6), created_by: 'q4' as RecordId },
   ].filter(version => ids.has(version.created_by))
   const clips = (kept.findLast(entry => entry.operation?.startsWith('timeline.') === true && entry.id.startsWith('l'))?.inputs ?? [])
-    .map((input, index) => ({ id: `cl${String(index + 1)}`, asset: input.resolved_asset, source: null, in_sec: null, out_sec: null }))
-  if (ids.has('k1') && !ids.has('l4')) clips[2] = { id: 'cl3', asset: 'r3.mp4', source: null, in_sec: null, out_sec: null }
+    .map((input, index) => ({ id: `cl${String(index + 1)}` as ClipId, asset: input.resolved_asset as AssetId | null, source: null, in_sec: null, out_sec: null }))
+  if (ids.has('k1') && !ids.has('l4')) clips[2] = { id: 'cl3' as ClipId, asset: 'r3.mp4' as AssetId, source: null, in_sec: null, out_sec: null }
   const renders = kept.filter(entry => entry.operation === 'shot.render')
   const state = fixtureState()
   state.components.proj = {
     records: kept, stale: {}, superseded: {},
     created_by: Object.fromEntries([['ref.png', 'u1'], ...renders.flatMap(entry => entry.outputs.map(output => [output, entry.id]))]),
   }
-  state.components.plan.plans = { p1: versions }
-  state.components.timeline.timelines = [{ id: 't1', name: '', clips }]
+  state.components.plan.plans = { ['p1' as PlanId]: versions }
+  state.components.timeline.timelines = [{ id: 't1' as TimelineId, name: '', clips }]
   state.assets = [
     asset('ref.png', 'image/png', 'u1'),
     ...renders.flatMap(entry => [asset(`${entry.id}.mp4`, 'video/mp4', entry.id, 1), asset(`${entry.id}.png`, 'image/png', entry.id)]),
@@ -184,8 +188,8 @@ describe('buildCanvasGraph', () => {
       id: 'e2', operation: 'bible.character_update', params: { character: 'hero' },
       inputs: [{ role: 'reference', ref: { asset: 'side.png' }, resolved_asset: 'side.png' }],
     }))
-    const hero = state.components.bible.characters['hero'] ?? []
-    hero.push({ ...hero[0], id: 'hero', version: 2, name: 'Hero', description: '', references: ['ref.png', 'side.png'], created_by: 'e2' })
+    const hero = state.components.bible.characters['hero' as CharacterId] ?? []
+    hero.push({ ...hero[0], id: 'hero' as CharacterId, version: 2, name: 'Hero', description: '', references: ['ref.png' as AssetId, 'side.png' as AssetId], created_by: 'e2' as RecordId })
     // A take reads used.png, which is off the list: no node and no edge for it.
     proj.records.push(record({
       id: 'g9', operation: 'shot.render', deterministic: false, params: { prompt: 'alone' },
@@ -206,7 +210,7 @@ describe('buildCanvasGraph', () => {
     const state = fixtureState()
     state.assets.push(asset('side.png', 'image/png', null))
     // Version 2 of Hero replaced ref.png with side.png; ref.png stays on the canvas.
-    state.components.bible.characters['hero']?.push({ id: 'hero', version: 2, name: 'Hero', description: '', references: ['side.png'], created_by: 'e2' })
+    state.components.bible.characters['hero' as CharacterId]?.push({ id: 'hero' as CharacterId, version: 2, name: 'Hero', description: '', references: ['side.png' as AssetId], created_by: 'e2' as RecordId })
     const placed = new Set(['ref.png'])
     const graph = bibleGraph(state, placed, OPERATIONS)
     expect(graph.nodes.filter(node => node.kind === 'asset')).toEqual([])

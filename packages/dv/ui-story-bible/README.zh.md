@@ -47,13 +47,13 @@ Host 半边不注册任何东西。浏览器半边在 `ctx.inject(['dvCanvas'], 
 <a id="understand-the-implementation"></a>
 ## 理解实现
 
-每个画布和提及描述符读取线上状态的 `bible` 切片和 `proj` 记录，类型取自 `@dv/ui-kit/types.ts` 的客户端副本 `StoryBibleState`；历史行只读取它那条记录的参数。`@dv/ui-canvas` 的默认卡片画出每个 seed：种类圆点、seed 的标签、第一个图片或视频引用（40 × 40，多出的显示 "+N"）和标题。seed 没有副标题，所以卡片不显示描述。
+每个画布和提及描述符读取线上状态的 `bible` 切片和 `proj` 记录，类型取自客户端门面 `@dv/story-bible/types` 的 `StoryBibleState`，由 `src/client/index.ts` 合并进 `@dv/ui-kit` 的客户端 `ComponentStates`；历史行只读取它那条记录的参数。`@dv/ui-canvas` 的默认卡片画出每个 seed：种类圆点、seed 的标签、第一个图片或视频引用（40 × 40，多出的显示 "+N"）和标题。seed 没有副标题，所以卡片不显示描述。
 
 | 文件 | 内容 |
 | --- | --- |
 | [`src/index.ts`](src/index.ts) | 不做事的 Host Loader 入口 |
 | [`src/client/index.ts`](src/client/index.ts) | `bibleNodeKind`、`bibleVersionKinds`、`bibleReferencesInUse`、`bibleMentionKinds`、`bibleHistoryRow` 和各项注册 |
-| [`src/client/kinds.ts`](src/client/kinds.ts) | 引用种类及其切片字段和标签，以及节点 ID `bible:<id>` |
+| [`src/client/kinds.ts`](src/client/kinds.ts) | 引用种类及其切片字段和标签、`itemsOf`（按普通字符串 ID 读取一个种类的各版本），以及节点 ID `bible:<id>` |
 | [`src/client/BibleEditor.tsx`](src/client/BibleEditor.tsx) | `dv.canvas.editor` 条目 `BibleEditor` |
 
 -----
@@ -82,4 +82,3 @@ Host 半边不注册任何东西。浏览器半边在 `ctx.inject(['dvCanvas'], 
 <a id="known-limitations-and-deferred-work"></a>
 
 - **编辑器只在中央区画布里** — 只有 `@dv/ui-canvas` 的 `dv.center.view` 条目声明 `dv.canvas.editor`。右侧栏的画布标签主体不渲染条目，所以那里的故事设定编辑器只显示标题栏。
-- **复制的切片类型** — 本包通过 `@dv/ui-kit/types.ts` 的客户端副本 `StoryBibleState` 读取 `bible` 切片，而不是 `@dv/story-bible` 的客户端类型。

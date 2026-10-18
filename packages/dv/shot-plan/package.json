@@ -6,6 +6,7 @@
   "description": "Shot plan component of DreamVerse: plan.create and plan.update store a plan of shots, each with the key of its model in the model catalog; a workflow plugin approves a plan version and renders its shots.",
   "exports": {
     ".": "./src/index.ts",
+    "./types": "./src/types.ts",
     "./package.json": "./package.json"
   },
   "dependencies": {

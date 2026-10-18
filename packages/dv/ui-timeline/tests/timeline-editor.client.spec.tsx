@@ -2,6 +2,8 @@
 /** The timeline editor over a scripted API: timeline tabs, the track, and each gesture as a record that names its timeline or clip. */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, waitFor, within } from '@testing-library/react'
+import type { AssetId, RecordId } from '@dv/project/types'
+import type { ClipId, TimelineId } from '@dv/timeline/types'
 import { DvClient } from '@dv/ui-kit/api.ts'
 import { getCurrentTimeline, publishCurrentTimeline } from '@dv/ui-kit/current-timeline.ts'
 import type { WireState } from '@dv/ui-kit/types.ts'
@@ -18,7 +20,7 @@ afterEach(() => { cleanup(); vi.restoreAllMocks(); publishCurrentTimeline('p1', 
 function twoTimelines(): WireState {
   const state = fixtureState()
   state.assets.push(asset('imported.mp4', 'video/mp4', null, 3))
-  state.components.timeline.timelines.push({ id: 't2', name: '片尾', clips: [{ id: 'cl3', asset: 'imported.mp4', source: null, in_sec: null, out_sec: null }] })
+  state.components.timeline.timelines.push({ id: 't2' as TimelineId, name: '片尾', clips: [{ id: 'cl3' as ClipId, asset: 'imported.mp4' as AssetId, source: null, in_sec: null, out_sec: null }] })
   return state
 }
 
@@ -110,7 +112,7 @@ describe('TimelineView', () => {
     const { fetch } = scriptedFetch({
       state: () => {
         const state = twoTimelines()
-        state.components.timeline.timelines.push({ id: 't3', name: '', clips: [] })
+        state.components.timeline.timelines.push({ id: 't3' as TimelineId, name: '', clips: [] })
         return state
       },
     })
@@ -239,8 +241,8 @@ describe('TimelineView', () => {
     )
     const timeline = state.components.timeline.timelines[0]
     timeline?.clips.push(
-      { id: 'cl8', asset: null, source: { record: 'r8', output: 0 }, in_sec: null, out_sec: null },
-      { id: 'cl9', asset: null, source: { record: 'r9', output: 0 }, in_sec: null, out_sec: null },
+      { id: 'cl8' as ClipId, asset: null, source: { record: 'r8' as RecordId, output: 0 }, in_sec: null, out_sec: null },
+      { id: 'cl9' as ClipId, asset: null, source: { record: 'r9' as RecordId, output: 0 }, in_sec: null, out_sec: null },
     )
     const placed = placeTimeline(state, timeline ?? null).clips.slice(-2)
     expect(placed.map(clip => [clip.status, clip.seconds])).toEqual([['rendering', 2], ['failed', FALLBACK_CLIP_SECONDS]])

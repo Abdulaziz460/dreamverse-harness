@@ -6,6 +6,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent } from '@testing-library/react'
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
+import type { AssetId, RecordId } from '@dv/project/types'
+import type { CharacterId, LocationId } from '@dv/story-bible/types'
 import type { NodeSeed, SeedEditorHost } from '@dv/ui-kit/registries.ts'
 import type { WireState } from '@dv/ui-kit/types.ts'
 import { asset, fixtureState } from '../../ui-kit/tests/fixture.client.tsx'
@@ -56,8 +58,8 @@ describe('the story bible editor entry', () => {
     })
 
     // With two references, either one can be removed.
-    state.components.bible.characters['hero']?.push({
-      id: 'hero', version: 2, name: 'Hero', description: '', references: ['ref.png', 'shot1.mp4'], created_by: 'e1',
+    state.components.bible.characters['hero' as CharacterId]?.push({
+      id: 'hero' as CharacterId, version: 2, name: 'Hero', description: '', references: ['ref.png' as AssetId, 'shot1.mp4' as AssetId], created_by: 'e1' as RecordId,
     })
     slot.update({ node: seedOf(state, 'bible:hero'), state, host }, { entryKey: bibleNodeKind.id })
     expect(view.queryByText('A tired detective.')).toBeNull()
@@ -80,7 +82,7 @@ describe('the story bible editor entry', () => {
     await runtime.declare({ 'dv.canvas.editor': { kind: 'keyed', scope: 'root' } })
     await runtime.mount({ apply })
     const state = fixtureState()
-    state.components.bible.locations['alley'] = [{ id: 'alley', version: 1, name: '', description: '', references: ['alley.png', 'ref.png'], created_by: 'e3' }]
+    state.components.bible.locations['alley' as LocationId] = [{ id: 'alley' as LocationId, version: 1, name: '', description: '', references: ['alley.png' as AssetId, 'ref.png' as AssetId], created_by: 'e3' as RecordId }]
     state.assets.push(asset('alley.png', 'image/png', null))
     const host = { run: vi.fn<SeedEditorHost['run']>(), pickAssets: vi.fn<SeedEditorHost['pickAssets']>(), preview: vi.fn<SeedEditorHost['preview']>() }
     const slot = runtime.renderSlot('dv.canvas.editor', { node: seedOf(state, 'bible:alley'), state, host }, { entryKey: bibleNodeKind.id })

@@ -6,7 +6,7 @@
  * @module @dv/shot-plan/types
  */
 import type { Branded } from '@deepseek-ai/dsh-brand'
-import type { RecordId } from '@dv/project'
+import type { RecordId } from '@dv/project/types'
 
 /**
  * The ID of a plan, such as `p2`: unique within the project and never reused; `plan.create` assigns it and stores it in
@@ -85,7 +85,7 @@ export interface PlanState {
   plans: Record<PlanId, PlanVersion[]>
 }
 
-declare module '@dv/project' {
+declare module '@dv/project/types' {
   interface ComponentStates {
     /** Plans and their versions (the Shot plan component's reducer). */
     plan: PlanState

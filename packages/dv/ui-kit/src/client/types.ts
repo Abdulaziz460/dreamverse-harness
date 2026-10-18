@@ -1,7 +1,8 @@
 /**
  * The JSON the browser receives from `@dv/api`, as plain structural types: host packages cannot be imported into a
  * browser bundle, so the browser keeps its own copy of the field names. A type that copies a registry type of
- * `@dv/project` or a component has the registry name; a shape that only the wire has carries the prefix `Wire`.
+ * `@dv/project` has the registry name; a shape that only the wire has carries the prefix `Wire`. A plugin's slice type
+ * comes from the client face `./types` of its host package, and the plugin's UI half merges it into `ComponentStates`.
  *
  * @module @dv/ui-kit/types
  */
@@ -119,105 +120,6 @@ export interface ProjectAsset extends Asset {
   made_by: string | null
 }
 
-/** One version of a character in the story bible. */
-export interface Character {
-  id: string
-  version: number
-  name: string
-  description: string
-  /** The reference images of the version. */
-  references: string[]
-  /** The record that wrote the version. */
-  created_by: string
-}
-
-/** One version of a location; the same shape as a character version. */
-export type Location = Character
-
-/** One version of a style; the same shape as a character version. */
-export type Style = Character
-
-/** One clip of a timeline. */
-export interface Clip {
-  /** The clip ID, such as `cl3`, unique in the project; the clip operations name the clip by it. */
-  id: string
-  /** The asset the clip plays; null while the render the clip waits for is not done (a placeholder clip). */
-  asset: string | null
-  /** The render output the clip waits for, `{record, output}`; null for a clip of an existing asset. */
-  source: { record: string; output: number } | null
-  in_sec: number | null
-  out_sec: number | null
-}
-
-/** One edited video of a project: its clips in playback order. */
-export interface Timeline {
-  /** The timeline ID, such as `t1`. */
-  id: string
-  /** The stored name; empty until the timeline is renamed, and the interface then shows 时间线 {n}. */
-  name: string
-  clips: Clip[]
-}
-
-/**
- * A generation task of `shot.render`: `ref2v` renders a video from reference media and the prompt, `t2v` from the
- * prompt alone.
- */
-export type RenderTask = 'ref2v' | 't2v'
-
-/** One shot of a plan version; its number is its 1-based position in the version. */
-export interface Shot {
-  prompt: string
-  duration_sec?: number
-  /**
-   * Character, location or style versions (`c1@1`) or asset IDs this shot uses instead of the plan's references; only
-   * in task `ref2v`.
-   */
-  references?: string[]
-  seed?: number
-  /** The output modality of the shot's task. */
-  modality: 'video'
-  /** The generation task the model renders the shot in. */
-  task: RenderTask
-  /** The provider plugin that serves the model, such as `fastvideo`. */
-  provider: string
-  /** The provider's name for the model that renders the shot, such as `fasth3`. */
-  model: string
-  /** Whether the shot starts from the last still of the previous shot's take. */
-  continue_previous?: boolean
-}
-
-/** One version of a plan: what a `plan.create` (version 1) or `plan.update` record stored. */
-export interface PlanVersion {
-  /** The 1-based version number; reference text `p1@2` names version 2 of plan `p1`. */
-  version: number
-  title?: string
-  references?: string[]
-  aspect_ratio?: string
-  resolution?: string
-  seed?: number
-  shots: Shot[]
-  /** The `plan.create` or `plan.update` record that wrote the version. */
-  created_by: string
-}
-
-/** The `bible` slice: every version of every character, location and style, oldest first. */
-export interface StoryBibleState {
-  characters: Record<string, Character[]>
-  locations: Record<string, Location[]>
-  styles: Record<string, Style[]>
-}
-
-/** The `plan` slice: every version of every plan, by `PlanId` (`p1`), oldest first. */
-export interface PlanState {
-  plans: Record<string, PlanVersion[]>
-}
-
-/** The `timeline` slice. */
-export interface TimelineState {
-  /** Every timeline of the project, in creation order. */
-  timelines: Timeline[]
-}
-
 /** The state slices of the components the browser reads, sent verbatim by the server. */
 export interface ComponentStates {
   proj: {
@@ -230,12 +132,12 @@ export interface ComponentStates {
     /** The record that created each output asset. */
     created_by: Record<string, string>
   }
-  bible: StoryBibleState
-  plan: PlanState
-  timeline: TimelineState
   /** The assets on the canvas, in the order they were placed. */
   asset: { placed: string[] }
-  /** The slice of any other loaded component; a plugin UI half narrows its own slice with a guard. */
+  /**
+   * The slice of any other loaded component. A UI half whose host package has a client face merges the slice type of
+   * that face here; any other UI half narrows its own slice with a guard.
+   */
   [key: string]: unknown
 }
 

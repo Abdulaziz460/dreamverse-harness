@@ -6,6 +6,7 @@
   "description": "Timeline component of DreamVerse: the timelines of a project and their clips (assets with in and out points), edited by the ten timeline.* edit operations, each clip named by its clip ID; editing a clip never creates a file, and timeline.export writes a timeline to one video with ffmpeg.",
   "exports": {
     ".": "./src/index.ts",
+    "./types": "./src/types.ts",
     "./package.json": "./package.json"
   },
   "dependencies": {

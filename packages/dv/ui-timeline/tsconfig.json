@@ -24,6 +24,9 @@
       "path": "../../client/ui-slots"
     },
     {
+      "path": "../timeline/tsconfig.client.json"
+    },
+    {
       "path": "../ui-kit"
     }
   ]

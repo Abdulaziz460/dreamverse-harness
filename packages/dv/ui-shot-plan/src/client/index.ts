@@ -10,13 +10,16 @@
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
+import type { PlanState, PlanVersion } from '@dv/shot-plan/types'
 import { DvClient } from '@dv/ui-kit/api.ts'
 import { pickText } from '@dv/ui-kit/locale.ts'
 import type { HistoryRow, NodeKind, NodeSeed, TakesInUse } from '@dv/ui-kit/registries.ts'
 import { clockText } from '@dv/ui-kit/timeline.ts'
-import type { PlanVersion, WireState } from '@dv/ui-kit/types.ts'
+import type { WireState } from '@dv/ui-kit/types.ts'
 import { PlanEditor, totalSec } from './PlanEditor.tsx'
 import type { PlanEditorInjected } from './PlanEditor.tsx'
+
+declare module '@dv/ui-kit/types.ts' { interface ComponentStates { plan: PlanState } }
 
 /** The package name: the key of the node kind, of the takes in use, and of the editor entry. */
 const ID = '@dv/ui-shot-plan'

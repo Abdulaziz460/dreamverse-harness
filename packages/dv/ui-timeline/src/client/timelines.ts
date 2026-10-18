@@ -2,8 +2,11 @@
  * Geometry of one timeline in the timeline editor: which timelines a state holds, how long each clip plays after its in
  * and out points, where it starts on the track, and which clip plays at a given time.
  */
+import type { Timeline, TimelineState } from '@dv/timeline/types'
 import { FALLBACK_CLIP_SECONDS } from '@dv/ui-kit/timeline.ts'
-import type { Timeline, WireState } from '@dv/ui-kit/types.ts'
+import type { WireState } from '@dv/ui-kit/types.ts'
+
+declare module '@dv/ui-kit/types.ts' { interface ComponentStates { timeline: TimelineState } }
 
 /**
  * Whether a clip can play: `ready` when it has its asset, `rendering` while the render it waits for is pending or
@@ -54,7 +57,7 @@ export function timelinesOf(state: WireState): Timeline[] {
  * @returns the ID for a new timeline.
  */
 export function nextTimelineId(timelines: Timeline[]): string {
-  const taken = new Set(timelines.map(timeline => timeline.id))
+  const taken = new Set<string>(timelines.map(timeline => timeline.id))
   let n = timelines.length + 1
   while (taken.has(`t${String(n)}`)) n += 1
   return `t${String(n)}`

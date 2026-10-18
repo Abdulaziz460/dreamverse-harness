@@ -5,6 +5,8 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
+import type { AssetId, RecordId } from '@dv/project/types'
+import type { CharacterId, LocationId, StyleId } from '@dv/story-bible/types'
 import { projectItems } from '@dv/ui-composer/src/client/mention.ts'
 import { createRegistry } from '@dv/ui-kit/registries.ts'
 import type {
@@ -38,10 +40,10 @@ function bibleState(): WireState {
   const state = fixtureState()
   state.components.proj.records = [...state.components.proj.records, record({ id: 'e2', operation: 'bible.character_update' })]
   const bible = state.components.bible
-  bible.characters['hero']?.push({ id: 'hero', version: 2, name: 'Hero', description: '', references: ['shot1-last.png', 'ref.png'], created_by: 'e2' })
-  bible.characters['ghost'] = []
-  bible.locations['alley'] = [{ id: 'alley', version: 1, name: '', description: '', references: ['alley.png'], created_by: 'e3' }]
-  bible.styles['noir'] = [{ id: 'noir', version: 1, name: 'Noir', description: '', references: [], created_by: 'e4' }]
+  bible.characters['hero' as CharacterId]?.push({ id: 'hero' as CharacterId, version: 2, name: 'Hero', description: '', references: ['shot1-last.png' as AssetId, 'ref.png' as AssetId], created_by: 'e2' as RecordId })
+  bible.characters['ghost' as CharacterId] = []
+  bible.locations['alley' as LocationId] = [{ id: 'alley' as LocationId, version: 1, name: '', description: '', references: ['alley.png' as AssetId], created_by: 'e3' as RecordId }]
+  bible.styles['noir' as StyleId] = [{ id: 'noir' as StyleId, version: 1, name: 'Noir', description: '', references: [], created_by: 'e4' as RecordId }]
   return state
 }
 

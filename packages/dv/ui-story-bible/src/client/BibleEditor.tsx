@@ -10,7 +10,7 @@ import type { CSSProperties, ReactNode } from 'react'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { assetUrl } from '@dv/ui-kit/api.ts'
 import { useText } from '@dv/ui-kit/locale.ts'
-import { bibleNode, KINDS } from './kinds.ts'
+import { bibleNode, itemsOf, KINDS } from './kinds.ts'
 
 // The `dv-canvas-btn` class of the canvas stylesheet paints the fill and the hover of these buttons.
 const button: CSSProperties = {
@@ -27,14 +27,14 @@ const referenceImage: CSSProperties = { height: 220, borderRadius: 'var(--dv-rad
  */
 export function BibleEditor({ node, state, host }: PropsRuntime<'dv.canvas.editor'>): ReactNode {
   const pick = useText()
-  const item = KINDS.flatMap(({ kind, field }) => Object.entries(state.components.bible[field]).flatMap(([id, versions]) => {
+  const item = KINDS.flatMap(({ kind, field }) => Object.entries(itemsOf(state, field)).flatMap(([id, versions]) => {
     const latest = versions.at(-1)
     return bibleNode(id) === node.id && latest !== undefined ? [{ kind, id, latest }] : []
   }))[0]
   if (item === undefined) return null
   const { kind, id, latest } = item
   const name = latest.name || id
-  const references = latest.references
+  const references: readonly string[] = latest.references
   const assets = new Map(state.assets.map(asset => [asset.id, asset]))
   // `bible.<kind>_update` writes the next version with exactly these references.
   const update = (next: readonly string[], intent: string): void => {

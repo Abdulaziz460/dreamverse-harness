@@ -4,7 +4,7 @@
 // shown, nothing is left over) and, where the story is about what the agent sees, the request the model received.
 import type { Browser, BrowserContext, Locator, Page } from 'playwright'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
-import type { ProjectRecord, WireState } from '@dv/ui-kit/types.ts'
+import type { ProjectRecord, WireState } from '../wire-state.ts'
 import { bootHarness, playwright, waitFor, type BootedHarness } from '../harness.ts'
 import {
   assetIdOf, startScriptedModel, textOf, type ChatRequest, type ScriptedModel, type ScriptedRule, type ScriptedStep, type TurnView,

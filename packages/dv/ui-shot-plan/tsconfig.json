@@ -18,6 +18,9 @@
       "path": "../../client/ui-slots"
     },
     {
+      "path": "../shot-plan/tsconfig.client.json"
+    },
+    {
       "path": "../ui-kit"
     }
   ]

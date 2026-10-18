@@ -3,6 +3,10 @@
  * timeline, a failed export, and a running retake as the last record. Also a scripted `fetch` that answers the
  * `/api/dv` routes from such a state and records every write.
  */
+import type { AssetId, RecordId } from '@dv/project/types'
+import type { PlanId } from '@dv/shot-plan/types'
+import type { CharacterId } from '@dv/story-bible/types'
+import type { ClipId, TimelineId } from '@dv/timeline/types'
 import type { WireTaskLabels } from '../src/client/tool-labels.ts'
 import type { OperationRequest, ProjectAsset, ProjectRecord, WireOperation, WireProject, WireState } from '../src/client/types.ts'
 
@@ -96,17 +100,17 @@ export function fixtureState(): WireState {
         },
       },
       bible: {
-        characters: { hero: [{ id: 'hero', version: 1, name: 'Hero', description: 'A tired detective.', references: ['ref.png'], created_by: 'e1' }] },
+        characters: { ['hero' as CharacterId]: [{ id: 'hero' as CharacterId, version: 1, name: 'Hero', description: 'A tired detective.', references: ['ref.png' as AssetId], created_by: 'e1' as RecordId }] },
         locations: {},
         styles: {},
       },
-      plan: { plans: { p1: [{ version: 1, shots: [{ prompt: 'hero walks', modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3' }, { prompt: 'hero turns', modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', continue_previous: true }], created_by: 'p1' }] } },
+      plan: { plans: { ['p1' as PlanId]: [{ version: 1, shots: [{ prompt: 'hero walks', modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3' }, { prompt: 'hero turns', modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', continue_previous: true }], created_by: 'p1' as RecordId }] } },
       asset: { placed: [] },
       timeline: {
         timelines: [{
-          id: 't1', name: '', clips: [
-            { id: 'cl1', asset: 'shot1.mp4', source: null, in_sec: null, out_sec: null },
-            { id: 'cl2', asset: 'shot2.mp4', source: null, in_sec: 1, out_sec: 4 },
+          id: 't1' as TimelineId, name: '', clips: [
+            { id: 'cl1' as ClipId, asset: 'shot1.mp4' as AssetId, source: null, in_sec: null, out_sec: null },
+            { id: 'cl2' as ClipId, asset: 'shot2.mp4' as AssetId, source: null, in_sec: 1, out_sec: 4 },
           ],
         }],
       },

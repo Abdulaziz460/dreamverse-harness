@@ -7,6 +7,9 @@ import type { ReactNode } from 'react'
 import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import { makeTranslate, SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import { SidebarRightTabRegistry } from '@deepseek-ai/dsh-client-ui-sidebar-right/src/client/tab-registry.ts'
+import type { AssetId, RecordId } from '@dv/project/types'
+import type { PlanId } from '@dv/shot-plan/types'
+import type { CharacterId, LocationId } from '@dv/story-bible/types'
 import { apply as assetPoolApply, inject as assetPoolInject } from '@dv/ui-asset-pool/src/client/index.ts'
 import { assetUrl, DvClient } from '@dv/ui-kit/api.ts'
 import { DV_COMPOSE_EVENT } from '@dv/ui-kit/compose.ts'
@@ -272,8 +275,8 @@ describe('CanvasView', () => {
     const references = ['ref.png', 'r2.png', 'r3.png', 'r4.png', 'r5.png', 'r6.png']
     const { node } = mount(true, (state) => {
       state.assets.push(...references.slice(1).map(id => asset(id, 'image/png', 'u1')))
-      const hero = state.components.bible.characters['hero']?.[0]
-      if (hero !== undefined) hero.references = references
+      const hero = state.components.bible.characters['hero' as CharacterId]?.[0]
+      if (hero !== undefined) hero.references = references as AssetId[]
     })
     await waitFor(() => { node('bible:hero') })
     const card = node('bible:hero')
@@ -297,8 +300,8 @@ describe('CanvasView', () => {
 
   it('draws a character whose first reference is a video as the video\'s first frame', async () => {
     const { node } = mount(true, (state) => {
-      const hero = state.components.bible.characters['hero']?.[0]
-      if (hero !== undefined) hero.references = ['shot1.mp4', 'ref.png']
+      const hero = state.components.bible.characters['hero' as CharacterId]?.[0]
+      if (hero !== undefined) hero.references = ['shot1.mp4' as AssetId, 'ref.png' as AssetId]
     })
     await waitFor(() => { node('bible:hero') })
     expect([...node('bible:hero').querySelectorAll('video')].map(video => video.getAttribute('src'))).toEqual([`${assetUrl('shot1.mp4')}#t=0.1`])
@@ -396,9 +399,9 @@ describe('CanvasView', () => {
     document.documentElement.lang = 'zh-CN'
     const { runtime, view, node, writes } = await mountWithAssetPool((state) => {
       const bible = state.components.bible
-      bible.characters['villain'] = [{ id: 'villain', version: 2, name: 'Villain', description: '', references: [], created_by: 'e1' }]
-      bible.characters['ghost'] = []
-      bible.locations['studio'] = [{ id: 'studio', version: 1, name: '', description: '', references: ['plan.json'], created_by: 'e1' }]
+      bible.characters['villain' as CharacterId] = [{ id: 'villain' as CharacterId, version: 2, name: 'Villain', description: '', references: [], created_by: 'e1' as RecordId }]
+      bible.characters['ghost' as CharacterId] = []
+      bible.locations['studio' as LocationId] = [{ id: 'studio' as LocationId, version: 1, name: '', description: '', references: ['plan.json' as AssetId], created_by: 'e1' as RecordId }]
       state.assets.push(asset('plan.json', 'application/json', null))
     })
     await waitFor(() => { node('g1') })
@@ -518,9 +521,9 @@ describe('CanvasView', () => {
   it('opens the plan node for a dv:canvas-focus on the record that wrote an earlier plan version', async () => {
     window.dispatchEvent(new CustomEvent(DV_CANVAS_FOCUS_EVENT, { detail: { recordId: 'p1' } }))
     const { view, node } = mount(true, (state) => {
-      const [v1] = state.components.plan.plans['p1'] ?? []
+      const [v1] = state.components.plan.plans['p1' as PlanId] ?? []
       if (v1 === undefined) throw new Error('fixture lacks plan p1')
-      state.components.plan.plans['p1'] = [v1, { ...v1, version: 2, created_by: 'q2' }]
+      state.components.plan.plans['p1' as PlanId] = [v1, { ...v1, version: 2, created_by: 'q2' as RecordId }]
     })
     const editor = await view.findByTestId('dv-canvas-node-editor')
     expect(editor.getAttribute('aria-label')).toBe(node('plan:p1').getAttribute('aria-label'))

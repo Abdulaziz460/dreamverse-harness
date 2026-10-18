@@ -2,6 +2,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
+import type { AssetId, RecordId } from '@dv/project/types'
+import type { ClipId, TimelineId } from '@dv/timeline/types'
 import { createRegistry } from '@dv/ui-kit/registries.ts'
 import type { ChainAnchor, DvCanvas, NodeKind, TakesInUse, VersionKind } from '@dv/ui-kit/registries.ts'
 import { fixtureState } from '../../ui-kit/tests/fixture.client.tsx'
@@ -17,9 +19,9 @@ describe('timelineTakesInUse', () => {
   it('uses the record behind each clip: the render a placeholder clip waits for, else the producer of the clip asset', () => {
     const state = fixtureState()
     state.components.timeline.timelines.push({
-      id: 't2', name: '', clips: [
-        { id: 'cl3', asset: null, source: { record: 'g3', output: 0 }, in_sec: null, out_sec: null },
-        { id: 'cl4', asset: 'unknown.mp4', source: null, in_sec: null, out_sec: null },
+      id: 't2' as TimelineId, name: '', clips: [
+        { id: 'cl3' as ClipId, asset: null, source: { record: 'g3' as RecordId, output: 0 }, in_sec: null, out_sec: null },
+        { id: 'cl4' as ClipId, asset: 'unknown.mp4' as AssetId, source: null, in_sec: null, out_sec: null },
       ],
     })
     const descriptor = timelineTakesInUse(t)
@@ -30,9 +32,9 @@ describe('timelineTakesInUse', () => {
   it('puts the trim label on the asset of each clip with an in or out point', () => {
     const state = fixtureState()
     state.components.timeline.timelines.push({
-      id: 't2', name: '', clips: [
-        { id: 'cl3', asset: 'shot1.mp4', source: null, in_sec: null, out_sec: 2 },
-        { id: 'cl4', asset: null, source: { record: 'g3', output: 0 }, in_sec: 1, out_sec: null },
+      id: 't2' as TimelineId, name: '', clips: [
+        { id: 'cl3' as ClipId, asset: 'shot1.mp4' as AssetId, source: null, in_sec: null, out_sec: 2 },
+        { id: 'cl4' as ClipId, asset: null, source: { record: 'g3' as RecordId, output: 0 }, in_sec: 1, out_sec: null },
       ],
     })
     expect(timelineTakesInUse(t).badges?.(state)).toEqual([

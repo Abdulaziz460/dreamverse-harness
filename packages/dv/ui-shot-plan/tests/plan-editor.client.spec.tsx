@@ -8,6 +8,8 @@ import { act, cleanup, fireEvent, waitFor, within } from '@testing-library/react
 import type { ReactNode } from 'react'
 import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
+import type { PlanId } from '@dv/shot-plan/types'
+import type { CharacterId } from '@dv/story-bible/types'
 import { assetUrl } from '@dv/ui-kit/api.ts'
 import { createRegistry } from '@dv/ui-kit/registries.ts'
 import type { ChainAnchor, DvCanvas, NodeKind, SeedEditorHost, TakesInUse, VersionKind } from '@dv/ui-kit/registries.ts'
@@ -28,8 +30,10 @@ const CHARACTERS: VersionKind = {
   label: () => '角色',
   node: id => `bible:${id}`,
   latest: () => [],
-  name: (state, id, version) => state.components.bible.characters[id]?.find(entry => entry.version === version)?.name ?? null,
-  assets: (state, id, version) => state.components.bible.characters[id]?.find(entry => entry.version === version)?.references ?? [],
+  name: (state, id, version) =>
+    state.components.bible.characters[id as CharacterId]?.find(entry => entry.version === version)?.name ?? null,
+  assets: (state, id, version) =>
+    state.components.bible.characters[id as CharacterId]?.find(entry => entry.version === version)?.references ?? [],
 }
 
 /** The canvas's writes, picker and preview, which the plan editor does not call. */
@@ -93,13 +97,13 @@ describe('PlanEditor', () => {
     canvas.chainAnchors.register(APPROVAL)
     canvas.versionKinds.register(CHARACTERS)
     const state = fixtureState()
-    const [v1] = state.components.plan.plans['p1'] ?? []
+    const [v1] = state.components.plan.plans['p1' as PlanId] ?? []
     if (v1 === undefined) throw new Error('fixture lacks plan p1')
     const v3 = {
       ...v1, version: 3, title: '雨夜', references: ['hero@1'],
       shots: [{ prompt: '<Picture 1> walks in the rain', modality: 'video' as const, task: 'ref2v' as const, provider: 'fastvideo', model: 'fasth3' }, { prompt: 'the sky clears', modality: 'video' as const, task: 't2v' as const, provider: 'fastvideo', model: 'fasth3' }],
     }
-    state.components.plan.plans['p1'] = [v1, { ...v1, version: 2 }, v3]
+    state.components.plan.plans['p1' as PlanId] = [v1, { ...v1, version: 2 }, v3]
     const { runtime, editor } = await mount(state, canvas)
     expect(within(editor).getByRole('group', { name: '分镜计划版次' })).toBeTruthy()
     expect(statuses(editor, [1, 2, 3])).toEqual(['已批准', '已被第 3 版取代', '待批准'])
@@ -131,9 +135,9 @@ describe('PlanEditor', () => {
       starter: 'test.approve', anchor: () => 'plan:p1', approvedVersions: (_state, anchorId) => anchorId === 'plan:p1' ? [2] : [],
     })
     const state = fixtureState()
-    const [v1] = state.components.plan.plans['p1'] ?? []
+    const [v1] = state.components.plan.plans['p1' as PlanId] ?? []
     if (v1 === undefined) throw new Error('fixture lacks plan p1')
-    state.components.plan.plans['p1'] = [v1, { ...v1, version: 2 }, { ...v1, version: 3 }]
+    state.components.plan.plans['p1' as PlanId] = [v1, { ...v1, version: 2 }, { ...v1, version: 3 }]
     const { runtime, editor } = await mount(state, canvas)
     expect(statuses(editor, [1, 2, 3])).toEqual(['已批准', '已批准', '待批准'])
     act(() => { disposeTestAnchor() })
@@ -147,10 +151,10 @@ describe('PlanEditor', () => {
   it('shows reference assets of every media type, numbers only the images as Picture N, and names a version by its version kind', async () => {
     const canvas = canvasRegistries()
     const state = fixtureState()
-    const [v1] = state.components.plan.plans['p1'] ?? []
+    const [v1] = state.components.plan.plans['p1' as PlanId] ?? []
     if (v1 === undefined) throw new Error('fixture lacks plan p1')
     state.assets.push(asset('score.wav', 'audio/wav', null))
-    state.components.plan.plans['p1'] = [{
+    state.components.plan.plans['p1' as PlanId] = [{
       ...v1, references: ['shot1.mp4', 'hero@1'],
       shots: [{ prompt: '<Video 1> then <Picture 1>', modality: 'video' as const, task: 'ref2v' as const, provider: 'fastvideo', model: 'fasth3', references: ['shot1.mp4', 'hero@1', 'score.wav'] }],
     }]

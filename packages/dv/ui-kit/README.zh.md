@@ -34,7 +34,7 @@ import { DV_TIMELINE_INSERT_EVENT } from '@dv/ui-kit/workspace-events.ts'
 
 | 模块 | 内容 |
 | --- | --- |
-| `types.ts` | `WireState`（`head` 是当前位置，`tip` 是历史列表的最后一步）、`WireLine`（`{tip, at}`，撤销和重做的回答）、`ProjectRecord`、`WireInputRef`（存储的输入引用：素材、记录产出，或 `WireVersionRef`，即任一引用类型的一个版本）、`Asset`、`ProjectAsset`（带本项目导入名字和时间以及 `made_by` 的素材）、`Timeline`、`Clip`、`WireOperation`、`WireProject`、`WireProjectSummary` 和 `WireProjectCover`（项目卡片的封面、镜头数、时长和最后编辑时间）、`ProjectEvent`、`OperationRequest`、`HistoryQuery`、`HistoryEntry`（`{record, place}`）、`WireHistory`、`PlanVersion`、`Shot`（带模态 `modality`、生成任务 `task`（`RenderTask`，即 `ref2v` 或 `t2v`）、提供方 `provider` 和模型 `model`，以及 `continue_previous`）、`ComponentStates`（视图读取的切片；其他已加载组件的切片是 `unknown`，由插件的 UI 半边用自己的类型守卫收窄）：`@dv/api` 收发的 JSON 的结构类型 |
+| `types.ts` | `WireState`（`head` 是当前位置，`tip` 是历史列表的最后一步）、`WireLine`（`{tip, at}`，撤销和重做的回答）、`ProjectRecord`、`WireInputRef`（存储的输入引用：素材、记录产出，或 `WireVersionRef`，即任一引用类型的一个版本）、`Asset`、`ProjectAsset`（带本项目导入名字和时间以及 `made_by` 的素材）、`WireOperation`、`WireProject`、`WireProjectSummary` 和 `WireProjectCover`（项目卡片的封面、镜头数、时长和最后编辑时间）、`ProjectEvent`、`OperationRequest`、`HistoryQuery`、`HistoryEntry`（`{record, place}`）、`WireHistory`、`ComponentStates`（`proj` 和 `asset` 切片；其他已加载组件的切片是 `unknown`：宿主包有客户端门面的 UI 半边把该门面的切片类型合并进来，其他 UI 半边用自己的类型守卫收窄自己的切片）：`@dv/api` 收发的 JSON 的结构类型 |
 | `api.ts` | `DvClient`（`listProjects`、`listProjectSummaries`（`GET /api/dv/projects/summary`）、`getState`（读当前状态）、`listOperations`、`getTaskLabels`（`GET /api/dv/tasks`）、`runOperation`、`importAsset`、`undo`（往回移一步）、`moveTo`（移到历史列表中的某一步）、`redo`（往前移一步）、`acceptStale`、`listHistory`、`placeOnCanvas`（在画布来源上执行 `asset.place` 或 `asset.unplace`），项目、布局（位置和视口）、工作区和对话调用，`subscribe`）、`ViewSurface`、`DvApiError`、`assetUrl` |
 | `form.ts` | `fieldsOf(params, values)`、`paramsOf(fields)`、`FieldParseError`：每个 schema 属性一个控件，带类型转换 |
 | `timeline.ts` | `FALLBACK_CLIP_SECONDS`、`timelineName(timeline, numbered)`、`formatSeconds` |
@@ -62,7 +62,7 @@ import { DV_TIMELINE_INSERT_EVENT } from '@dv/ui-kit/workspace-events.ts'
 <details>
 <summary>实现内部——点击展开</summary>
 
-`DvClient` 把每个错误响应体解码成 `DvApiError`，保留 HTTP 状态和 `ProjectError` 代码；`listProjectSummaries` 还检查摘要每个字段的类型，响应格式不对时抛出 `Error`。`useLoader` 在重新加载期间保留上一个值，并忽略输入已变化的响应；`useProjectState` 读取项目的当前状态，并把一阵项目事件合成一次重新拉取，所以任何地方的撤销或重做都会刷新每个视图。`types.ts` 里的类型手工照抄 `@dv/project` 和各组件的类型，因为宿主包不能被导入进浏览器 bundle；记录以 `ProjectRecord` 到达，输入的 `ref` 是存储时的对象。
+`DvClient` 把每个错误响应体解码成 `DvApiError`，保留 HTTP 状态和 `ProjectError` 代码；`listProjectSummaries` 还检查摘要每个字段的类型，响应格式不对时抛出 `Error`。`useLoader` 在重新加载期间保留上一个值，并忽略输入已变化的响应；`useProjectState` 读取项目的当前状态，并把一阵项目事件合成一次重新拉取，所以任何地方的撤销或重做都会刷新每个视图。`types.ts` 里的类型手工照抄 `@dv/project` 的类型，因为宿主包不能被导入进浏览器 bundle；插件的切片类型来自其宿主包的客户端门面 `./types`；记录以 `ProjectRecord` 到达，输入的 `ref` 是存储时的对象。
 
 | 文件 | 内容 |
 | --- | --- |

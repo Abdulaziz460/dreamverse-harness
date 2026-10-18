@@ -7,7 +7,7 @@
  * @module @dv/timeline/types
  */
 import type { Branded } from '@deepseek-ai/dsh-brand'
-import type { AssetId, ProjectId, RecordId, RecordInputRef, RecordOrigin, StartedBy } from '@dv/project'
+import type { AssetId, ProjectId, RecordId, RecordInputRef, RecordOrigin, StartedBy } from '@dv/project/types'
 
 /** The ID of a timeline, such as `t1`; the operations name it in their `timeline` param. */
 export type TimelineId = Branded<'DvTimelineId'>
@@ -63,7 +63,7 @@ export interface LayoutCall extends RecordOrigin {
   started_by?: StartedBy
 }
 
-declare module '@dv/project' {
+declare module '@dv/project/types' {
   interface ComponentStates {
     /** The timelines of the project (Timeline). */
     timeline: TimelineState

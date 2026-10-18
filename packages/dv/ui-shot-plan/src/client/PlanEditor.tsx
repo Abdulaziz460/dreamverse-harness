@@ -6,13 +6,14 @@
 import { memo, useCallback, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { PlanVersion, Shot } from '@dv/shot-plan/types'
 import { assetUrl, type DvClient } from '@dv/ui-kit/api.ts'
 import { useText } from '@dv/ui-kit/locale.ts'
 import { isPicture, pictureParts, referenceAssets } from '@dv/ui-kit/references.ts'
 import type { DvCanvas, Registry, VersionKind } from '@dv/ui-kit/registries.ts'
 import { clockText } from '@dv/ui-kit/timeline.ts'
 import { taskLabel, type WireTaskLabels } from '@dv/ui-kit/tool-labels.ts'
-import type { PlanVersion, ProjectAsset, Shot, WireState } from '@dv/ui-kit/types.ts'
+import type { ProjectAsset, WireState } from '@dv/ui-kit/types.ts'
 import { useTaskLabels } from '@dv/ui-kit/useProject.ts'
 
 /** What the plugin injects: the `dvCanvas` registries (chain anchors, version kinds) and the client that reads task labels. */
@@ -108,7 +109,8 @@ function ReferenceChip({ reference }: { reference: NamedReference }): ReactNode 
  * @returns the element.
  */
 export function PlanEditor({ node, state, canvas, client }: PropsRuntime<'dv.canvas.editor'> & PlanEditorInjected): ReactNode {
-  const versions = state.components.plan.plans[node.id.slice(node.id.indexOf(':') + 1)] ?? []
+  const plans: Readonly<Record<string, PlanVersion[]>> = state.components.plan.plans
+  const versions = plans[node.id.slice(node.id.indexOf(':') + 1)] ?? []
   // The version on show; the editor holds the choice so the version row and the shot list read the same version.
   const [chosen, setChosen] = useState<number | null>(null)
   const anchors = useRegistry(canvas.chainAnchors)
