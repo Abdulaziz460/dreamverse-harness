@@ -21,8 +21,8 @@ export interface Shot {
   /** Seconds; the render uses the model minimum when absent. */
   duration_sec?: number
   /**
-   * Character, location or style versions (`c1@1`) or asset IDs this shot uses instead of the plan's references; only for
-   * task `ref2v`.
+   * Versions of registered reference kinds (`<id>@<n>`) or asset IDs this shot uses instead of the plan's references; only
+   * for task `ref2v`.
    */
   references?: string[]
   seed?: number

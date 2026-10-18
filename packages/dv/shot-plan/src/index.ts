@@ -66,7 +66,7 @@ const SHOT_SCHEMA = {
     duration_sec: { type: 'integer', description: 'Seconds; defaults to the model minimum.' },
     references: {
       type: 'array', items: { type: 'string' },
-      description: 'Task ref2v only: character, location or style versions (c1@1) or asset IDs this shot uses instead of the plan references.',
+      description: 'Task ref2v only: versions (`<id>@<n>`; dv_proj_state lists IDs) or asset IDs this shot uses instead of the plan references.',
     },
     continue_previous: {
       type: 'boolean',
@@ -82,7 +82,7 @@ const PLAN_PARAMS = {
   title: { type: 'string' },
   references: {
     type: 'array', items: { type: 'string' },
-    description: 'Character, location or style versions (c1@1) or asset IDs every shot of task ref2v references unless it names its own.',
+    description: 'Versions (`<id>@<n>`; dv_proj_state lists IDs) or asset IDs every shot of task ref2v references unless it names its own.',
   },
   aspect_ratio: { type: 'string' },
   resolution: { type: 'string' },
