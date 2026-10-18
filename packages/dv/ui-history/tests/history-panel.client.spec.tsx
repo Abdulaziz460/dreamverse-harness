@@ -124,7 +124,7 @@ describe('HistoryPanel', () => {
     const { view, row } = mount(approval)
     await waitFor(() => { row('ap') })
     expect(view.container.querySelectorAll('[data-testid="dv-history-row"]').length).toBe(1)
-    expect(row('ap').textContent).toContain('Approve plan p1 v1')
+    expect(row('ap').textContent).toContain('Approve plan')
     const fold = view.getByTestId('dv-history-fold')
     // The running render has no output yet, so it counts once the operation declarations arrive.
     await waitFor(() => { expect(fold.textContent).toContain('Render 2 shots (1/2)') })

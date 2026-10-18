@@ -160,6 +160,18 @@ describe('dvStory', () => {
     await expect(run('story.approve', { plan: 'p9' })).rejects.toMatchObject({ code: 'invalid_params', message: unknownPlan })
   })
 
+  it('reports a shot whose model key the catalog does not serve, which dv_plan_create accepts', async () => {
+    const fixture = await start()
+    const shots = [{ ...TXT, model: 'ghost', prompt: 'A street at dawn', duration_sec: 2 }, { ...TXT, prompt: 'A street at night', duration_sec: 2 }]
+    expect(refusal(await fixture.call('dv_plan_create', { reason: 'propose', shots }))).toBe('')
+    // The unknown model adds no GPU estimate; its refusal is the catalog's text.
+    expect(await preview(fixture, 'p1')).toEqual({
+      plan: 'p1', version: 1, rendered: 2, gpu_seconds: 2 * 1.5,
+      shots: ['shot 1 (video/t2v/test/ghost, 2 s): A street at dawn', 'shot 2 (video/t2v/test/fake, 2 s): A street at night'],
+      problems: ['Shot 1: Unknown model "video/t2v/test/ghost"; call dv_models_list for the models.'],
+    })
+  })
+
   it('T4.3: asks for the user\'s agreement with the preview lines, refuses a plan with problems, and records each approval', async () => {
     const fixture = await start()
     const shots = [{ ...TXT, prompt: 'A street at dawn', duration_sec: 2 }, { ...TXT, prompt: 'A street at night', duration_sec: 2 }]

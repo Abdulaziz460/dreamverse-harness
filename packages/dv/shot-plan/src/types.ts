@@ -6,12 +6,11 @@
  * @module @dv/shot-plan/types
  */
 import type { Branded } from '@deepseek-ai/dsh-brand'
-import type { ModalityId, TaskId } from '@dv/models'
 import type { RecordId } from '@dv/project'
 
 /**
  * The ID of a plan, such as `p2`: unique within the project and never reused; `plan.create` assigns it and stores it in
- * the record's `report.plan`, and `plan.update` and `plan.approve` name the plan by it in their `plan` param.
+ * the record's `report.plan`, and `plan.update` names the plan by it in its `plan` param.
  */
 export type PlanId = Branded<'DvPlanId'>
 
@@ -28,9 +27,9 @@ export interface Shot {
   references?: string[]
   seed?: number
   /** The modality of the model that renders the shot; with `task`, `provider` and `model`, its key in the model catalog. */
-  modality: ModalityId
+  modality: string
   /** The generation task the model renders the shot in, such as `ref2v`. */
-  task: TaskId
+  task: string
   /** The provider that serves the model. */
   provider: string
   /** The provider's name for the model. */
@@ -41,7 +40,7 @@ export interface Shot {
   continue_previous?: boolean
 }
 
-/** The shots and settings of one plan version, which `plan.approve` turns into shot renders. */
+/** The shots and settings of one plan version, which a workflow plugin turns into shot renders. */
 export interface Plan {
   title?: string
   /** References every shot of task `ref2v` carries unless it names its own: `<id>@<version>` or asset IDs. */
@@ -58,8 +57,6 @@ export interface PlanVersion extends Plan {
   version: number
   /** The `plan.create` or `plan.update` record that wrote the version. */
   created_by: RecordId
-  /** The latest finished `plan.approve` record of the version, or null while it waits for approval. */
-  approved_by: RecordId | null
 }
 
 /**
@@ -90,7 +87,7 @@ export interface PlanState {
 
 declare module '@dv/project' {
   interface ComponentStates {
-    /** Plans and their approvals (the Shot plan component's reducer). */
+    /** Plans and their versions (the Shot plan component's reducer). */
     plan: PlanState
   }
 }

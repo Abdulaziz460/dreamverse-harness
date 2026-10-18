@@ -33,7 +33,7 @@ kind: "package-reference"
   name: '@dv/ui-canvas'
 ```
 
-Host 半边不注册任何东西。浏览器半边提供客户端服务 `dvCanvas`（`@dv/ui-kit/registries.ts` 的 `DvCanvas`：注册表 `nodeKinds`、`chainAnchors`、`takesInUse` 和 `versionKinds`），并在其中注册 `plan.approve` 的链锚点：它把一次批准挂在节点 `plan:<plan>` 上，并从 `approved_by` 读出计划的已批准版本。它还注册 `dv-canvas` 标签类型（侧栏指南页以"视频画布"提供的页面）、中英文的 `dvCanvas` locale 命名空间，以及以自身 id `@dv/ui-canvas` 为键的标签主体。插件的 UI 半边在 `ctx.inject(['dvCanvas'], …)` 里注册它的描述符，并保留返回的注销函数；键已被占用的第二个描述符会抛错。标签主体和外壳的中央区把这些注册表作为 `canvas` 属性传给 `CanvasView`。
+Host 半边不注册任何东西。浏览器半边提供客户端服务 `dvCanvas`（`@dv/ui-kit/registries.ts` 的 `DvCanvas`：注册表 `nodeKinds`、`chainAnchors`、`takesInUse` 和 `versionKinds`），插件的 UI 半边向其中注册之前它们是空的。它还注册 `dv-canvas` 标签类型（侧栏指南页以"视频画布"提供的页面）、中英文的 `dvCanvas` locale 命名空间，以及以自身 id `@dv/ui-canvas` 为键的标签主体。插件的 UI 半边在 `ctx.inject(['dvCanvas'], …)` 里注册它的描述符，并保留返回的注销函数；键已被占用的第二个描述符会抛错。标签主体和外壳的中央区把这些注册表作为 `canvas` 属性传给 `CanvasView`。
 
 | 手势 | 请求 |
 | --- | --- |
@@ -68,7 +68,7 @@ Host 半边不注册任何东西。浏览器半边提供客户端服务 `dvCanva
 | 文件 | 内容 |
 | --- | --- |
 | [`src/client/index.ts`](src/client/index.ts) | `dvCanvas` 服务和注册 |
-| [`src/client/dv-canvas.ts`](src/client/dv-canvas.ts) | `dvCanvas` 注册表和计划批准的链锚点 |
+| [`src/client/dv-canvas.ts`](src/client/dv-canvas.ts) | `dvCanvas` 注册表 |
 | [`src/client/definition.ts`](src/client/definition.ts) | 标签类型 |
 | [`src/client/CanvasBody.tsx`](src/client/CanvasBody.tsx) | 标签主体：项目栏下的 `CanvasView` |
 | [`src/client/CanvasView.tsx`](src/client/CanvasView.tsx) | 画布：平移、缩放、拖动、拖放、布局存储 |

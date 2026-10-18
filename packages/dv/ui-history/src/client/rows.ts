@@ -85,10 +85,6 @@ export function actionLabel(record: ProjectRecord, context: LabelContext): reado
       if (plan === null) return [zh, en]
       return version === null ? [`${zh} ${plan}`, `${en} ${plan}`] : [`${zh} ${plan} → v${version}`, `${en} ${plan} → v${version}`]
     }
-    case 'plan.approve': {
-      if (plan === null) return [zh, en]
-      return version === null ? [`${zh} ${plan}`, `${en} ${plan}`] : [`${zh} ${plan} v${version}`, `${en} ${plan} v${version}`]
-    }
   }
   if (record.component === 'bible') {
     const name = field(record.params, 'name') ?? field(record.params, 'character') ?? field(record.params, 'location')

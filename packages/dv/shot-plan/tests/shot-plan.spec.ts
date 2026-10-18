@@ -1,9 +1,7 @@
 /**
  * The Shot plan component in a REAL composition: a test-only `cordis.yml` boots the DSH tool registry, `dvProject`,
- * `dvFfmpeg`, the asset pool, `dvTimeline`, the model catalog `dvModels` and `dvShotPlan` through the Loader. The
- * catalog holds the stand-in model `fake` of provider `test`, whose tasks each test chooses. A stand-in for the Shot
- * render operation `shot.render`, registered with `dvProject`, parses the references of a plan and estimates the GPU
- * seconds of each shot in the reports of `plan.create` and `plan.update`.
+ * `dvFfmpeg`, the asset pool and `dvShotPlan` through the Loader. No model catalog is loaded: a plan stores the model
+ * key of each shot as written.
  */
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -18,12 +16,10 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import DvAssetPool from '@dv/asset-pool'
 import DvFfmpeg from '@dv/ffmpeg'
-import DvModels, { type ModelEntry, type TaskId } from '@dv/models'
 import DvProject, {
   type AssetId, type OperationSpec, type OperationToolValue, type ProjectId, type ProjectRecord, type RecordId, type RunRequest,
   type SessionId,
 } from '@dv/project'
-import DvTimeline from '@dv/timeline'
 import { afterEach, describe, expect, it } from 'vitest'
 import DvShotPlan, { type PlanId, type Shot } from '../src/index.ts'
 
@@ -31,7 +27,7 @@ const FFMPEG = process.env['DV_FFMPEG'] ?? '/mnt/lustre/vlm-d1su/opt/ffmpeg-nati
 const FFPROBE = process.env['DV_FFPROBE'] ?? 'ffprobe'
 
 /** The plugin classes the fixture rows resolve through `globalThis`, because Node imports the rows outside Vite. */
-const PLUGINS = { SystemPrompt, ToolRuntime, DvProject, DvFfmpeg, DvAssetPool, DvTimeline, DvModels, DvShotPlan }
+const PLUGINS = { SystemPrompt, ToolRuntime, DvProject, DvFfmpeg, DvAssetPool, DvShotPlan }
 
 /** A user action outside any chat session: it lands on `main` directly. */
 const USER = { actor: 'user' as const, surface: 'canvas' as const, session: null, turn: null, tool_call: null }
@@ -55,68 +51,11 @@ afterEach(async () => {
   for (const dispose of disposers.splice(0)) await dispose()
 })
 
-/** What a test changes in the composition: the tasks of the catalog model `fake`. */
-interface StartOptions {
-  /** The tasks the catalog model `fake` serves, one entry each; both by default. */
-  tasks?: TaskId[]
-}
-
-/** The GPU seconds the stand-in render estimates per video second. */
-const GPU_SECONDS_PER_VIDEO_SECOND = 4
-
 /**
- * A catalog entry of a stand-in model of provider `test`. The stand-in `shot.render` never reads its facts or schema or
- * renders with it, so they reject.
- * @param name - the model name.
- * @param task - the task the entry serves.
- * @returns the entry.
- */
-function model(name: string, task: TaskId): ModelEntry {
-  return {
-    modality: 'video', task, provider: 'test', model: name, description: 'stand-in', gpuSecondsPerVideoSecond: GPU_SECONDS_PER_VIDEO_SECOND,
-    facts: () => Promise.reject(new Error(`${name} has no backend.`)),
-    schema: () => Promise.reject(new Error(`${name} has no backend.`)),
-    validateGenerationRequest: () => Promise.resolve([]),
-    render: () => { throw new Error(`${name} has no backend.`) },
-  }
-}
-
-/**
- * The stand-in for the Shot render operation: its name, params, input roles, output order and estimate match the real
- * Shot render component.
- * @returns the spec.
- */
-function standIn(): OperationSpec {
-  return {
-    name: 'shot.render', component: 'shot', version: '1', description: 'stand-in', deterministic: false, confirm: 'never',
-    resource: 'gpu', summarize: () => 'stand-in',
-    params: {
-      modality: { type: 'string', required: true }, task: { type: 'string', required: true }, provider: { type: 'string', required: true },
-      model: { type: 'string', required: true }, prompt: { type: 'string', required: true },
-      plan: { type: 'string' }, plan_version: { type: 'integer' }, shot: { type: 'integer' }, duration_sec: { type: 'integer' },
-      aspect_ratio: { type: 'string' }, resolution: { type: 'string' }, seed: { type: 'integer' },
-    },
-    inputs: {
-      reference: { type: 'image', many: true, bible: true, description: 'References.' },
-      first_frame: { type: 'image', description: 'The first frame.' },
-    },
-    outputs: [{ role: 'video', type: 'video' }, { role: 'last_still', type: 'image' }],
-    estimate: ({ duration_sec: duration }) => ({ gpu_seconds: (typeof duration === 'number' ? duration : 5) * GPU_SECONDS_PER_VIDEO_SECOND }),
-    execute: context => Promise.resolve({
-      outputs: [
-        context.importAsset(Buffer.from(`video ${String(context.params['prompt'])}`), { mime: 'video/mp4', name: 'shot.mp4' }),
-        context.importAsset(Buffer.from(`frame ${String(context.params['prompt'])}`), { mime: 'image/png', name: 'last.png' }),
-      ],
-    }),
-  }
-}
-
-/**
- * Boot the composition from a test-only `cordis.yml`, with the stand-in render and the model `fake` registered beside it.
- * @param options - the tasks of `fake`.
+ * Boot the composition from a test-only `cordis.yml`.
  * @returns the fixture, with a project bound to chat session `s1`.
  */
-async function start(options: StartOptions = {}): Promise<Fixture> {
+async function start(): Promise<Fixture> {
   const dir = mkdtempSync(join(tmpdir(), 'dv-shot-plan-'))
   const globals = globalThis as typeof globalThis & { __dvShotPlanComposition?: typeof PLUGINS }
   globals.__dvShotPlanComposition = PLUGINS
@@ -130,8 +69,6 @@ async function start(options: StartOptions = {}): Promise<Fixture> {
   row('dv-project', 'DvProject', [`root: ${join(dir, 'projects')}`, `sessionRoot: ${join(dir, 'sessions')}`])
   row('dv-ffmpeg', 'DvFfmpeg', [`ffmpegPath: ${FFMPEG}`, `ffprobePath: ${FFPROBE}`])
   row('dv-asset-pool', 'DvAssetPool', [`root: ${join(dir, 'assets')}`])
-  row('dv-timeline', 'DvTimeline', [])
-  row('dv-models', 'DvModels', [])
   row('dv-shot-plan', 'DvShotPlan', [])
   writeFileSync(join(dir, 'cordis.yml'), `${rows.join('\n')}\n`)
 
@@ -140,12 +77,7 @@ async function start(options: StartOptions = {}): Promise<Fixture> {
   ctx.loader.builtins.include = Include
   await ctx.loader.create({ name: 'cordis:include', config: { path: pathToFileURL(join(dir, 'cordis.yml')).href } })
   await ctx.loader.await()
-  const tasks: TaskId[] = options.tasks ?? ['ref2v', 't2v']
-  const removers = [
-    ctx.dvProject.registerComponent('shot'), ctx.dvProject.registerOperation(standIn()), ...tasks.map(task => ctx.dvModels.register(model('fake', task))),
-  ]
   disposers.push(async () => {
-    for (const remove of removers) remove()
     await ctx.fiber.dispose()
     rmSync(dir, { recursive: true, force: true })
   })
@@ -215,9 +147,9 @@ describe('dvShotPlan', () => {
     const shots = [ref('Picture 1 starts dancing', { duration_sec: 1 }), ref('keeps dancing', { duration_sec: 2, continue_previous: true })]
     const created = value(await fixture.call('dv_plan_create', { reason: 'propose', title: 'dance', references: [picture], shots }))
     expect(created).toMatchObject({ status: 'done', summary: 'plan with 2 shots', outputs: [{ role: 'plan', mime: 'application/json' }] })
-    // The report shows what approving the plan renders and its GPU estimate (duration × 4 GPU seconds per video second).
+    // The report has one line per shot: its model key, duration, continuation and prompt.
     expect(created.report).toEqual({
-      plan: 'p1', version: 1, gpu_seconds: 3 * GPU_SECONDS_PER_VIDEO_SECOND,
+      plan: 'p1', version: 1,
       shots: [
         'shot 1 (video/ref2v/test/fake, 1 s): Picture 1 starts dancing',
         'shot 2 (video/ref2v/test/fake, 2 s, continues from the previous shot): keeps dancing',
@@ -234,13 +166,13 @@ describe('dvShotPlan', () => {
     const revised = value(await fixture.call('dv_plan_update', { reason: 'shorter', plan: 'p1', shots: [one] }))
     expect(revised).toMatchObject({
       summary: 'plan updated (1 shots)',
-      report: { plan: 'p1', version: 2, shots: ['shot 1 (video/t2v/test/fake): one'], gpu_seconds: 5 * GPU_SECONDS_PER_VIDEO_SECOND },
+      report: { plan: 'p1', version: 2, shots: ['shot 1 (video/t2v/test/fake): one'] },
     })
     const state = fixture.ctx.dvProject.getState(fixture.project)
     expect(state.components.plan.plans).toEqual({
       p1: [
-        { title: 'dance', references: [picture], shots, version: 1, created_by: created.record, approved_by: null },
-        { shots: [one], version: 2, created_by: revised.record, approved_by: null },
+        { title: 'dance', references: [picture], shots, version: 1, created_by: created.record },
+        { shots: [one], version: 2, created_by: revised.record },
       ],
     })
     expect(fixture.ctx.dvShotPlan.get(state, 'p1')).toMatchObject({ version: 2 })
@@ -278,29 +210,22 @@ describe('dvShotPlan', () => {
     const loose: Shot[] = [
       { ...key, task: 'ref2v', prompt: 'a', continue_previous: true }, { ...key, task: 't2v', prompt: 'b', references: [hat], continue_previous: true },
     ]
-    const version = { shots: loose, version: 1, created_by: brandString<RecordId>('r1'), approved_by: null }
+    const version = { shots: loose, version: 1, created_by: brandString<RecordId>('r1') }
     const unchecked = { ...state, components: { ...state.components, plan: { plans: { [brandString<PlanId>('p9')]: [version] } } } }
     expect(fixture.ctx.dvShotPlan.shots(unchecked, 'p9').map(entry => [entry.references, entry.continuePrevious])).toEqual([[[], false], [[], false]])
   })
 
-  it('refuses a plan before its record when a shot names a model the catalog does not serve or breaks a rule of its task', async () => {
-    // fake serves only task ref2v.
-    const fixture = await start({ tasks: ['ref2v'] })
+  it('stores any model key as written, and refuses a plan before its record when a shot breaks a rule of its task', async () => {
+    // No model catalog is loaded: a plan keeps the key of each shot, and the workflow that approves the plan checks it.
+    const fixture = await start()
     const picture = fixture.put('face', 'image/png', 'face.png')
+    const ghost = value(await fixture.call('dv_plan_create', { reason: 'any model', shots: [{ ...REF, model: 'ghost', prompt: 'c' }] }))
+    expect(ghost.report).toEqual({ plan: 'p1', version: 1, shots: ['shot 1 (video/ref2v/test/ghost): c'] })
     const before = fixture.ctx.dvProject.listHistory({ project: fixture.project }).length
-    await expect(fixture.record('plan.create', {
-      references: [picture], shots: [ref('a'), { ...TXT, prompt: 'b' }, { ...REF, model: 'ghost', prompt: 'c' }],
-    })).rejects.toThrow(
-      'The plan cannot be rendered as written. '
-      + 'Shot 2 uses model video/t2v/test/fake, which is not in the model catalog; call dv_models_list for the models. '
-      + 'Shot 3 uses model video/ref2v/test/ghost, which is not in the model catalog; call dv_models_list for the models.',
-    )
-    // plain serves only task t2v, which takes no references and no first frame.
-    const removePlain = fixture.ctx.dvModels.register(model('plain', 't2v'))
-    const plain = { ...TXT, model: 'plain' }
+    // Task t2v takes no references and no first frame.
     const refused = await fixture.call('dv_plan_create', {
       reason: 'rules',
-      shots: [ref('a', { continue_previous: true }), { ...plain, prompt: 'b', references: [picture], continue_previous: true }],
+      shots: [ref('a', { continue_previous: true }), { ...TXT, prompt: 'b', references: [picture], continue_previous: true }],
     })
     expect(refused.isError && refused.error.message).toBe([
       'The plan cannot be rendered as written.',
@@ -321,13 +246,10 @@ describe('dvShotPlan', () => {
       'Shot 1 cites the first frame but does not continue the previous shot; set continue_previous or remove the citation.',
       'Shot 2 cites the first frame but does not continue the previous shot; set continue_previous or remove the citation.',
     ].join(' '))
-    // plan.update checks the same rules, also for a stored plan whose model left the catalog.
-    await fixture.record('plan.create', { references: [picture], shots: [ref('a')] })
-    const shots = [{ ...plain, prompt: 'b' }]
-    await fixture.record('plan.update', { plan: 'p1', shots })
-    removePlain()
-    const unknown = 'Shot 1 uses model video/t2v/test/plain, which is not in the model catalog; call dv_models_list for the models.'
-    await expect(fixture.record('plan.update', { plan: 'p1', shots })).rejects.toThrow(unknown)
+    // plan.update checks the same rules.
+    await expect(fixture.record('plan.update', { plan: 'p1', shots: [{ ...TXT, prompt: 'b', continue_previous: true }] })).rejects.toThrow(
+      'The plan cannot be rendered as written. Shot 1 uses task t2v, which takes no first frame; remove its continue_previous or use task ref2v.',
+    )
   })
 
   it('fails plans without shots, and refuses updates of unknown plans and unknown references', async () => {

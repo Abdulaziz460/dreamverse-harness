@@ -70,7 +70,7 @@ Every registration is inside `ctx.effect`, so disposal removes it. An operation 
 | `inputs`          | role → `{type, description, required?, many?, bible?}`; `bible: true` accepts `<id>@<version>`        |
 | `outputs`         | the roles of the assets `execute` returns, in order                                                   |
 | `summarize`       | one line for chat cards and canvas nodes, from a finished record                                      |
-| `confirm`         | `never`, `always` (`plan.approve`) or `over_gpu_budget` (`shot.render`); with `confirmSummary`        |
+| `confirm`         | `never`, `always` (`story.approve`) or `over_gpu_budget` (`shot.render`); with `confirmSummary`       |
 | `deterministic`   | true when the same params and inputs give the same outputs (the runner then reuses outputs)           |
 | `resource`        | `gpu`, `cpu` or `none`; `estimate(params)` for `gpu` operations                                       |
 | `readOnly`        | true for reads; no record, no confirmation, the answer is `report`                                    |

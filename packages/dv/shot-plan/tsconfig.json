@@ -18,13 +18,7 @@
       "path": "../../util/brand"
     },
     {
-      "path": "../models"
-    },
-    {
       "path": "../project"
-    },
-    {
-      "path": "../timeline"
     }
   ]
 }

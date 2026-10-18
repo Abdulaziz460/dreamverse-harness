@@ -48,8 +48,9 @@ describe('labels, thumbnails and times', () => {
       .toEqual(['新建分镜计划 p1', 'Create plan p1'])
     expect(actionLabel(record({ id: 'c', operation: 'plan.update', params: { plan: 'p1' }, report: { plan: 'p1', version: 2 } }), labels()))
       .toEqual(['修改分镜计划 p1 → v2', 'Update plan p1 → v2'])
+    // A workflow's registered row names the subject of its approval; a plan.approve record of an old log has none.
     expect(actionLabel(record({ id: 'd', operation: 'plan.approve', params: { plan: 'p1' }, report: { plan: 'p1', version: 2 } }), labels()))
-      .toEqual(['批准分镜计划 p1 v2', 'Approve plan p1 v2'])
+      .toEqual(['批准分镜计划', 'Approve plan'])
     expect(actionLabel(record({ id: 'tc', operation: 'timeline.create', params: { timeline: 't2' } }), labels())).toEqual(['新建时间线', 'Create timeline'])
     expect(actionLabel(record({ id: 'tu', operation: 'timeline.update', params: { timeline: 't2' } }), labels())).toEqual(['修改时间线', 'Update timeline'])
     expect(actionLabel(record({ id: 'g', component: 'bible', operation: 'bible.character_create', params: { character: 'c1', name: '阿明' } }), labels()))
@@ -73,13 +74,13 @@ describe('labels, thumbnails and times', () => {
     const rows: HistoryRow[] = [
       { match: 'timeline.', subject: () => [' 全部', ' all'] },
       { match: 'timeline.create', subject: () => [' t2', ' t2'] },
-      { match: 'plan.approve', subject: () => null },
+      { match: 'plan.update', subject: () => null },
     ]
     expect(actionLabel(record({ id: 'tc', operation: 'timeline.create', params: { timeline: 't2' } }), labels({ rows })))
       .toEqual(['新建时间线 t2', 'Create timeline t2'])
     expect(actionLabel(record({ id: 'tu', operation: 'timeline.update' }), labels({ rows }))).toEqual(['修改时间线 全部', 'Update timeline all'])
-    expect(actionLabel(record({ id: 'd', operation: 'plan.approve', report: { plan: 'p1', version: 2 } }), labels({ rows })))
-      .toEqual(['批准分镜计划', 'Approve plan'])
+    expect(actionLabel(record({ id: 'c', operation: 'plan.update', params: { plan: 'p1' }, report: { plan: 'p1', version: 2 } }), labels({ rows })))
+      .toEqual(['修改分镜计划', 'Update plan'])
   })
 
   it('shows an image first, a take\'s still for its video, a video frame without a still, and nothing for other files', () => {

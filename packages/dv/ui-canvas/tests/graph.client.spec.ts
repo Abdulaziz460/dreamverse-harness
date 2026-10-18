@@ -56,12 +56,11 @@ function rollbackProject(until?: string): WireState {
   const shots = (count: number, changed: Record<number, string> = {}): PlanVersion['shots'] =>
     Array.from({ length: count }, (_, index) => ({ prompt: changed[index + 1] ?? PROMPTS[index] ?? 'end', modality: 'video' as const, task: 'ref2v' as const, provider: 'fastvideo', model: 'fasth3' }))
   const versions: PlanVersion[] = [
-    { version: 1, shots: shots(6), created_by: 'q1', approved_by: 'a1' },
-    { version: 2, shots: shots(7, { 3: 'door, closer' }), created_by: 'q2', approved_by: 'a2' },
-    { version: 3, shots: shots(7, { 3: 'door, closer', 5: 'roof, wider' }), created_by: 'q3', approved_by: 'a3' },
-    { version: 4, shots: shots(6), created_by: 'q4', approved_by: 'a4' },
+    { version: 1, shots: shots(6), created_by: 'q1' },
+    { version: 2, shots: shots(7, { 3: 'door, closer' }), created_by: 'q2' },
+    { version: 3, shots: shots(7, { 3: 'door, closer', 5: 'roof, wider' }), created_by: 'q3' },
+    { version: 4, shots: shots(6), created_by: 'q4' },
   ].filter(version => ids.has(version.created_by))
-    .map(version => ({ ...version, approved_by: ids.has(version.approved_by) ? version.approved_by : null }))
   const clips = (kept.findLast(entry => entry.operation?.startsWith('timeline.') === true && entry.id.startsWith('l'))?.inputs ?? [])
     .map((input, index) => ({ id: `cl${String(index + 1)}`, asset: input.resolved_asset, source: null, in_sec: null, out_sec: null }))
   if (ids.has('k1') && !ids.has('l4')) clips[2] = { id: 'cl3', asset: 'r3.mp4', source: null, in_sec: null, out_sec: null }
@@ -234,7 +233,7 @@ describe('buildCanvasGraph', () => {
     // v4 written but not approved yet: the timeline still plays the v3 takes, so they stay with the retake x7 of the played
     // s7; v4 has no takes of its own.
     const pending = rollbackProject('q4')
-    expect(pending.components.plan.plans['p1']?.at(-1)?.approved_by).toBeNull()
+    expect(pending.components.proj.records.some(entry => entry.id === 'a4')).toBe(false)
     expect(drawn(pending).filter(([, kind]) => kind === 'take').map(([id]) => id)).toEqual(['r1', 'r2', 'r3', 'r4', 's7', 'x7', 'w5', 'r6'].sort(byRecordOrder))
   })
 

@@ -3,16 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Shot plan component of DreamVerse: plan.create and plan.update store a plan of shots, each with the key of its model in the model catalog, and plan.approve schedules one shot.render per new or changed shot with the shot's model, and the timeline.create or timeline.update of their clips.",
+  "description": "Shot plan component of DreamVerse: plan.create and plan.update store a plan of shots, each with the key of its model in the model catalog; a workflow plugin approves a plan version and renders its shots.",
   "exports": {
     ".": "./src/index.ts",
     "./package.json": "./package.json"
   },
   "dependencies": {
     "@deepseek-ai/dsh-brand": "workspace:*",
-    "@dv/models": "workspace:*",
-    "@dv/project": "workspace:*",
-    "@dv/timeline": "workspace:*"
+    "@dv/project": "workspace:*"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:~",
@@ -28,7 +26,6 @@
     "@deepseek-ai/schemastery": "workspace:~",
     "@dv/asset-pool": "workspace:*",
     "@dv/ffmpeg": "workspace:*",
-    "@dv/shot-render": "workspace:*",
     "@types/node": "^22.20.0"
   }
 }

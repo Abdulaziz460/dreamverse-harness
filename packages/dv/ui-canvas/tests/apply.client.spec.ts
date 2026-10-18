@@ -1,4 +1,4 @@
-/** The plugin's registrations, the `dvCanvas` service with the plan approval anchor, and their removal when the plugin goes. */
+/** The plugin's registrations, the `dvCanvas` service, and their removal when the plugin goes. */
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { SidebarRightTabRegistry } from '@deepseek-ai/dsh-client-ui-sidebar-right/src/client/tab-registry.ts'
@@ -6,7 +6,6 @@ import { DvClient } from '@dv/ui-kit/api.ts'
 import type { ChainAnchor } from '@dv/ui-kit/registries.ts'
 import { CanvasBody } from '../src/client/CanvasBody.tsx'
 import { CANVAS_ID, CANVAS_KIND } from '../src/client/definition.ts'
-import { planApprovalAnchor } from '../src/client/dv-canvas.ts'
 import { apply, inject } from '../src/client/index.ts'
 import { en, zh } from '../src/client/locales.ts'
 import { apply as hostApply } from '../src/index.ts'
@@ -66,15 +65,15 @@ describe('ui-canvas apply', () => {
     expect(Object.keys(en).sort()).toEqual(Object.keys(zh).sort())
   })
 
-  it('provides dvCanvas with the plan approval anchor, and its descriptors reach the tab body and leave on disposal', async () => {
+  it('provides dvCanvas with empty registries, and its descriptors reach the tab body and leave on disposal', async () => {
     const { ctx, registered } = await boot()
     expect(registered[0]?.inject().canvas).toBe(ctx.dvCanvas)
-    expect(ctx.dvCanvas.chainAnchors.list()).toEqual([planApprovalAnchor])
+    expect(ctx.dvCanvas.chainAnchors.list()).toEqual([])
     const anchor: ChainAnchor = { starter: 'story.approve', anchor: () => 'plan:p1' }
     const dispose = ctx.dvCanvas.chainAnchors.register(anchor)
-    expect(ctx.dvCanvas.chainAnchors.list()).toEqual([planApprovalAnchor, anchor])
+    expect(ctx.dvCanvas.chainAnchors.list()).toEqual([anchor])
     dispose()
-    expect(ctx.dvCanvas.chainAnchors.list()).toEqual([planApprovalAnchor])
+    expect(ctx.dvCanvas.chainAnchors.list()).toEqual([])
   })
 
   it('removes everything when the plugin is disposed', async () => {

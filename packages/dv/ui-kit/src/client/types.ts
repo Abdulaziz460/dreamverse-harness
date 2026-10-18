@@ -198,8 +198,6 @@ export interface PlanVersion {
   shots: Shot[]
   /** The `plan.create` or `plan.update` record that wrote the version. */
   created_by: string
-  /** The latest finished `plan.approve` record of the version; null while the version is not approved. */
-  approved_by: string | null
 }
 
 /** The `bible` slice: every version of every character, location and style, oldest first. */

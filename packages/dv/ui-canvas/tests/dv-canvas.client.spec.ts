@@ -1,8 +1,7 @@
-/** The canvas registries and the chain anchor of plan approvals. */
+/** The canvas registries. */
 import { describe, expect, it } from 'vitest'
 import type { NodeKind } from '@dv/ui-kit/registries.ts'
-import { fixtureState, record } from '../../ui-kit/tests/fixture.client.tsx'
-import { createDvCanvas, planApprovalAnchor } from '../src/client/dv-canvas.ts'
+import { createDvCanvas } from '../src/client/dv-canvas.ts'
 
 describe('createDvCanvas', () => {
   it('creates four empty registries, each refusing a second descriptor with the same key', () => {
@@ -19,28 +18,5 @@ describe('createDvCanvas', () => {
     const props = { kind: 'prop', node: (id: string) => `prop:${id}`, latest: () => [], name: () => null, assets: () => [] }
     canvas.versionKinds.register(props)
     expect(() => canvas.versionKinds.register({ ...props })).toThrow('registry key "prop"')
-  })
-})
-
-describe('planApprovalAnchor', () => {
-  it('hangs an approval off the node of its plan', () => {
-    const approval = record({ id: 'a1', operation: 'plan.approve', params: { plan: 'p1', version: 1 } })
-    expect(planApprovalAnchor.starter).toBe('plan.approve')
-    expect(planApprovalAnchor.anchor(approval)).toBe('plan:p1')
-  })
-
-  it('lists the versions of a plan whose approved_by names an approval', () => {
-    const state = fixtureState()
-    const shots: never[] = []
-    state.components.plan.plans = {
-      p1: [
-        { version: 1, shots, created_by: 'q1', approved_by: 'a1' },
-        { version: 2, shots, created_by: 'q2', approved_by: null },
-        { version: 3, shots, created_by: 'q3', approved_by: 'a3' },
-      ],
-    }
-    expect(planApprovalAnchor.approvedVersions?.(state, 'plan:p1')).toEqual([1, 3])
-    expect(planApprovalAnchor.approvedVersions?.(state, 'plan:p9')).toEqual([])
-    expect(planApprovalAnchor.approvedVersions?.(state, 'xxxxxp1')).toEqual([])
   })
 })

@@ -6,16 +6,22 @@ import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { assetUrl, DvClient } from '@dv/ui-kit/api.ts'
 import { DV_COMPOSE_EVENT } from '@dv/ui-kit/compose.ts'
 import type { DvComposeDetail } from '@dv/ui-kit/compose.ts'
-import type { DvCanvas } from '@dv/ui-kit/registries.ts'
+import type { ChainAnchor, DvCanvas } from '@dv/ui-kit/registries.ts'
 import type { WireOperation, WireState } from '@dv/ui-kit/types.ts'
 import { DV_ASSET_DRAG_TYPE, DV_CANVAS_FOCUS_EVENT } from '@dv/ui-kit/workspace-events.ts'
 import { asset, fixtureState, OPERATIONS, record, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
 import { CanvasView } from '../src/client/CanvasView.tsx'
-import { createDvCanvas, planApprovalAnchor } from '../src/client/dv-canvas.ts'
+import { createDvCanvas } from '../src/client/dv-canvas.ts'
 import { NODE_WIDTH } from '../src/client/graph.ts'
 import { EDITOR_RECT_KEY } from '../src/client/NodeEditor.tsx'
 import type { CanvasTranslate } from '../src/client/NodeCard.tsx'
 import { zh } from '../src/client/locales.ts'
+
+/** The chain anchor of the fixture's approval `a1`: it hangs the records it started off `plan:p1` and approved v1. */
+const APPROVAL: ChainAnchor = {
+  starter: 'plan.approve', anchor: record => `plan:${String(record.params['plan'])}`,
+  approvedVersions: (_state, anchorId) => anchorId === 'plan:p1' ? [1] : [],
+}
 
 afterEach(() => {
   cleanup()
@@ -98,7 +104,7 @@ describe('CanvasView', () => {
     await waitFor(() => { node('g1') })
     expect(edge()).toBeNull()
     let dispose = (): void => undefined
-    act(() => { dispose = canvas.chainAnchors.register(planApprovalAnchor) })
+    act(() => { dispose = canvas.chainAnchors.register(APPROVAL) })
     // The retake g3 keeps the chain of its root g1, so both read 镜头 1 and hang off plan:p1.
     await waitFor(() => { expect(edge()).not.toBeNull() })
     expect(view.container.querySelector('path[data-edge="plan:p1>g3"]')).not.toBeNull()
@@ -516,15 +522,15 @@ describe('CanvasView', () => {
 
   it('the plan editor marks a version replaced before approval as 已被第 {n} 版取代 and shows each shot\'s reference images', async () => {
     const canvas = createDvCanvas()
-    canvas.chainAnchors.register(planApprovalAnchor)
+    canvas.chainAnchors.register(APPROVAL)
     const { view, node } = mount(true, (state) => {
       const [v1] = state.components.plan.plans['p1'] ?? []
       if (v1 === undefined) throw new Error('fixture lacks plan p1')
       const v3 = {
-        ...v1, version: 3, approved_by: null, references: ['hero@1'],
+        ...v1, version: 3, references: ['hero@1'],
         shots: [{ prompt: '<Picture 1> walks in the rain', modality: 'video' as const, task: 'ref2v' as const, provider: 'fastvideo', model: 'fasth3' }, { prompt: 'the sky clears', modality: 'video' as const, task: 't2v' as const, provider: 'fastvideo', model: 'fasth3' }],
       }
-      state.components.plan.plans['p1'] = [v1, { ...v1, version: 2, approved_by: null }, v3]
+      state.components.plan.plans['p1'] = [v1, { ...v1, version: 2 }, v3]
     }, false, OPERATIONS, canvas)
     await waitFor(() => { node('plan:p1') })
     fireEvent.pointerDown(node('plan:p1'), { button: 0, clientX: 5, clientY: 5, pointerId: 1 })
@@ -551,15 +557,15 @@ describe('CanvasView', () => {
 
   it('the plan editor reads approval status from the union of the chain anchors\' approved versions until an anchor\'s disposal', async () => {
     const canvas = createDvCanvas()
-    const disposePlanAnchor = canvas.chainAnchors.register(planApprovalAnchor)
-    // A second anchor approves v2 of p1 from its own slice; the plan slice records only the approval of v1.
+    const disposePlanAnchor = canvas.chainAnchors.register(APPROVAL)
+    // A second anchor approves v2 of p1 from its own slice; the first approves only v1.
     const disposeTestAnchor = canvas.chainAnchors.register({
       starter: 'test.approve', anchor: () => 'plan:p1', approvedVersions: (_state, anchorId) => anchorId === 'plan:p1' ? [2] : [],
     })
     const { view, node } = mount(true, (state) => {
       const [v1] = state.components.plan.plans['p1'] ?? []
       if (v1 === undefined) throw new Error('fixture lacks plan p1')
-      state.components.plan.plans['p1'] = [v1, { ...v1, version: 2, approved_by: null }, { ...v1, version: 3, approved_by: null }]
+      state.components.plan.plans['p1'] = [v1, { ...v1, version: 2 }, { ...v1, version: 3 }]
     }, false, OPERATIONS, canvas)
     await waitFor(() => { node('plan:p1') })
     fireEvent.pointerDown(node('plan:p1'), { button: 0, clientX: 5, clientY: 5, pointerId: 1 })
@@ -572,7 +578,7 @@ describe('CanvasView', () => {
     expect(statuses()).toEqual([zh['editor.planApproved'], zh['editor.planApproved'], zh['editor.planPending']])
     act(() => { disposeTestAnchor() })
     expect(statuses()).toEqual([zh['editor.planApproved'], '已被第 3 版取代', zh['editor.planPending']])
-    // With no anchor left, the approved_by of v1 approves nothing.
+    // With no anchor left, no version is approved.
     act(() => { disposePlanAnchor() })
     expect(statuses()).toEqual(['已被第 2 版取代', '已被第 3 版取代', zh['editor.planPending']])
   })
@@ -583,7 +589,7 @@ describe('CanvasView', () => {
       if (v1 === undefined) throw new Error('fixture lacks plan p1')
       state.assets.push(asset('score.wav', 'audio/wav', null))
       state.components.plan.plans['p1'] = [{
-        ...v1, approved_by: null, references: ['shot1.mp4', 'hero@1'],
+        ...v1, references: ['shot1.mp4', 'hero@1'],
         shots: [{ prompt: '<Video 1> then <Picture 1>', modality: 'video' as const, task: 'ref2v' as const, provider: 'fastvideo', model: 'fasth3', references: ['shot1.mp4', 'hero@1', 'score.wav'] }],
       }]
     })

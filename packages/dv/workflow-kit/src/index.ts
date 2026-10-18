@@ -13,7 +13,7 @@
  * @module @dv/workflow-kit
  */
 import type { GenerationApi, GenerationCall } from '@dv/generation'
-import { formatModelKey } from '@dv/models'
+import { formatModelKey, modelKey } from '@dv/models'
 import type { ProjectId, ProjectRecord, ProjectState, RecordId, RecordOrigin, RunRequest, StartedBy } from '@dv/project'
 import type { ResolvedShot, Shot } from '@dv/shot-plan'
 import type DvTimeline from '@dv/timeline'
@@ -199,7 +199,7 @@ export function shotLine(step: WalkStep, shot: Shot): string {
   const duration = shot.duration_sec === undefined ? '' : `, ${String(shot.duration_sec)} s`
   const continues = step.continuePrevious ? ', continues from the previous shot' : ''
   const prompt = shot.prompt.length > PROMPT_PREVIEW ? `${shot.prompt.slice(0, PROMPT_PREVIEW)}…` : shot.prompt
-  return `shot ${String(step.slot)} (${formatModelKey(shot)}${duration}${continues}): ${prompt}`
+  return `shot ${String(step.slot)} (${formatModelKey(modelKey({ ...shot }))}${duration}${continues}): ${prompt}`
 }
 
 /**

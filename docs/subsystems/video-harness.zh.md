@@ -19,7 +19,7 @@ registry       @dv/project                records, the history list, undo and re
 components     @dv/asset-pool @dv/story-bible      chat references   @dv/chat-references   dv: mentions, chat images
                @dv/shot-plan @dv/shot-render
                @dv/timeline @dv/inspector
-  │ ctx.dvModels (Consumers: @dv/shot-render, @dv/shot-plan)
+  │ ctx.dvModels (Consumer: @dv/shot-render)
   ▼
 models         @dv/models                 the model catalog dvModels, dv_models_list, dv_models_get, video-model-selection
   ▲ register one entry per task a model serves
@@ -35,7 +35,7 @@ bundle         @dv/bundle                 the cordis.patch.yml rows of every pac
 | ------ | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 注册表    | [`@dv/project`](../../packages/dv/project/README.zh.md)                                                           | `dvProject` 服务：组件向它注册操作和归约函数，就像工具向 `ctx.tools` 注册一样。它是项目文件唯一的写入者，把每个操作变成一个 DSH 工具，并注册 `dv:project` 系统提示词段。                                              |
 | 组件     | `@dv/asset-pool`、`@dv/story-bible`、`@dv/shot-plan`、`@dv/shot-render`、`@dv/timeline`、`@dv/inspector`               | 各自拥有一项能力的插件：它的数据（一个状态切片及其归约函数）、它的操作，以及智能体读到的关于它们的文字。外部程序经 [`@dv/ffmpeg`](../../packages/dv/ffmpeg/README.zh.md) 运行。                                     |
-| 模型     | [`@dv/models`](../../packages/dv/models/README.zh.md)、[`@dv/fastvideo`](../../packages/dv/fastvideo/README.zh.md) | 模型目录：`@dv/models` 持有 `dvModels` Service Definition 以及 `PrimitiveTypes` 和 `TaskMap`，`@dv/fastvideo` 这样的提供方插件是 Service Provider，注册自己服务的模型，镜头渲染和分镜是 Consumer。 |
+| 模型     | [`@dv/models`](../../packages/dv/models/README.zh.md)、[`@dv/fastvideo`](../../packages/dv/fastvideo/README.zh.md) | 模型目录：`@dv/models` 持有 `dvModels` Service Definition 以及 `PrimitiveTypes` 和 `TaskMap`，`@dv/fastvideo` 这样的提供方插件是 Service Provider，注册自己服务的模型，镜头渲染是 Consumer。    |
 | API    | [`@dv/api`](../../packages/dv/api/README.zh.md)                                                                   | DSH `connection` 服务上的 Fetch 路由和 `webServer` 上的事件流；视图读取或修改项目的唯一途径。                                                                                       |
 | 对话引用   | [`@dv/chat-references`](../../packages/dv/chat-references/README.zh.md)                                           | `agent/pre-step` 和 `session/event` 上的监听器，把用户在对话消息中指向的东西变成项目 ID 和素材。                                                                                     |
 | 视图     | `@dv/ui-*`                                                                                                        | DSH Web 客户端的右侧栏标签类型和中央视图；`@dv/ui-kit` 是它们共用的库。                                                                                                          |
@@ -43,14 +43,14 @@ bundle         @dv/bundle                 the cordis.patch.yml rows of every pac
 
 组件用 `dvProject.registerOperation` 注册操作，用 `dvProject.registerReducer` 注册归约函数。每个操作同时是智能体工具 `dv_<操作名，点换成下划线>`，一次调用成为一条记录。素材库的 `dv_asset_import`、`dv_asset_grab_still` 和 `dv_asset_cut_segment` 添加素材，`dv_asset_place` 和 `dv_asset_unplace` 把素材放到画布上和从画布移除；设定库的 `dv_bible_*` 工具创建和更新角色、场景和风格的版本；分镜的 `dv_plan_create` 写入一个新分镜计划的版次 1，该计划得到一个 `PlanId`（`p1`、`p2`、…），`dv_plan_update` 写入 `plan` 参数所指计划的下一个版次；故事工作流的 `dv_story_preview` 报告批准一个版次会渲染什么、花费多少，`dv_story_approve` 批准它；镜头渲染的 `dv_shot_render` 按调用指定的[模型](#model-catalog)渲染镜头的一个版本，`duration_sec` 是该模型范围内的整秒数（默认为模型的最小值）；时间线的 `dv_timeline_*` 工具创建、更新、重命名和删除时间线，并插入、移动、移除、拆分、裁剪和替换片段，不创建文件，它的 `dv_timeline_export` 把一条时间线写成一个视频；检查器的 `dv_inspect_image` 和 `dv_inspect_asset` 读取素材，不写记录。项目组件自己的 `dv_proj_*` 工具创建和打开项目、读取状态和历史、撤销、接受过期记录，以及等待排定的记录。操作声明资源类别（`none`、`cpu`、`gpu`）和确认策略（`never`、`always`、`over_gpu_budget`；见[在对话中确认](#confirmation-in-the-conversation)）；项目组件的调度器按类别并发上限运行排定的记录。
 
-批准分镜计划时，以 `system` 发起者为所批准版次中每个新增或改动的镜头运行一次 `shot.render`，带该镜头的 `modality`、`task`、`provider` 和 `model`，以及参数 `plan`、`plan_version` 和 `shot`（镜头从 1 起的位置，镜头在各版次间保持这个编号）。若当前状态中同一计划有一条 `shot.render` 的 `done` 记录，其参数除 `plan`、`plan_version` 和 `shot` 外相同，参考素材输入相同，首帧也相同，则该镜头未改动；批准复用最新的这样一个版本而不渲染。随后它对该计划的时间线（最新的创建或修改记录指向该计划的那条时间线）运行一次 `timeline.update`，按镜头顺序放入每个镜头的版本，计划还没有时间线时则运行一次 `timeline.create`；渲染尚未完成的镜头先显示为占位片段，直到渲染完成。批准在 `report.scheduled` 中列出排定的记录。片段有一个 `ClipId`（`cl1`、`cl2`、…），由插入它的时间线操作分配并存入记录的 `report.clips`；该 ID 在项目内唯一、从不复用，每个片段操作都用 `clip` 参数按它指定片段。
+分镜计划的批准属于工作流插件，例如 [`@dv/workflow-story`](../../packages/dv/workflow-story/README.zh.md) 的 `story.approve`。它以 `system` 发起者为所批准版次中每个不沿用版本的镜头运行一次 `shot.render`，带该镜头的 `modality`、`task`、`provider` 和 `model`；它写下的每条记录都带 `started_by`，指向该批准记录，渲染记录还以镜头从 1 起的位置作为 `slot`。镜头沿用参数和输入都相同、且所在链始于同一工作流对同一计划的批准的最新 done 版本。随后 `dvTimeline.layout` 按镜头顺序把每个镜头的版本排进一条时间线；渲染尚未完成的镜头先显示为占位片段，直到渲染完成。批准在 `report.scheduled` 中列出排定的记录。片段有一个 `ClipId`（`cl1`、`cl2`、…），由插入它的时间线操作分配并存入记录的 `report.clips`；该 ID 在项目内唯一、从不复用，每个片段操作都用 `clip` 参数按它指定片段。
 
 <a id="model-catalog"></a>
 ## 模型目录
 
-模型目录是 [`@dv/models`](../../packages/dv/models/README.zh.md) 的 `dvModels` 服务，它是一个能力 seam，其 Service Provider 是提供方插件（如 [`@dv/fastvideo`](../../packages/dv/fastvideo/README.zh.md)），其 Consumer 包括 `@dv/shot-render` 和 `@dv/shot-plan`。每个镜头用其 `modality`、`task`、`provider` 和 `model` 所指定的模型目录条目渲染；[`@dv/models` README](../../packages/dv/models/README.zh.md) 定义键、条目、渲染请求、智能体工具，以及添加提供方、模型或服务器的步骤。
+模型目录是 [`@dv/models`](../../packages/dv/models/README.zh.md) 的 `dvModels` 服务，它是一个能力 seam，其 Service Provider 是提供方插件（如 [`@dv/fastvideo`](../../packages/dv/fastvideo/README.zh.md)），其 Consumer 包括 `@dv/shot-render`。每个镜头用其 `modality`、`task`、`provider` 和 `model` 所指定的模型目录条目渲染；[`@dv/models` README](../../packages/dv/models/README.zh.md) 定义键、条目、渲染请求、智能体工具，以及添加提供方、模型或服务器的步骤。
 
-`shot.render` 的 precondition 对每个调用方都拒绝：不在模型目录中的模型键、缺少提示词、超出条目事实的参数、多于一个的首帧，以及条目拒绝的渲染请求。每个条目的 `validateGenerationRequest(request)` 负责模型的请求规则，例如输入接受的媒体类型和数量（`fasth3` 在生成任务 `ref2v` 下至少一个参考素材）、模型不接受的首帧，以及无效的 `extra` 值；`shot.render` 组装请求，在写入记录前和真正渲染前各调用一次，自己不检查任何模型规则。分镜计划的每个镜头写明自己的 `modality`、`task`、`provider` 和 `model`；生成任务为 `ref2v` 的镜头使用自己的参考素材，没有时使用计划的参考素材，`continue_previous: true` 让该镜头从上一个镜头的最后一张静帧开始。`plan.create` 和 `plan.update` 拒绝键不在模型目录中的镜头、生成任务不是 `ref2v` 却带参考素材的镜头，以及镜头 1 上或生成任务不是 `ref2v` 的镜头上的 `continue_previous`。
+`shot.render` 的 precondition 对每个调用方都拒绝：不在模型目录中的模型键、缺少提示词、超出条目事实的参数、多于一个的首帧，以及条目拒绝的渲染请求。每个条目的 `validateGenerationRequest(request)` 负责模型的请求规则，例如输入接受的媒体类型和数量（`fasth3` 在生成任务 `ref2v` 下至少一个参考素材）、模型不接受的首帧，以及无效的 `extra` 值；`shot.render` 组装请求，在写入记录前和真正渲染前各调用一次，自己不检查任何模型规则。分镜计划的每个镜头写明自己的 `modality`、`task`、`provider` 和 `model`；生成任务为 `ref2v` 的镜头使用自己的参考素材，没有时使用计划的参考素材，`continue_previous: true` 让该镜头从上一个镜头的最后一张静帧开始。`plan.create` 和 `plan.update` 拒绝生成任务不是 `ref2v` 却带参考素材的镜头，以及镜头 1 上或生成任务不是 `ref2v` 的镜头上的 `continue_previous`。
 
 ## 操作记录
 
@@ -217,7 +217,7 @@ DreamVerse 的新行为挂在某个包已拥有的扩展点上，就像 DeepSeek
 | task             | 生成方式 / Mode           | 一次渲染由哪些输入产出什么：`ref2v`（参考图生成 / From references：提示词、参考素材和可选的首帧）或 `t2v`（文字生成 / From text：只有提示词）。`TaskMap` 把每个生成任务映射到它的原语。                      |
 | modality         | —                     | 生成任务产出的输出种类，如 `video`：某个 `PrimitiveTypes` 行的 `modality`。                                                                                     |
 | provider plugin  | —                     | 以自己的提供方名称把一个提供方的模型注册进模型目录的插件，如提供方为 `fastvideo` 的 `@dv/fastvideo`。                                                                           |
-| capability seam  | —                     | 一项可替换的能力，有三种角色：Service Definition（`@dv/models`）、Service Provider（`@dv/fastvideo` 这样的提供方插件）和 Consumer（`@dv/shot-render`、`@dv/shot-plan`）。    |
+| capability seam  | —                     | 一项可替换的能力，有三种角色：Service Definition（`@dv/models`）、Service Provider（`@dv/fastvideo` 这样的提供方插件）和 Consumer（`@dv/shot-render`）。                    |
 | turn             | 轮次 / Turn             | 智能体从一条用户消息到它的回复的一次运行；记录用 DSH 轮次编号指出它。                                                                                                       |
 | current state    | 当前 / Current          | 当前位置处的状态；每个视图显示它。                                                                                                                           |
 | current position | 当前 / Current          | 历史列表中项目显示其状态的那一步；撤销、重做和 回到这一步 移动它，新的一步接在它之后。                                                                                                |
