@@ -8,6 +8,7 @@
  * @module @dv/ui-kit/registries
  */
 import type {} from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/dsh-client-ui-slots'
 import type { ProjectRecord, WireState } from './types.ts'
 
 /** A list of descriptors that plugins add and remove, with one owner per key. */
@@ -144,5 +145,12 @@ declare module '@deepseek-ai/cordis' {
   interface Context {
     dvCanvas: DvCanvas
     dvHistory: DvHistory
+  }
+}
+
+declare module '@deepseek-ai/dsh-client-ui-slots' {
+  interface SlotMap {
+    /** The editor body of the nodes of one `NodeKind`, keyed by its `id`; `@dv/ui-canvas` renders it in a node's editor. */
+    'dv.canvas.editor': { kind: 'keyed'; scope: 'root'; owner: { node: NodeSeed; state: WireState } }
   }
 }

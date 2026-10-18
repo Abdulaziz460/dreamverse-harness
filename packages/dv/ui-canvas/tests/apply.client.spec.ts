@@ -15,6 +15,7 @@ interface Recorded {
   key: string
   locale: string
   inject: () => { client: unknown; canvas: unknown }
+  children?: object
   component: unknown
 }
 
@@ -62,6 +63,8 @@ describe('ui-canvas apply', () => {
     expect(dictionaries.get('dvCanvas')).toEqual({ zh, en })
     expect(registered.map(entry => [entry.name, entry.key, entry.locale, entry.component])).toEqual([['sidebar.right.pane.tab', CANVAS_ID, 'dvCanvas', CanvasBody]])
     expect(registered[0]?.inject().client).toBeInstanceOf(DvClient)
+    // The body declares the slot of the seed editors, which plugin UI halves fill by `NodeKind.id`.
+    expect(registered[0]?.children).toEqual({ 'dv.canvas.editor': { kind: 'keyed', scope: 'root' } })
     expect(Object.keys(en).sort()).toEqual(Object.keys(zh).sort())
   })
 

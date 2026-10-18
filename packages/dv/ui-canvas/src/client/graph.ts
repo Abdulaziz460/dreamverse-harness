@@ -1,14 +1,15 @@
 /**
  * Canvas nodes and edges derived from a project state. The canvas shows the project's current state only: a
  * node is an item a creator works with now: a character, a location or a style at its current version, an imported asset
- * on the project's canvas list (see {@link buildCanvasGraph}), a plan at its latest version, and the generation records
- * that make up the current state: the takes of the newest chain on each anchor node, every take without an anchored
- * chain, and every take whose outputs are in use. Deterministic edits (still grabs, timeline records) do not become
- * nodes; a timeline trim shows as a badge on the take it shortened.
+ * on the project's canvas list (see {@link buildCanvasGraph}), a plan at its latest version, each node that a registered
+ * `NodeKind` draws from its own slice, and the generation records that make up the current state: the takes of the
+ * newest chain on each anchor node, every take without an anchored chain, and every take whose outputs are in use.
+ * Deterministic edits (still grabs, timeline records) do not become nodes; a timeline trim shows as a badge on the take
+ * it shortened.
  */
 import { chainOf } from '@dv/ui-kit/chain.ts'
 import type { DvLanguage } from '@dv/ui-kit/locale.ts'
-import type { ChainAnchor, TakesInUse } from '@dv/ui-kit/registries.ts'
+import type { ChainAnchor, NodeKind, NodeSeed, TakesInUse } from '@dv/ui-kit/registries.ts'
 import type {
   Character, Clip, Location, NodePosition, PlanVersion, ProjectRecord, RecordInput, StoryBibleState, Style, WireState,
   WireOperation,
@@ -16,8 +17,8 @@ import type {
 import { versionRefOf } from '@dv/ui-kit/references.ts'
 import { isGenerationOperation, isGenerationRecord } from '@dv/ui-kit/state.ts'
 
-/** What a node represents; the canvas colors nodes by it. */
-export type CanvasNodeKind = 'bible' | 'asset' | 'plan' | 'take'
+/** What a node represents; the canvas colors nodes by it. A `seed` node is a node that a registered `NodeKind` drew. */
+export type CanvasNodeKind = 'bible' | 'asset' | 'plan' | 'take' | 'seed'
 
 /** The story bible kinds a `bible` node can stand for. */
 export type BibleKind = 'character' | 'location' | 'style'
@@ -34,11 +35,10 @@ export interface CanvasNodeFlags {
   superseded: boolean
 }
 
-/** One canvas node. */
-export interface CanvasNode {
-  /** `bible:<id>` for characters, locations and styles, `plan:<PlanId>` for plans, else the record ID. */
+/** The fields of every canvas node. */
+interface CanvasNodeFields {
+  /** `bible:<id>` for characters, locations and styles, `plan:<PlanId>` for plans, the seed's ID for a seed, else the record ID. */
   id: string
-  kind: CanvasNodeKind
   /** For story bible nodes, whether the node is a character, a location or a style. */
   bibleKind?: BibleKind
   /** For story bible nodes, the character, location or style ID. */
@@ -51,12 +51,12 @@ export interface CanvasNode {
   subtitle: string
   /** An image asset shown as the thumbnail; null for story bible nodes, which show {@link CanvasNode.references}. */
   thumb: string | null
-  /** For story bible nodes, the image and video references of the current version in order; empty for other nodes. */
+  /** For story bible and seed nodes, the images and videos the node shows, in order; empty for other nodes. */
   references: string[]
-  /** A video or audio asset the editor plays; for a story bible node, its first reference when that reference is a video. */
+  /** A video or audio asset the editor plays; for a story bible or seed node, its first reference when it is a video. */
   video: string | null
   durationSec: number | null
-  /** The record behind the node; for story bible and plan nodes, the record that wrote the latest version. */
+  /** The record behind the node; for story bible, plan and seed nodes, the record that wrote the shown version. */
   record: ProjectRecord | null
   flags: CanvasNodeFlags
   /** Short labels of deterministic edits applied to the node's asset, such as `trim`. */
@@ -69,6 +69,12 @@ export interface CanvasNode {
   x: number
   y: number
 }
+
+/** One canvas node; a `seed` node carries the registered `NodeKind` that drew it and the seed it drew. */
+export type CanvasNode = CanvasNodeFields & (
+  | { kind: Exclude<CanvasNodeKind, 'seed'> }
+  | { kind: 'seed'; nodeKind: NodeKind; seed: NodeSeed }
+)
 
 /** The anchored chain of a take: the record that started it, the node that record hangs it off, its slot and lane. */
 export interface AnchoredChain {
@@ -261,7 +267,8 @@ export function bibleVersions(state: WireState, id: string): Character[] | Locat
 
 /**
  * The canvas graph of a project state, with a default layout: story bible items and assets in column 0, plans in
- * column 1, takes from column 2 rightwards by first-frame chain depth, retakes in their source take's column.
+ * column 1, the seeds of each registered `NodeKind` in its `column`, takes from column 2 rightwards by first-frame chain
+ * depth, retakes in their source take's column. A seed's media belong to its node, as a story bible item's references do.
  * Every image or video on the project's canvas (`placed`) gets one node, unless a story bible node (a reference image) or
  * a take node (a take output) already shows it: drawn from its first `asset.import` record of the current state when
  * there is one, else as `asset:<id>` with no record (an import that an undo went back past, a still, an export). A take that
@@ -274,12 +281,13 @@ export function bibleVersions(state: WireState, id: string): Character[] | Locat
  * @param language - the language of the operation labels.
  * @param anchors - the registered chain anchors; none by default, so every take is a free take.
  * @param inUse - the registered `TakesInUse` descriptors, whose records are drawn.
+ * @param nodeKinds - the registered node kinds, whose seeds are drawn.
  * @returns the nodes and edges.
  */
 export function buildCanvasGraph(
   state: WireState, placed: ReadonlySet<string> = new Set(state.components.asset.placed),
   operations: readonly WireOperation[] = [], language: DvLanguage = 'zh',
-  anchors: readonly ChainAnchor[] = [], inUse: readonly TakesInUse[] = [],
+  anchors: readonly ChainAnchor[] = [], inUse: readonly TakesInUse[] = [], nodeKinds: readonly NodeKind[] = [],
 ): CanvasGraph {
   const proj = state.components.proj
   const assets = new Map(state.assets.map(asset => [asset.id, asset]))
@@ -308,13 +316,14 @@ export function buildCanvasGraph(
   const takes = drawnTakes(state, isRender, chains, used)
   // The import node of each drawn imported asset.
   const importNodes = new Map<string, string>()
-  // A reference image of a character, location or style belongs to that node, so its import is not drawn twice.
-  const bibleOfAsset = new Map<string, string>()
+  // A reference image of a character, location or style, or a seed's media, belongs to that node, so its import is not
+  // drawn twice.
+  const mediaNode = new Map<string, string>()
   for (const { kind, id: bibleId, versions } of bibleItems(state)) {
     const latest = versions.at(-1)
     if (latest === undefined) continue
     const id = `bible:${bibleId}`
-    for (const version of versions) for (const reference of version.references) bibleOfAsset.set(reference, id)
+    for (const version of versions) for (const reference of version.references) mediaNode.set(reference, id)
     const record = records.get(latest.created_by) ?? null
     const references = latest.references.filter(reference => isImage(reference) || isVideo(reference))
     const first = references[0]
@@ -332,12 +341,25 @@ export function buildCanvasGraph(
       durationSec: null, record, flags: flagsOf(record), badges: [], take: null, x: 0, y: 0,
     })
   }
+  // One node per seed of each registered node kind, drawn by the core with the default card.
+  for (const nodeKind of nodeKinds) {
+    for (const seed of nodeKind.nodes(state)) {
+      for (const media of seed.media) mediaNode.set(media, seed.id)
+      const references = seed.media.filter(media => isImage(media) || isVideo(media))
+      const first = references[0]
+      nodes.push({
+        id: seed.id, kind: 'seed', nodeKind, seed, title: seed.title, subtitle: seed.subtitle ?? '', thumb: null, references,
+        video: first !== undefined && isVideo(first) ? first : null, durationSec: null, record: seed.record,
+        flags: flagsOf(seed.record), badges: [], take: null, x: 0, y: 0,
+      })
+    }
+  }
   for (const record of proj.records) {
     const label = labels.get(record.operation ?? '') ?? record.operation ?? undefined
     if (record.operation === 'asset.import') {
       // An import off the canvas stays in the asset pool only.
       const imported = record.outputs.find(id => isImage(id) || isVideo(id))
-      if (imported === undefined || !placed.has(imported) || bibleOfAsset.has(imported) || importNodes.has(imported)) continue
+      if (imported === undefined || !placed.has(imported) || mediaNode.has(imported) || importNodes.has(imported)) continue
       importNodes.set(imported, record.id)
       nodes.push({
         id: record.id, kind: 'asset', title: assets.get(imported)?.name ?? imported, subtitle: '', thumb: isImage(imported) ? imported : null, references: [],
@@ -363,7 +385,7 @@ export function buildCanvasGraph(
   // output) gets its own node, `asset:<id>`, with no record.
   const shownByTake = new Set(nodes.flatMap(node => node.kind === 'take' ? node.record?.outputs ?? [] : []))
   for (const assetId of placed) {
-    const shown = bibleOfAsset.has(assetId) || importNodes.has(assetId) || shownByTake.has(assetId)
+    const shown = mediaNode.has(assetId) || importNodes.has(assetId) || shownByTake.has(assetId)
     if (!(isImage(assetId) || isVideo(assetId)) || shown) continue
     const id = `asset:${assetId}`
     importNodes.set(assetId, id)
@@ -374,10 +396,10 @@ export function buildCanvasGraph(
     })
   }
   const nodeIds = new Set(nodes.map(node => node.id))
-  /** The node an asset comes from: its story bible node, its import node, or the nearest drawn record up its producer chain. */
+  /** The node an asset comes from: its story bible or seed node, its import node, or the nearest drawn record up its producer chain. */
   const nodeOfAsset = (assetId: string | null, depth = 0): string | null => {
     if (assetId === null) return null
-    const own = bibleOfAsset.get(assetId) ?? importNodes.get(assetId)
+    const own = mediaNode.get(assetId) ?? importNodes.get(assetId)
     if (own !== undefined) return own
     const producer = proj.created_by[assetId]
     if (producer === undefined || depth > 16) return null
@@ -399,7 +421,7 @@ export function buildCanvasGraph(
   }
   for (const node of nodes) {
     const record = node.record
-    if (record === null || node.kind === 'bible') continue
+    if (record === null || node.kind === 'bible' || node.kind === 'seed') continue
     for (const input of record.inputs) {
       const bibleId = versionRefOf(input.ref)?.id
       const from = bibleId !== undefined && nodeIds.has(`bible:${bibleId}`) ? `bible:${bibleId}` : nodeOfAsset(input.resolved_asset)
@@ -490,9 +512,9 @@ function addBadges(state: WireState, nodes: CanvasNode[], nodeOfAsset: (assetId:
 }
 
 /**
- * Assign default positions in place. Each column kind (assets, plans, takes by first-frame depth) wraps into
- * several sub-columns once it holds more nodes than the shared row count, so a long shot list forms a block that fits
- * the screen. A retake sits right after its source take in the same column.
+ * Assign default positions in place. Each column (assets, plans, seeds by their `NodeKind.column`, takes by first-frame
+ * depth) wraps into several sub-columns once it holds more nodes than the shared row count, so a long shot list forms a
+ * block that fits the screen. A retake sits right after its source take in the same column.
  * @param nodes - the nodes.
  * @param edges - the edges, used for first-frame depth and retake columns.
  */
@@ -503,7 +525,7 @@ function layout(nodes: CanvasNode[], edges: CanvasEdge[]): void {
   const columnOf = (node: CanvasNode, depth = 0): number => {
     const known = column.get(node.id)
     if (known !== undefined) return known
-    let value = node.kind === 'plan' ? 1 : node.kind === 'take' ? 2 : 0
+    let value = node.kind === 'seed' ? node.nodeKind.column : node.kind === 'plan' ? 1 : node.kind === 'take' ? 2 : 0
     if (node.kind === 'take' && depth < 64) {
       const base = incoming(node.id, 'take')[0]
       const baseNode = base === undefined ? undefined : nodes.find(candidate => candidate.id === base)

@@ -16,11 +16,13 @@
  * 第 2 版, …) and shows the chosen version's approval status (from the approved versions that the registered chain
  * anchors report for the node), its reference assets, and one card per shot with exactly
  * what the plan holds: duration, model and task, reference assets, whether the shot continues the previous shot, and the
- * full prompt with each `Picture N` drawn as its image. A stale node offers "仍然保留", which keeps its record as it is
- * (`proj.stale_accept`).
+ * full prompt with each `Picture N` drawn as its image. A seed (a node that a registered `NodeKind` drew) shows the
+ * `dv.canvas.editor` entry keyed by its `NodeKind.id`, and only the header when no entry is registered or the host
+ * renders no entries. A stale node offers "仍然保留", which keeps its record as it is (`proj.stale_accept`).
  */
 import { memo, useLayoutEffect, useRef, useState } from 'react'
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
+import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import { assetUrl } from '@dv/ui-kit/api.ts'
 import type { DvClient } from '@dv/ui-kit/api.ts'
 import { dispatchCompose, type DvComposeRef } from '@dv/ui-kit/compose.ts'
@@ -35,8 +37,11 @@ import type { OperationRequest, PlanVersion, ProjectAsset, Shot, WireOperation, 
 import { AssetMedia, AssetPicker, AssetPreview } from './AssetPicker.tsx'
 import { bibleVersions } from './graph.ts'
 import type { CanvasNode } from './graph.ts'
-import { KIND_COLOR, kindLabel, mono, nodeTitle, planTotalSec } from './NodeCard.tsx'
+import { kindColor, kindLabel, mono, nodeTitle, planTotalSec } from './NodeCard.tsx'
 import type { CanvasTranslate } from './NodeCard.tsx'
+
+/** Renders a `dv.canvas.editor` entry: the `renderSlot` of the slot entry that declares `dv.canvas.editor`. */
+export type RenderEditor = PropsRenderSlots<'dv.canvas.editor'>['renderSlot']
 
 /** Props of {@link NodeEditor}. */
 export interface NodeEditorProps {
@@ -67,6 +72,8 @@ export interface NodeEditorProps {
   onOpenNode: (nodeId: string) => void
   /** The zoom transition's ref for the panel, which grows out of the node and shrinks back into it. */
   zoomRef: (element: HTMLElement | null) => void
+  /** Renders the `dv.canvas.editor` entry of a seed; a seed shows only its header without it. */
+  renderEditor?: RenderEditor
 }
 
 /** The editor panel's position and size in px, relative to the canvas area's top-left corner. */
@@ -453,6 +460,9 @@ export function NodeEditor(props: NodeEditorProps): ReactNode {
     case 'bible': body = <BibleForm {...props} />; break
     case 'plan': body = plan === undefined ? null : <PlanShots plan={plan} state={props.state} t={t} taskLabels={props.taskLabels} />; break
     case 'asset': body = <AssetPanel node={node} t={t} onRemoveFromCanvas={props.onRemoveFromCanvas} />; break
+    case 'seed':
+      body = props.renderEditor?.('dv.canvas.editor', { node: node.seed, state: props.state }, { entryKey: node.nodeKind.id })
+      break
   }
   const { panelRef, rect, begin, follow, finish, reset, resizeBy } = placement
   const gestureHandlers = { onPointerMove: follow, onPointerUp: finish, onPointerCancel: finish }
@@ -475,7 +485,7 @@ export function NodeEditor(props: NodeEditorProps): ReactNode {
           onDoubleClick={(event) => { if (!(event.target instanceof Element && event.target.closest('button') !== null)) reset() }}
         >
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, lineHeight: '16px', color: 'var(--dv-text-2)' }}>
-            <span style={{ width: 6, height: 6, borderRadius: 9999, background: KIND_COLOR[node.kind] }} />
+            <span style={{ width: 6, height: 6, borderRadius: 9999, background: kindColor(node) }} />
             {kind === title ? null : kind}
           </span>
           <h2 style={{ flex: 1, minWidth: 0, margin: 0, fontSize: 16, lineHeight: '24px', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</h2>

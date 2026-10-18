@@ -1,6 +1,6 @@
 /**
  * Browser half: provide `dvCanvas`, the registries that plugin UI halves fill; register `dv-canvas` as a right-Sidebar
- * tab type, its dictionaries, and its body.
+ * tab type, its dictionaries, and its body, which declares the `dv.canvas.editor` slot of the seed editors.
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
@@ -34,7 +34,10 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-canvas: dictionaries')
   const injected: CanvasInjected = { client: new DvClient(), canvas }
   ctx.effect(() => ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register(
-    { name: 'sidebar.right.pane.tab', key: CANVAS_ID, locale: NS, inject: () => injected },
+    {
+      name: 'sidebar.right.pane.tab', key: CANVAS_ID, locale: NS, inject: () => injected,
+      children: { 'dv.canvas.editor': { kind: 'keyed', scope: 'root' } },
+    },
     CanvasBody,
   )), 'ui-canvas: tab body')
 }

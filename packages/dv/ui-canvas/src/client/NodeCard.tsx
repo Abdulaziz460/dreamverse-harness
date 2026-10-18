@@ -1,10 +1,12 @@
 /**
  * One canvas node as a card on the `--dv-*` theme variables. Every card has a kind dot: pink for characters, locations,
- * styles and imported assets, orange for plans, teal for takes. A take or an imported asset shows a header row (dot,
- * title, duration) above its 16:9 frame at full card width; a failed take is a compact danger row instead of a frame. A
- * finished take that the user has not opened yet shows an accent dot in its header row. A
- * story bible card shows a 40 × 40 reference image beside its kind and name. A plan card shows its version, a mini grid
- * of its shots' frames when any shot has one, and its shot count and total duration.
+ * styles and imported assets, orange for plans, teal for takes, and the `NodeKind` color for a seed. A take or an
+ * imported asset shows a header row (dot, title, duration) above its 16:9 frame at full card width; a failed take is a
+ * compact danger row instead of a frame. A finished take that the user has not opened yet shows an accent dot in its
+ * header row. A story bible card shows a 40 × 40 reference image beside its kind and name. A plan card shows its
+ * version, a mini grid of its shots' frames when any shot has one, and its shot count and total duration. A seed draws
+ * the default card: its kind label and subtitle, then a seed with slots shows the frame grid and its title, as a plan card
+ * does, and any other seed shows its first media at 40 × 40 and its title, as a story bible card does.
  */
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-locale/client'
@@ -12,15 +14,23 @@ import { assetUrl } from '@dv/ui-kit/api.ts'
 import { clockText } from '@dv/ui-kit/timeline.ts'
 import type { PlanVersion, Shot } from '@dv/ui-kit/types.ts'
 import { NODE_WIDTH } from './graph.ts'
-import type { CanvasNode, SlotFrame } from './graph.ts'
+import type { CanvasNode, CanvasNodeKind, SlotFrame } from './graph.ts'
 import type {} from './locales.ts'
 
 /** The canvas namespace translate. */
 export type CanvasTranslate = TranslateNS<'dvCanvas'>
 
-/** The kind dot color of each node kind. */
-export const KIND_COLOR: Record<CanvasNode['kind'], string> = {
+/** The kind dot color of each node kind of the core; a seed takes the color of its `NodeKind`. */
+const KIND_COLOR: Record<Exclude<CanvasNodeKind, 'seed'>, string> = {
   bible: 'var(--dv-kind-character)', asset: 'var(--dv-kind-character)', plan: 'var(--dv-kind-plan)', take: 'var(--dv-kind-take)',
+}
+
+/**
+ * @param node - the node.
+ * @returns the color of its kind dot.
+ */
+export function kindColor(node: CanvasNode): string {
+  return node.kind === 'seed' ? node.nodeKind.color : KIND_COLOR[node.kind]
 }
 
 /**
@@ -51,6 +61,7 @@ export function kindLabel(node: CanvasNode, t: CanvasTranslate): string {
     case 'asset': return t('node.asset')
     case 'plan': return t('node.plan')
     case 'take': return t('node.takeKind')
+    case 'seed': return node.seed.label ?? node.nodeKind.label()
   }
 }
 
@@ -62,7 +73,7 @@ const FRAME_HEIGHT = Math.round(NODE_WIDTH * 9 / 16)
 /**
  * The approximate rendered height of a card at its base text size, used to anchor edges and to center a focused node.
  * @param node - the node.
- * @param hasFrames - for a plan node, whether its mini grid shows.
+ * @param hasFrames - for a plan node or a seed with slots, whether its mini grid shows.
  * @returns the height in canvas units.
  */
 export function nodeHeight(node: CanvasNode, hasFrames = false): number {
@@ -71,6 +82,7 @@ export function nodeHeight(node: CanvasNode, hasFrames = false): number {
     case 'asset': return HEADER_HEIGHT + FRAME_HEIGHT
     case 'bible': return 60
     case 'plan': return hasFrames ? 140 : 76
+    case 'seed': return node.seed.slots === undefined ? 60 : hasFrames ? 140 : 76
   }
 }
 
@@ -86,7 +98,7 @@ export interface NodeCardProps {
   onPointerDown: (event: ReactPointerEvent<HTMLDivElement>) => void
   /** For a plan node, the plan's latest version. */
   plan?: PlanVersion
-  /** For a plan node, the frame of each shot of the latest version; null for a shot without one. */
+  /** For a plan node or a seed with slots, the frame of each slot; null for a slot without one. */
   frames?: Array<SlotFrame | null>
   /** For a failed take, renders it again; omitted when the canvas is read-only. */
   onRetry?: () => void
@@ -153,7 +165,7 @@ export function NodeCard(
   let marker: string | null = null
   if (flags.rendering) marker = take ? t('node.rendering') : t('node.running')
   else if (flags.failed) marker = take ? t('node.renderFailed') : t('node.failed')
-  const dot = <span style={{ flex: 'none', width: size(6), height: size(6), borderRadius: 9999, background: KIND_COLOR[node.kind] }} />
+  const dot = <span style={{ flex: 'none', width: size(6), height: size(6), borderRadius: 9999, background: kindColor(node) }} />
   const stale = flags.stale ? <span style={{ ...text(12), flex: 'none', color: 'var(--dv-danger)' }}>{t('node.stale')}</span> : null
   // Deterministic-edit badges, such as 已裁剪: over the frame's bottom-left corner, or a row under a card without a frame.
   const badges = (overFrame: boolean): ReactNode => node.badges.length === 0
@@ -163,6 +175,10 @@ export function NodeCard(
         {node.badges.map(badge => <span key={badge} style={{ ...text(12), padding: '0 6px', borderRadius: 'var(--dv-radius-sm)', background: 'var(--dv-surface-3)', color: 'var(--dv-text-2)' }}>{badge === 'trim' ? t('badge.trim') : badge}</span>)}
       </span>
     )
+  // The kind label beside the dot, followed by a seed's subtitle or a plan's version.
+  let header = kindLabel(node, t)
+  if (node.kind === 'seed' && node.subtitle !== '') header = `${header} · ${node.subtitle}`
+  if (plan !== undefined) header = `${header} · ${t('node.planVersion', { version: plan.version })}`
   let body: ReactNode
   if (failedTake) {
     // A failed take has no frame: a compact row with the failure, the reason on hover, and 重试 when it can render again.
@@ -190,7 +206,7 @@ export function NodeCard(
           )}
       </div>
     )
-  } else if (node.kind === 'bible') {
+  } else if (node.kind === 'bible' || (node.kind === 'seed' && node.seed.slots === undefined)) {
     const extra = node.references.length - 1
     body = (
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 10 }}>
@@ -201,7 +217,7 @@ export function NodeCard(
         </div>
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
           <span style={{ ...text(12), display: 'flex', alignItems: 'center', gap: 6, color: 'var(--dv-text-2)' }}>
-            {dot}{kindLabel(node, t)}
+            {dot}{header}
             {extra > 0 ? <span style={mono}>{t('node.moreReferences', { count: extra })}</span> : null}
             {stale}
           </span>
@@ -210,13 +226,15 @@ export function NodeCard(
         </div>
       </div>
     )
-  } else if (node.kind === 'plan') {
+  } else if (node.kind === 'plan' || node.kind === 'seed') {
     const total = planTotalSec(plan?.shots ?? [])
-    const label = plan === undefined ? kindLabel(node, t) : `${kindLabel(node, t)} · ${t('node.planVersion', { version: plan.version })}`
+    const title = node.kind === 'seed'
+      ? node.title
+      : <>{t('node.planShots', { count: node.subtitle })}{total === null ? null : <>{' · '}<span style={mono}>{clockText(total)}</span></>}</>
     body = (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 10 }}>
         <span style={{ ...text(12), display: 'flex', alignItems: 'center', gap: 6, color: 'var(--dv-text-2)' }}>
-          {dot}<span style={{ flex: 1, minWidth: 0, ...ellipsis }}>{label}</span>{stale}
+          {dot}<span style={{ flex: 1, minWidth: 0, ...ellipsis }}>{header}</span>{stale}
         </span>
         {frames.some(frame => frame !== null)
           ? (
@@ -229,10 +247,7 @@ export function NodeCard(
             </div>
           )
           : null}
-        <span style={{ ...text(14), fontWeight: 500 }}>
-          {t('node.planShots', { count: node.subtitle })}
-          {total === null ? null : <>{' · '}<span style={mono}>{clockText(total)}</span></>}
-        </span>
+        <span style={{ ...text(14), fontWeight: 500 }}>{title}</span>
         {marker === null ? null : <span style={{ ...text(12), color: flags.failed ? 'var(--dv-danger)' : 'var(--dv-text-2)' }}>{marker}</span>}
       </div>
     )
@@ -263,7 +278,7 @@ export function NodeCard(
     <div
       style={style}
       data-node-id={node.id}
-      data-node-kind={node.kind}
+      data-node-kind={node.kind === 'seed' ? node.nodeKind.kind : node.kind}
       data-node-stale={String(flags.stale)}
       data-node-selected={selected ? 'true' : undefined}
       data-node-unseen={unseen ? 'true' : undefined}

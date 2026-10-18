@@ -33,7 +33,7 @@ kind: "package-reference"
   name: '@dv/ui-canvas'
 ```
 
-Host 半边不注册任何东西。浏览器半边提供客户端服务 `dvCanvas`（`@dv/ui-kit/registries.ts` 的 `DvCanvas`：注册表 `nodeKinds`、`chainAnchors`、`takesInUse` 和 `versionKinds`），插件的 UI 半边向其中注册之前它们是空的。它还注册 `dv-canvas` 标签类型（侧栏指南页以"视频画布"提供的页面）、中英文的 `dvCanvas` locale 命名空间，以及以自身 id `@dv/ui-canvas` 为键的标签主体。插件的 UI 半边在 `ctx.inject(['dvCanvas'], …)` 里注册它的描述符，并保留返回的注销函数；键已被占用的第二个描述符会抛错。标签主体和外壳的中央区把这些注册表作为 `canvas` 属性传给 `CanvasView`。
+Host 半边不注册任何东西。浏览器半边提供客户端服务 `dvCanvas`（`@dv/ui-kit/registries.ts` 的 `DvCanvas`：注册表 `nodeKinds`、`chainAnchors`、`takesInUse` 和 `versionKinds`），插件的 UI 半边向其中注册之前它们是空的。它还注册 `dv-canvas` 标签类型（侧栏指南页以"视频画布"提供的页面）、中英文的 `dvCanvas` locale 命名空间，以及以自身 id `@dv/ui-canvas` 为键的标签主体。插件的 UI 半边在 `ctx.inject(['dvCanvas'], …)` 里注册它的描述符，并保留返回的注销函数；键已被占用的第二个描述符会抛错。标签主体和外壳的中央区把这些注册表作为 `canvas` 属性传给 `CanvasView`。已注册 `NodeKind` 的每个 seed 画成一个节点，带有其类别的 `data-node-kind`，位于其类别的布局列 `column`，用同一张默认卡片绘制：`NodeKind.color` 颜色的类别圆点、seed 的 `label`（否则为 `NodeKind.label()`）和 ` · <subtitle>`；带 `slots` 的 seed 随后像 `plan` 卡片那样显示画面网格和标题，其他 seed 像 `bible` 卡片那样显示 40 × 40 的第一张图片或视频、其余数量"+N"和标题；seed 的媒体不单独画成 `asset` 节点。标签主体声明键控插槽 `dv.canvas.editor`（它的 `SlotMap` 条目在 `@dv/ui-kit/registries.ts` 中），并把自己的 `renderSlot` 作为 `renderEditor` 传给 `CanvasView`：seed 的编辑器显示以该 seed 的 `NodeKind.id` 为键的条目，所有者属性为 `{ node, state }`，没有注册条目时只显示标题栏。外壳的中央区挂载 `CanvasView` 时不传 `renderEditor`，所以那里的 seed 编辑器只显示标题栏。
 
 | 手势 | 请求 |
 | --- | --- |

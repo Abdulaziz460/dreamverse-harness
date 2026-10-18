@@ -1,5 +1,6 @@
 /**
- * The project canvas as a standalone component: an infinite surface of story bible, asset, plan, and take nodes. Drag
+ * The project canvas as a standalone component: an infinite surface of story bible, asset, plan, and take nodes, and the
+ * seeds of the node kinds registered in `dvCanvas`, each drawn with the default card. Drag
  * empty space to pan, scroll to zoom around the cursor, drag a node to move it, click a node to select it and open its
  * editor panel, which grows out of the node and shrinks back into it on close (`@dv/ui-kit/zoom.ts`). Closing the
  * editor keeps the node selected (the accent ring); a click on empty canvas with no editor open
@@ -37,6 +38,7 @@ import type { CanvasEdge, CanvasNode } from './graph.ts'
 import { NodeCard, nodeHeight, nodeTitle } from './NodeCard.tsx'
 import type { CanvasTranslate } from './NodeCard.tsx'
 import { NodeEditor } from './NodeEditor.tsx'
+import type { RenderEditor } from './NodeEditor.tsx'
 import { en, zh } from './locales.ts'
 
 /** Props of {@link CanvasView}. */
@@ -51,6 +53,8 @@ export interface CanvasViewProps {
   t?: CanvasTranslate
   /** The `dvCanvas` registries that plugin UI halves fill for this view; without them, every take is a free take. */
   canvas?: DvCanvas
+  /** Renders the `dv.canvas.editor` entry of a seed in its editor; without it, a seed's editor shows only its header. */
+  renderEditor?: RenderEditor
 }
 
 /** The tallest a card grows (larger text at low zoom plus a badge row), used when fitting. */
@@ -201,10 +205,12 @@ function withoutKeys<V>(map: ReadonlyMap<string, V>, keys: readonly string[]): M
 
 /**
  * The canvas.
- * @param props - the project, chat session, and optional client, translate and registries.
+ * @param props - the project, chat session, and optional client, translate, registries and editor slot.
  * @returns the element.
  */
-export function CanvasView({ projectId, client: given, session = null, t: givenT, canvas = NO_CANVAS }: CanvasViewProps): ReactNode {
+export function CanvasView(
+  { projectId, client: given, session = null, t: givenT, canvas = NO_CANVAS, renderEditor }: CanvasViewProps,
+): ReactNode {
   const client = useMemo(() => given ?? new DvClient(), [given])
   const language = useLanguage()
   const t = givenT ?? translates[language]
@@ -213,6 +219,7 @@ export function CanvasView({ projectId, client: given, session = null, t: givenT
   const taskLabels = useTaskLabels(client)
   const anchors = useRegistry(canvas.chainAnchors)
   const inUse = useRegistry(canvas.takesInUse)
+  const nodeKinds = useRegistry(canvas.nodeKinds)
   // This view's placements whose record the project state does not show yet: asset ID → on the canvas.
   const [inFlight, setInFlight] = useState<ReadonlyMap<string, boolean>>(new Map())
   // The project's canvas, with this view's placements in flight already applied.
@@ -248,14 +255,16 @@ export function CanvasView({ projectId, client: given, session = null, t: givenT
   // The previous project's state stays loaded until the next project's arrives; the canvas draws only this project's.
   const graph = useMemo(() => {
     if (base.value === null || base.value.project.id !== projectId) return null
-    return { state: base.value, ...buildCanvasGraph(base.value, placed, operations.value ?? [], language, anchors, inUse) }
-  }, [base.value, placed, projectId, operations.value, language, anchors, inUse])
-  // Each plan node's latest version and its slot frames, one per shot, for the plan card's version label, mini grid, and
-  // duration. Memoized on the graph, because a pan or zoom re-renders the view on every pointer move.
-  const plans = useMemo(() => new Map(graph === null ? [] : graph.nodes.flatMap((node) => {
+    return { state: base.value, ...buildCanvasGraph(base.value, placed, operations.value ?? [], language, anchors, inUse, nodeKinds) }
+  }, [base.value, placed, projectId, operations.value, language, anchors, inUse, nodeKinds])
+  // The frame grid of each plan node (one slot per shot of its latest version, which the card also reads for its version
+  // label and duration) and of each seed with slots. Memoized on the graph, because a pan or zoom re-renders the view on
+  // every pointer move.
+  const grids = useMemo(() => new Map(graph === null ? [] : graph.nodes.flatMap((node) => {
     const latest = node.planId === undefined ? undefined : graph.state.components.plan.plans[node.planId]?.at(-1)
-    if (latest === undefined || node.planId === undefined) return []
-    return [[node.id, { latest, frames: slotFrames(graph.nodes, node.id, latest.shots.length) }] as const]
+    const slots = node.kind === 'seed' ? node.seed.slots : latest?.shots.length
+    if (slots === undefined) return []
+    return [[node.id, { latest, frames: slotFrames(graph.nodes, node.id, slots) }] as const]
   })), [graph])
 
   const [positions, setPositions] = useState<Record<string, NodePosition>>({})
@@ -390,13 +399,14 @@ export function CanvasView({ projectId, client: given, session = null, t: givenT
   }, [])
   useEffect(() => {
     if (pendingFocus === null || !layoutReady || graph === null) return
-    // The record's own node, else the story bible or plan node whose version it wrote, else the node of its first output.
+    // The record's own node, else the story bible, plan or seed node whose version it wrote, else the node of its first output.
     const recordId = pendingFocus
     const firstOutput = graph.state.components.proj.records.find(record => record.id === recordId)?.outputs[0]
     const outputNode = firstOutput === undefined ? undefined : graph.assetNodes[firstOutput]
     const node = graph.nodes.find(candidate => candidate.id === recordId)
       ?? graph.nodes.find(candidate => candidate.record?.id === recordId)
       ?? graph.nodes.find(candidate => graph.state.components.plan.plans[candidate.planId ?? '']?.some(version => version.created_by === recordId))
+      ?? graph.nodes.find(candidate => candidate.kind === 'seed' && candidate.seed.records?.includes(recordId) === true)
       ?? graph.nodes.find(candidate => candidate.id === outputNode)
     pendingFocus = null
     if (node === undefined) return
@@ -691,7 +701,7 @@ export function CanvasView({ projectId, client: given, session = null, t: givenT
     content = <p style={{ ...centered, pointerEvents: 'none' }}>{t('canvas.empty')}</p>
   } else {
     const byId = new Map(graph.nodes.map(node => [node.id, node]))
-    const heightOf = (node: CanvasNode): number => nodeHeight(node, plans.get(node.id)?.frames.some(frame => frame !== null) === true)
+    const heightOf = (node: CanvasNode): number => nodeHeight(node, grids.get(node.id)?.frames.some(frame => frame !== null) === true)
     // The selected node's edges are drawn last, so they stay on top of the others.
     const touchesSelected = (edge: CanvasEdge): boolean => selected !== null && (edge.from === selected || edge.to === selected)
     const edges = [...graph.edges.filter(edge => !touchesSelected(edge)), ...graph.edges.filter(touchesSelected)]
@@ -726,7 +736,7 @@ export function CanvasView({ projectId, client: given, session = null, t: givenT
         </svg>
         {[...graph.nodes.filter(node => node.id !== topNode), ...graph.nodes.filter(node => node.id === topNode)].map((node) => {
           const position = positionOf(node)
-          const plan = plans.get(node.id)
+          const grid = grids.get(node.id)
           return (
             <NodeCard
               key={node.id}
@@ -737,7 +747,8 @@ export function CanvasView({ projectId, client: given, session = null, t: givenT
               zoom={viewport.zoom}
               t={t}
               onPointerDown={onNodeDown(node)}
-              {...plan === undefined ? {} : { plan: plan.latest, frames: plan.frames }}
+              {...grid?.latest === undefined ? {} : { plan: grid.latest }}
+              {...grid === undefined ? {} : { frames: grid.frames }}
               {...node.kind === 'take' && node.flags.failed ? { onRetry: () => { retryTake(node) }, retrying: retryingFrom === node.id } : {}}
               unseen={seenIds !== null && isFinishedTake(node) && !seenIds.has(node.id)}
             />
@@ -801,6 +812,7 @@ export function CanvasView({ projectId, client: given, session = null, t: givenT
               project={projectId}
               session={session}
               t={t}
+              {...renderEditor === undefined ? {} : { renderEditor }}
               onClose={() => { setEditing(null) }}
               run={run}
               onRender={startRender}
@@ -827,6 +839,7 @@ export function CanvasView({ projectId, client: given, session = null, t: givenT
               project={projectId}
               session={session}
               t={t}
+              {...renderEditor === undefined ? {} : { renderEditor }}
               onClose={() => { setStacked(null) }}
               run={run}
               onRender={startRender}

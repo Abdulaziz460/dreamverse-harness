@@ -1,6 +1,6 @@
 /** Canvas nodes and edges derived from the shared project state. */
 import { describe, expect, it } from 'vitest'
-import type { ChainAnchor, TakesInUse } from '@dv/ui-kit/registries.ts'
+import type { ChainAnchor, NodeKind, TakesInUse } from '@dv/ui-kit/registries.ts'
 import type { PlanVersion, ProjectRecord, WireOperation, WireState } from '@dv/ui-kit/types.ts'
 import { formatInputRef } from '@dv/ui-kit/references.ts'
 import { asset, fixtureState, OPERATIONS, record } from '../../ui-kit/tests/fixture.client.tsx'
@@ -345,6 +345,36 @@ describe('chain grouping', () => {
     expect(placed).toEqual(['g1', 'g3', 'm1', 'w1', 'm2', 'w2', 'm0', 'w0'])
     // The nodes keep record order, so take numbers and slot frames read it.
     expect(graph.nodes.filter(node => node.kind === 'take').map(node => node.id)).toEqual(['g1', 'g2', 'g3', 'm0', 'm2', 'm1', 'w2', 'w0', 'w1'])
+  })
+})
+
+describe('node kinds', () => {
+  it('draws each seed of a registered NodeKind in its column, and a take that reads a seed\'s media links from the seed', () => {
+    const state = fixtureState()
+    const reads = (asset: string): ProjectRecord['inputs'] => [{ role: 'reference', ref: { asset }, resolved_asset: asset }]
+    const m1 = record({ id: 'm1', operation: 'prop.create', inputs: reads('ref.png') })
+    state.components.proj.records.push(
+      record({ id: 'u2', operation: 'asset.import', params: { name: 'umbrella.png' }, outputs: ['umbrella.png'] }), m1,
+      record({ id: 'g4', operation: 'shot.render', deterministic: false, inputs: reads('umbrella.png'), outputs: ['g4.png'] }),
+    )
+    state.assets.push(asset('umbrella.png', 'image/png', 'u2'), asset('g4.png', 'image/png', 'g4'))
+    Object.assign(state.components.proj.created_by, { 'umbrella.png': 'u2', 'g4.png': 'g4' })
+    const kind: NodeKind = {
+      id: '@dv/ui-prop', kind: 'prop', label: () => '道具', color: '#888', column: 1,
+      nodes: () => [{ id: 'prop:m1', record: m1, title: 'Red umbrella', media: ['umbrella.png'] }],
+    }
+    const placed = new Set(['umbrella.png'])
+    // Without the kind, the import of the placed umbrella image is an asset node.
+    expect(buildCanvasGraph(state, placed, OPERATIONS).nodes.some(node => node.id === 'u2')).toBe(true)
+    const graph = buildCanvasGraph(state, placed, OPERATIONS, 'zh', [], [], [kind])
+    const byId = new Map(graph.nodes.map(node => [node.id, node]))
+    expect(byId.get('prop:m1')).toMatchObject({ kind: 'seed', nodeKind: kind, title: 'Red umbrella', subtitle: '', references: ['umbrella.png'], record: m1 })
+    expect(byId.has('u2')).toBe(false)
+    expect(graph.assetNodes['umbrella.png']).toBe('prop:m1')
+    expect(graph.edges).toContainEqual({ from: 'prop:m1', to: 'g4', kind: 'reference' })
+    // The seed's own record draws no input edge (m1 read the hero's reference image), and column 1 holds plan:p1 too.
+    expect(graph.edges.some(edge => edge.to === 'prop:m1')).toBe(false)
+    expect(byId.get('prop:m1')?.x).toBe(byId.get('plan:p1')?.x)
   })
 })
 
