@@ -280,7 +280,7 @@ export interface WireOperation {
   description: string
   /** The name that views show for the operation; absent when the operation declares none. */
   label?: { zh: string; en: string }
-  inputs: Record<string, { type: string; description: string; required?: boolean; many?: boolean; bible?: boolean }>
+  inputs: Record<string, { type: string; description: string; required?: boolean; many?: boolean; versioned?: boolean }>
   params: Record<string, WireParamSpec>
   outputs: Array<{ role: string; type: string }>
   deterministic: boolean

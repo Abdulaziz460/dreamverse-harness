@@ -127,7 +127,7 @@ export function fixtureState(): WireState {
 /** The operation declarations the fixture's records use. */
 export const OPERATIONS: WireOperation[] = [
   {
-    name: 'shot.render', version: '1', description: 'One shot.', inputs: { reference: { type: 'image', description: 'reference images', many: true, bible: true } },
+    name: 'shot.render', version: '1', description: 'One shot.', inputs: { reference: { type: 'image', description: 'reference images', many: true, versioned: true } },
     params: {
       prompt: { type: 'string', required: true, description: 'What happens.' }, seed: { type: 'integer', description: 'Seed.' },
       aspect: { type: 'string', enum: ['16:9', '9:16'] }, loop: { type: 'boolean' }, extra: { type: 'object' },

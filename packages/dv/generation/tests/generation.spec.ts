@@ -40,7 +40,7 @@ const DvProbeGenerate = defineGeneration({
     duration_sec: { type: 'integer', description: 'Whole seconds.' },
   },
   inputs: {
-    reference: { type: 'any', many: true, bible: true, description: 'Reference media.' },
+    reference: { type: 'any', many: true, versioned: true, description: 'Reference media.' },
     first_frame: { type: 'image', description: 'The first frame.' },
   },
   outputs: [{ role: 'clip', type: 'video' }],

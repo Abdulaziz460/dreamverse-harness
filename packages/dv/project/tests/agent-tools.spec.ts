@@ -90,7 +90,7 @@ async function start(root = tempRoot(), attachments = true): Promise<Fixture> {
 function operation(overrides: Partial<OperationSpec> & Pick<OperationSpec, 'name' | 'component'>): OperationSpec {
   return {
     version: '1', description: 'A test operation.', params: { prompt: { type: 'string' } },
-    inputs: { reference: { type: 'image', description: 'A reference.', many: true, bible: true } }, outputs: [{ role: 'still', type: 'image' }],
+    inputs: { reference: { type: 'image', description: 'A reference.', many: true, versioned: true } }, outputs: [{ role: 'still', type: 'image' }],
     confirm: 'never', deterministic: false, resource: 'none', summarize: record => `made from ${String(record.params['prompt'])}`,
     execute: context => Promise.resolve({ outputs: [context.importAsset(Buffer.from(`still ${String(context.params['prompt'])}`), { mime: 'image/png', name: 'still.png' })] }),
     ...overrides,
@@ -370,7 +370,7 @@ describe('agent tools', () => {
     const fixture = await start()
     const projectId = await boundProject(fixture)
     fixture.project.registerOperation(operation({ name: 'shot.render', component: 'shot', inputs: {
-      first_frame: { type: 'image', description: 'A frame.', required: true }, reference: { type: 'image', description: 'refs', many: true, bible: true },
+      first_frame: { type: 'image', description: 'A frame.', required: true }, reference: { type: 'image', description: 'refs', many: true, versioned: true },
     } }))
     fixture.project.registerOperation(operation({ name: 'plan.create', component: 'plan', inputs: {} }))
     const creators: Record<string, RecordId> = {

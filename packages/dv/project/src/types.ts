@@ -266,7 +266,7 @@ export interface OperationInput {
   /** Whether the role takes several references, such as every reference image of a shot. */
   many?: boolean
   /** Whether the role also accepts versions of the registered reference kinds (`<id>@<version>`) besides assets. */
-  bible?: boolean
+  versioned?: boolean
 }
 
 /** One output of an operation, in the order its `execute` returns them. */

@@ -285,7 +285,7 @@ function sharedParams(spec: OperationSpec, kinds: readonly string[]): ParameterS
   const kindText = [kinds.slice(0, -1).join(', '), ...kinds.slice(-1)].filter(part => part !== '').join(' or ')
   const versionText = kinds.length === 0 ? '' : `, or <id>@<version> (a ${kindText} version such as c1@1)`
   const roles = Object.entries(spec.inputs).map(([role, input]) => `${role}${input.required === true ? '' : '?'}: ${input.type}`
-    + `${input.many === true ? '[]' : ''}${input.bible === true ? ' (<asset> or <id>@<version>)' : ''}`)
+    + `${input.many === true ? '[]' : ''}${input.versioned === true ? ' (<asset> or <id>@<version>)' : ''}`)
   return {
     reason: {
       type: 'string', required: true,

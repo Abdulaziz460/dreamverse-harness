@@ -89,7 +89,7 @@ const RENDER_PARAMS: OperationSpec['params'] = {
 /** The inputs of `shot.render`; a model accepts the subset its schema lists. */
 const RENDER_INPUTS: Record<string, OperationInput> = {
   reference: {
-    type: 'any', many: true, bible: true,
+    type: 'any', many: true, versioned: true,
     description: 'Reference media in prompt order: imported assets, or versions (<id>@<version>) whose reference '
       + 'assets the shot carries; the model accepts the media types dv_models_get lists. Task ref2v only.',
   },

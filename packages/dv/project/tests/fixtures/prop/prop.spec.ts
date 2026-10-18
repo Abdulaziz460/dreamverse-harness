@@ -89,7 +89,7 @@ describe('the prop fixture', () => {
     dv.registerComponent('look')
     dv.registerOperation({
       name: 'look.make', component: 'look', version: '1', description: 'Make a look.', params: {},
-      inputs: { reference: { type: 'image', many: true, bible: true, description: 'References.' } },
+      inputs: { reference: { type: 'image', many: true, versioned: true, description: 'References.' } },
       outputs: [], deterministic: false, resource: 'none', confirm: 'never', summarize: () => 'look', execute: () => Promise.resolve({ outputs: [] }),
     })
     const removeProp = registerProp(dv)

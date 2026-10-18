@@ -84,7 +84,7 @@ async function start(): Promise<Fixture> {
   ctx.dvProject.registerComponent('shot')
   ctx.dvProject.registerOperation({
     name: 'shot.render', component: 'shot', version: '1', description: 'Test render.', params: {},
-    inputs: { reference: { type: 'image', many: true, bible: true, description: 'References.' } },
+    inputs: { reference: { type: 'image', many: true, versioned: true, description: 'References.' } },
     outputs: [], deterministic: false, resource: 'none', confirm: 'never', summarize: () => 'rendered',
     execute: () => Promise.resolve({ outputs: [] }),
   })

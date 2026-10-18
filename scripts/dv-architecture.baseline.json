@@ -3,7 +3,6 @@
   "packages/dv/project/src/agent-context.ts R1d clip": 2,
   "packages/dv/project/src/agent-context.ts R1d location": 1,
   "packages/dv/project/src/agent-context.ts R1d style": 1,
-  "packages/dv/project/src/agent-tools.ts R1c bible": 1,
   "packages/dv/project/src/agent-tools.ts R1d plan": 1,
   "packages/dv/project/src/agent-tools.ts R1d shot": 2,
   "packages/dv/project/src/agent-tools.ts R1d shots": 2,
@@ -13,7 +12,6 @@
   "packages/dv/project/src/proj-tools.ts R1d plans": 1,
   "packages/dv/project/src/proj-tools.ts R1d styles": 1,
   "packages/dv/project/src/proj-tools.ts R1d timelines": 1,
-  "packages/dv/project/src/types.ts R1c bible": 1,
   "packages/dv/ui-composer/src/client/index.ts R5f dv_shot_render": 1,
   "packages/dv/ui-kit/src/client/tool-labels.ts R5e dv_bible_character_create": 1,
   "packages/dv/ui-kit/src/client/tool-labels.ts R5e dv_bible_character_update": 1,
@@ -38,5 +36,5 @@
   "packages/dv/ui-kit/src/client/tool-labels.ts R5e dv_timeline_export": 1,
   "packages/dv/ui-kit/src/client/tool-labels.ts R5e dv_timeline_rename": 1,
   "packages/dv/ui-kit/src/client/tool-labels.ts R5e dv_timeline_update": 1,
-  "packages/dv/ui-kit/src/client/types.ts R5c bible": 2
+  "packages/dv/ui-kit/src/client/types.ts R5c bible": 1
 }

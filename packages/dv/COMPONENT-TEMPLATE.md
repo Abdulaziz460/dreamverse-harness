@@ -67,7 +67,7 @@ Every registration is inside `ctx.effect`, so disposal removes it. An operation 
 | `version`         | `'1'`; bump when the meaning of `params` changes                                                      |
 | `description`     | model-facing and canvas-facing text; registry words only                                              |
 | `params`          | DSH parameter schema in snake_case registry words (`timeline`, `clip`, `in_sec`)                      |
-| `inputs`          | role → `{type, description, required?, many?, bible?}`; `bible: true` accepts `<id>@<version>`        |
+| `inputs`          | role → `{type, description, required?, many?, versioned?}`; `versioned` accepts `<id>@<version>`      |
 | `outputs`         | the roles of the assets `execute` returns, in order                                                   |
 | `summarize`       | one line for chat cards and canvas nodes, from a finished record                                      |
 | `confirm`         | `never`, `always` (`story.approve`) or `over_gpu_budget` (`shot.render`); with `confirmSummary`       |
