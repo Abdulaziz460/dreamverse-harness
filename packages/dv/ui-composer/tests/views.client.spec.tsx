@@ -7,10 +7,11 @@ import { RenderCard } from '../src/client/views.tsx'
 afterEach(() => { cleanup() })
 
 describe('RenderCard', () => {
-  it('names the render tool and shows the model, the task, and the prompt while the call renders', () => {
+  it('names the render tool and shows the model, the task by its catalog label, and the prompt while the call renders', () => {
     render(
       <RenderCard
-        toolName="dv_shot_render" label={['渲染镜头', 'Render shot']} sessionId="s1" callId="call-1" phase="start"
+        toolName="dv_shot_render" label={['渲染镜头', 'Render shot']} taskLabels={{ t2v: { zh: '文字生成', en: 'From text' } }}
+        sessionId="s1" callId="call-1" phase="start"
         block={{ argsRaw: JSON.stringify({ modality: 'video', task: 't2v', provider: 'fastvideo', model: 'fasth3', prompt: 'a lighthouse at dusk' }) }}
       />,
     )
@@ -24,10 +25,12 @@ describe('RenderCard', () => {
   it('shows the rendered video and the history link once the call settled', () => {
     render(
       <RenderCard
-        toolName="dv_shot_render" label={['渲染镜头', 'Render shot']} sessionId="s1" callId="call-2" phase="result"
-        block={{ argsRaw: '{"prompt":"Picture 1 walks"}', meta: { outputs: [{ role: 'video', asset_id: 'v1.mp4', mime: 'video/mp4' }] } }}
+        toolName="dv_shot_render" label={['渲染镜头', 'Render shot']} taskLabels={{}} sessionId="s1" callId="call-2" phase="result"
+        block={{ argsRaw: '{"model":"fasth3","task":"i2v","prompt":"Picture 1 walks"}', meta: { outputs: [{ role: 'video', asset_id: 'v1.mp4', mime: 'video/mp4' }] } }}
       />,
     )
+    // A task without a catalog label shows its name.
+    expect(screen.getByTestId('dv-composer-render-model').textContent).toBe('fasth3 · i2v')
     expect(document.querySelector('video')?.getAttribute('src')).toContain('v1.mp4')
     expect(screen.getByTestId('dv-composer-open-history')).toBeTruthy()
   })

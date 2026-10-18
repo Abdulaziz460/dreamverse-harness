@@ -1,8 +1,11 @@
-/** The creator-facing name of an operation: its label on the wire, else its tool label, else its name. */
+/**
+ * The creator-facing name of an operation: its label on the wire, else its tool label, else its name. The name of a
+ * generation task: its catalog label, else its name.
+ */
 import { describe, expect, it } from 'vitest'
-import { operationLabel, toolNameOf } from '../src/client/tool-labels.ts'
+import { operationLabel, taskLabel, toolNameOf } from '../src/client/tool-labels.ts'
 import type { WireOperation } from '../src/client/types.ts'
-import { OPERATIONS } from './fixture.client.tsx'
+import { OPERATIONS, TASK_LABELS } from './fixture.client.tsx'
 
 /** A workflow operation that declares its label and has no `DV_TOOL_LABELS` entry. */
 const APPROVE: WireOperation = {
@@ -25,5 +28,12 @@ describe('operationLabel', () => {
 
   it('derives the tool name of an operation as the kernel does', () => {
     expect(toolNameOf('timeline.clip_move')).toBe('dv_timeline_clip_move')
+  })
+})
+
+describe('taskLabel', () => {
+  it('names a task by its catalog label, else by the task name', () => {
+    expect(taskLabel('ref2v', TASK_LABELS)).toEqual(['参考图生成', 'From references'])
+    expect(taskLabel('t2i', TASK_LABELS)).toEqual(['t2i', 't2i'])
   })
 })

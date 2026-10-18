@@ -1,11 +1,13 @@
 /**
  * React hooks that keep a view's copy of a project in step with the host: the project list, the project's current
- * state, and the operation declarations. The state is refetched after every project change.
+ * state, the operation declarations, and the task labels of the model catalog. The state is refetched after every
+ * project change.
  *
  * @module @dv/ui-kit/useProject
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { DvClient } from './api.ts'
+import type { WireTaskLabels } from './tool-labels.ts'
 import type { WireOperation, WireProject, WireState } from './types.ts'
 
 /** What the hooks expose about a request. */
@@ -65,6 +67,15 @@ export function useProjects(client: DvClient, session: string | null = null): Lo
  */
 export function useOperations(client: DvClient): Loading<WireOperation[]> {
   return useLoader(signal => client.listOperations(signal), [client])
+}
+
+/**
+ * The task labels of the model catalog.
+ * @param client - the API client.
+ * @returns the label of each task, by task name.
+ */
+export function useTaskLabels(client: DvClient): Loading<WireTaskLabels> {
+  return useLoader(signal => client.getTaskLabels(signal), [client])
 }
 
 /**

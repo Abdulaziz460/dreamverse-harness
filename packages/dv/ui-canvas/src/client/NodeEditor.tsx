@@ -4,8 +4,9 @@
  * right and bottom edges resize it, and a double click on the title row puts it back at the centered default. The last
  * position and size are kept in `localStorage` for every node and fitted into the canvas when restored. Every node offers
  * "问 agent" (a `dv:compose` event that prefills the chat composer). A take shows a large player (an audio output plays
- * in an audio player with sound), the failure reason of a failed take, its model and generation task, the params that its
- * operation declares in `GET /api/dv/operations` (prompt first), and reference chips when the operation takes references
+ * in an audio player with sound), the failure reason of a failed take, its model and generation task (the task's label in
+ * `GET /api/dv/tasks`, else its name), the params that its operation declares in `GET /api/dv/operations` (prompt
+ * first), and reference chips when the operation takes references
  * and the task is not `t2v`, and offers "渲染新版本" (a user record of the take's operation in the take's model and task,
  * whose `based_on` is the take); a take whose operation the list does not name shows no params and no button.
  * While the render starts the button is disabled and reads 渲染中…, and a refused request shows its error under the
@@ -23,9 +24,11 @@ import { assetUrl } from '@dv/ui-kit/api.ts'
 import type { DvClient } from '@dv/ui-kit/api.ts'
 import { dispatchCompose, type DvComposeRef } from '@dv/ui-kit/compose.ts'
 import { fieldsOf, paramsOf, type FormField } from '@dv/ui-kit/form.ts'
+import { useText } from '@dv/ui-kit/locale.ts'
 import { formatInputRef, isPicture, pictureParts, referenceAssets, shotReferences } from '@dv/ui-kit/references.ts'
 import { readStored, writeStored } from '@dv/ui-kit/storage.ts'
 import { clockText } from '@dv/ui-kit/timeline.ts'
+import { taskLabel, type WireTaskLabels } from '@dv/ui-kit/tool-labels.ts'
 import type { OperationRequest, PlanVersion, ProjectAsset, Shot, WireOperation, WireState } from '@dv/ui-kit/types.ts'
 import { AssetMedia, AssetPicker, AssetPreview } from './AssetPicker.tsx'
 import { bibleVersions } from './graph.ts'
@@ -39,6 +42,8 @@ export interface NodeEditorProps {
   state: WireState
   /** The operation declarations of `GET /api/dv/operations`; a take's editor shows the params of its operation. */
   operations: readonly WireOperation[]
+  /** The task labels of `GET /api/dv/tasks`; a take and a shot show their task by its label, else by its name. */
+  taskLabels: WireTaskLabels
   client: DvClient
   project: string
   /** The chat session the canvas sits beside, recorded as the `session` of the editor's writes. */
@@ -267,18 +272,6 @@ const SHARED_FIELDS: Readonly<Record<string, { id: string; label: 'editor.prompt
 }
 
 /**
- * The copy of a render's model and generation task, such as `fasth3 · 参考图生成` / `fasth3 · From references`.
- * @param model - the provider's model name.
- * @param task - the generation task; a task without copy shows its name.
- * @param t - the canvas translate.
- * @returns the model and the task's copy.
- */
-function modelTaskLabel(model: string, task: string, t: CanvasTranslate): string {
-  const taskText = task === 'ref2v' ? t('task.ref2v') : task === 't2v' ? t('task.t2v') : task
-  return t('editor.modelTaskValue', { model, task: taskText })
-}
-
-/**
  * The field of one declared param: the prompt as a text area, a param with choices as a select, else an input.
  * @param props - the field, the canvas translate, and the callback that gets the field's next text.
  * @returns the label and the control.
@@ -451,7 +444,7 @@ export function NodeEditor(props: NodeEditorProps): ReactNode {
   switch (node.kind) {
     case 'take': body = <TakeForm {...props} title={title} />; break
     case 'bible': body = <BibleForm {...props} />; break
-    case 'plan': body = plan === undefined ? null : <PlanShots plan={plan} state={props.state} t={t} />; break
+    case 'plan': body = plan === undefined ? null : <PlanShots plan={plan} state={props.state} t={t} taskLabels={props.taskLabels} />; break
     case 'asset': body = <AssetPanel node={node} t={t} onRemoveFromCanvas={props.onRemoveFromCanvas} />; break
   }
   const { panelRef, rect, begin, follow, finish, reset, resizeBy } = placement
@@ -573,8 +566,9 @@ function AssetPanel(
  * @returns the element.
  */
 function TakeForm(
-  { node, state, operations, client, project, session, t, onRender, onOpenNode, title }: NodeEditorProps & { title: string },
+  { node, state, operations, taskLabels, client, project, session, t, onRender, onOpenNode, title }: NodeEditorProps & { title: string },
 ): ReactNode {
+  const pick = useText()
   const record = node.record
   const declared = operations.find(candidate => candidate.name === record?.operation)
   const [inputs, setInputs] = useState<EditedInput[]>(
@@ -636,7 +630,7 @@ function TakeForm(
         ? null
         : <p role="note" style={{ margin: 0, padding: '8px 12px', borderRadius: 'var(--dv-radius-md)', background: 'var(--dv-danger-soft)', color: 'var(--dv-danger)' }}>{t('editor.failure', { message: failure })}</p>}
       <span style={label}>{t('editor.modelTask')}</span>
-      <span data-testid="dv-canvas-render-mode">{modelTaskLabel(model, task, t)}</span>
+      <span data-testid="dv-canvas-render-mode">{t('editor.modelTaskValue', { model, task: pick(...taskLabel(task, taskLabels)) })}</span>
       {fields.filter(param => param.key === 'prompt').map(fieldOf)}
       {!withReferences ? null : <><span style={label}>{t('editor.references')}</span><div ref={chips} style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
         {references.map((input) => {
@@ -889,14 +883,19 @@ function PlanHeader(
 /**
  * The shots of one plan version as cards. Memoized, because a move or resize of the editor panel re-renders the editor
  * on every pointer move and the shot cards look up their reference assets.
- * @param props - the version, the branch state, and the canvas translate.
+ * @param props - the version, the branch state, the canvas translate, and the task labels.
  * @returns the element.
  */
-const PlanShots = memo(function PlanShots({ plan, state, t }: { plan: PlanVersion; state: WireState; t: CanvasTranslate }): ReactNode {
+const PlanShots = memo(function PlanShots(
+  { plan, state, t, taskLabels }: { plan: PlanVersion; state: WireState; t: CanvasTranslate; taskLabels: WireTaskLabels },
+): ReactNode {
   return (
     <ol aria-label={t('editor.shots')} style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 10 }}>
       {plan.shots.map((shot, index) => (
-        <ShotCard key={index} number={index + 1} shot={shot} references={namedReferences(state, shotReferences(plan, shot))} t={t} />
+        <ShotCard
+          key={index} number={index + 1} shot={shot} references={namedReferences(state, shotReferences(plan, shot))}
+          t={t} taskLabels={taskLabels}
+        />
       ))}
     </ol>
   )
@@ -907,12 +906,20 @@ const term: CSSProperties = { fontSize: 12, lineHeight: '16px', color: 'var(--dv
 /**
  * One shot of a plan version as a card with exactly what the plan holds: number, duration, model and task, reference
  * assets, whether it continues the previous shot, and the prompt.
- * @param props - the 1-based shot number, the shot, its reference assets in input order, and the canvas translate.
+ * @param props - the 1-based shot number, the shot, its reference assets in input order, the canvas translate, and the
+ * task labels.
  * @returns the element.
  */
 function ShotCard(
-  { number, shot, references, t }: { number: number; shot: Shot; references: NamedReference[]; t: CanvasTranslate },
+  { number, shot, references, t, taskLabels }: {
+    number: number
+    shot: Shot
+    references: NamedReference[]
+    t: CanvasTranslate
+    taskLabels: WireTaskLabels
+  },
 ): ReactNode {
+  const pick = useText()
   let chips: ReactNode
   if (shot.task === 't2v') chips = <span style={{ color: 'var(--dv-text-2)' }}>{t('editor.textOnlyReferences')}</span>
   else if (references.length === 0) chips = <span style={{ color: 'var(--dv-text-2)' }}>{t('editor.none')}</span>
@@ -924,7 +931,7 @@ function ShotCard(
         {shot.duration_sec === undefined
           ? null
           : <span style={{ ...tag, ...mono, borderRadius: 'var(--dv-radius-sm)', color: 'var(--dv-text-2)' }}>{t('editor.seconds', { seconds: shot.duration_sec })}</span>}
-        <span data-testid="dv-canvas-shot-mode" style={{ ...tag, borderRadius: 9999, color: 'var(--dv-text)' }}>{modelTaskLabel(shot.model, shot.task, t)}</span>
+        <span data-testid="dv-canvas-shot-mode" style={{ ...tag, borderRadius: 9999, color: 'var(--dv-text)' }}>{t('editor.modelTaskValue', { model: shot.model, task: pick(...taskLabel(shot.task, taskLabels)) })}</span>
       </div>
       <dl style={{ margin: 0, display: 'grid', gridTemplateColumns: '72px minmax(0, 1fr)', gap: '8px 12px', alignItems: 'center' }}>
         <dt style={term}>{t('editor.references')}</dt>

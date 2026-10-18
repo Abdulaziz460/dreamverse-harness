@@ -3,6 +3,7 @@
  * timeline, a failed export, and a running retake as the last record. Also a scripted `fetch` that answers the
  * `/api/dv` routes from such a state and records every write.
  */
+import type { WireTaskLabels } from '../src/client/tool-labels.ts'
 import type { OperationRequest, ProjectAsset, ProjectRecord, WireOperation, WireProject, WireState } from '../src/client/types.ts'
 
 /**
@@ -143,6 +144,12 @@ export const OPERATIONS: WireOperation[] = [
   },
 ]
 
+/** The task labels of the video declaration, as the model catalog serves them at `GET /api/dv/tasks`. */
+export const TASK_LABELS: WireTaskLabels = {
+  t2v: { zh: '文字生成', en: 'From text' },
+  ref2v: { zh: '参考图生成', en: 'From references' },
+}
+
 /** Every POST the scripted fetch received, by path. */
 export interface Recorded {
   path: string
@@ -154,6 +161,7 @@ export interface ScriptedRoutes {
   projects?: WireProject[]
   state?: WireState | (() => WireState)
   operations?: WireOperation[]
+  tasks?: WireTaskLabels
   /** Answer a POST; return `{status, body}` or throw. Default echoes a done record. */
   post?: (path: string, body: unknown) => { status: number; body: unknown }
 }
@@ -190,6 +198,7 @@ export function scriptedFetch(routes: ScriptedRoutes = {}): { fetch: typeof fetc
         return Promise.resolve(json(typeof state === 'function' ? state() : state))
       }
       case '/api/dv/operations': return Promise.resolve(json(routes.operations ?? OPERATIONS))
+      case '/api/dv/tasks': return Promise.resolve(json(routes.tasks ?? TASK_LABELS))
       default: return Promise.resolve(json({ error: `no route ${url.pathname}` }, 404))
     }
   }

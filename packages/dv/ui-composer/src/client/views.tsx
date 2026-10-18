@@ -6,6 +6,7 @@
  */
 import { assetUrl } from '@dv/ui-kit/api.ts'
 import { useText } from '@dv/ui-kit/locale.ts'
+import { taskLabel, type WireTaskLabels } from '@dv/ui-kit/tool-labels.ts'
 import { DV_HISTORY_FOCUS_EVENT, dispatchWorkspaceEvent } from '@dv/ui-kit/workspace-events.ts'
 import css from './views.module.css'
 
@@ -52,6 +53,8 @@ export interface RenderCardProps {
   toolName: string
   /** The tool's [Chinese, English] name. */
   label: readonly [string, string]
+  /** The task labels of `GET /api/dv/tasks`; the card shows the call's task by its label, else by its name. */
+  taskLabels: WireTaskLabels
   sessionId: string
   callId: string
   phase: 'preparing' | 'start' | 'result'
@@ -80,8 +83,7 @@ export function RenderCard(props: RenderCardProps) {
   const args = argsOf(raw)
   const prompt = typeof args['prompt'] === 'string' ? args['prompt'] : ''
   const model = typeof args['model'] === 'string' ? args['model'] : ''
-  const task = args['task'] === 'ref2v' ? t('参考图生成', 'From references')
-    : args['task'] === 't2v' ? t('文字生成', 'From text') : typeof args['task'] === 'string' ? args['task'] : ''
+  const task = typeof args['task'] === 'string' ? t(...taskLabel(args['task'], props.taskLabels)) : ''
   const modelLine = [model, task].filter(part => part !== '').join(' · ')
   const failed = 'isError' in block && block.isError === true
   const video = outputsOf(block).find(output => output.mime.startsWith('video/'))

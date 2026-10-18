@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { assetUrl, DvClient } from '@dv/ui-kit/api.ts'
+import type { WireTaskLabels } from '@dv/ui-kit/tool-labels.ts'
 import type { ProjectAsset, ProjectRecord, WireOperation, WireParamSpec } from '@dv/ui-kit/types.ts'
 import { asset, fixtureState, OPERATIONS, record, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
 import { CanvasView } from '../src/client/CanvasView.tsx'
@@ -53,11 +54,13 @@ afterEach(() => {
  * @param operations - the declarations that `/api/dv/operations` serves.
  * @param records - the records added to the fixture.
  * @param assets - the assets added to the fixture, each with its producer in `created_by`.
+ * @param tasks - the task labels that `/api/dv/tasks` serves; the fixture's video labels when omitted.
  * @returns the view, the recorded writes, a node lookup that waits for the node, and an editor opener.
  */
-function mount(operations: WireOperation[], records: ProjectRecord[], assets: ProjectAsset[]) {
+function mount(operations: WireOperation[], records: ProjectRecord[], assets: ProjectAsset[], tasks?: WireTaskLabels) {
   const scripted = scriptedFetch({
     operations,
+    ...tasks === undefined ? {} : { tasks },
     state: () => {
       const state = fixtureState()
       state.components.proj.records.push(...records)
@@ -153,5 +156,17 @@ describe('T2c, T3c: image and audio records on the canvas', () => {
     await node('g3')
     await node('i1')
     expect(view.container.querySelector('[data-node-id="c9"]')).toBeNull()
+  })
+
+  it('T2c.6: the render-mode line of a t2i take reads the catalog label of t2i, else the task name', async () => {
+    const labelled = mount([...OPERATIONS, IMAGE], [catTake()], [asset('cat.png', 'image/png', 'i1')], { t2i: { zh: '文字生成图片', en: 'Image from text' } })
+    await labelled.node('g3')
+    await labelled.open(await labelled.node('i1'))
+    await waitFor(() => { expect(labelled.view.getByTestId('dv-canvas-render-mode').textContent).toBe('qwen-image · 文字生成图片') })
+    cleanup()
+    const unlabelled = mount([...OPERATIONS, IMAGE], [catTake()], [asset('cat.png', 'image/png', 'i1')], {})
+    await unlabelled.node('g3')
+    await unlabelled.open(await unlabelled.node('i1'))
+    expect(unlabelled.view.getByTestId('dv-canvas-render-mode').textContent).toBe('qwen-image · t2i')
   })
 })

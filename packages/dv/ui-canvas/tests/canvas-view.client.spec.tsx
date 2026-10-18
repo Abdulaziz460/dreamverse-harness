@@ -250,7 +250,8 @@ describe('CanvasView', () => {
     fireEvent.pointerDown(node('g1'), { button: 0, clientX: 5, clientY: 5, pointerId: 1 })
     fireEvent.pointerUp(view.getByTestId('dv-canvas-view'), { pointerId: 1 })
     const editor = await view.findByTestId('dv-canvas-node-editor')
-    expect(view.getByTestId('dv-canvas-render-mode').textContent).toBe(`fasth3 · ${zh['task.ref2v']}`)
+    // The task reads its label from the scripted GET /api/dv/tasks, in the language of <html lang> (English here).
+    expect(view.getByTestId('dv-canvas-render-mode').textContent).toBe('fasth3 · From references')
     fireEvent.change(editor.querySelector('textarea') as HTMLTextAreaElement, { target: { value: 'hero runs' } })
     fireEvent.click(view.getByText(zh['editor.renderTake']))
     await waitFor(() => { expect(writes.some(write => write.path === '/api/dv/operation')).toBe(true) })
@@ -518,7 +519,7 @@ describe('CanvasView', () => {
     // A text shot shows its model and task and no reference images.
     const textShot = editor.querySelector('li[data-shot="2"]')
     expect(textShot?.querySelectorAll('img')).toHaveLength(0)
-    expect(textShot?.querySelector('[data-testid="dv-canvas-shot-mode"]')?.textContent).toBe(`fasth3 · ${zh['task.t2v']}`)
+    expect(textShot?.querySelector('[data-testid="dv-canvas-shot-mode"]')?.textContent).toBe('fasth3 · From text')
     expect(textShot?.textContent).toContain(zh['editor.textOnlyReferences'])
   })
 

@@ -1,7 +1,8 @@
 /**
  * Creator-facing names of the agent tools: the `dv_*` tools of the components, and the name of an operation from its
  * declaration on the wire. The chat (`@dv/ui-composer`) and the History panel (`@dv/ui-history`) show them in place of
- * wire tool names.
+ * wire tool names. Also the name of a generation task from the model catalog's labels (`GET /api/dv/tasks`), which the
+ * canvas editors and the chat's render card show.
  *
  * @module @dv/ui-kit/tool-labels
  */
@@ -69,4 +70,18 @@ export function operationLabel(operation: string | null, operations: readonly Wi
   const label = operations.find(declared => declared.name === operation)?.label
   if (label !== undefined) return [label.zh, label.en]
   return DV_TOOL_LABELS[toolNameOf(operation)] ?? [operation, operation]
+}
+
+/** The label of each generation task that the model catalog serves at `GET /api/dv/tasks`, by task name. */
+export type WireTaskLabels = Readonly<Record<string, { zh: string; en: string }>>
+
+/**
+ * The creator-facing name of a generation task: its label in the model catalog, else the task name.
+ * @param task - the task name, such as `ref2v`.
+ * @param labels - the task labels of `GET /api/dv/tasks`.
+ * @returns the Chinese and English name.
+ */
+export function taskLabel(task: string, labels: WireTaskLabels): readonly [zh: string, en: string] {
+  const label = labels[task]
+  return label === undefined ? [task, task] : [label.zh, label.en]
 }

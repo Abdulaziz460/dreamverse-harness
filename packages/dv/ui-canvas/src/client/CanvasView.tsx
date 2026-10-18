@@ -23,11 +23,12 @@ import type { CSSProperties, DragEvent as ReactDragEvent, PointerEvent as ReactP
 import { DvClient } from '@dv/ui-kit/api.ts'
 import { useLanguage } from '@dv/ui-kit/locale.ts'
 import { formatInputRef } from '@dv/ui-kit/references.ts'
+import type { WireTaskLabels } from '@dv/ui-kit/tool-labels.ts'
 import type { CanvasViewport, NodePosition, OperationRequest } from '@dv/ui-kit/types.ts'
 import { DV_ASSET_DRAG_TYPE, DV_CANVAS_FOCUS_EVENT } from '@dv/ui-kit/workspace-events.ts'
 import type { DvWorkspaceEventMap } from '@dv/ui-kit/workspace-events.ts'
 import { readStored, writeStored } from '@dv/ui-kit/storage.ts'
-import { useOperations, useProjectState } from '@dv/ui-kit/useProject.ts'
+import { useOperations, useProjectState, useTaskLabels } from '@dv/ui-kit/useProject.ts'
 import { useZoomPresence } from '@dv/ui-kit/zoom.ts'
 import { buildCanvasGraph, freePositions, NODE_WIDTH, planShotFrames, ROW } from './graph.ts'
 import type { CanvasEdge, CanvasNode } from './graph.ts'
@@ -58,6 +59,8 @@ const DRAG_THRESHOLD = 4
 const SAVE_DELAY_MS = 500
 /** The zoom ref of a stacked editor, which opens and closes without the zoom transition. */
 const noZoom = (element: HTMLElement | null): void => { void element }
+/** The task labels while `GET /api/dv/tasks` loads or after it failed: every task shows its name. */
+const NO_TASK_LABELS: WireTaskLabels = {}
 
 /** Edge stroke per kind: the kind color of the node the edge leaves (a reference leaves a character or an asset). */
 const EDGE_COLOR: Record<CanvasEdge['kind'], string> = {
@@ -192,6 +195,7 @@ export function CanvasView({ projectId, client: given, session = null, t: givenT
   const t = givenT ?? translates[language]
   const base = useProjectState(client, projectId)
   const operations = useOperations(client)
+  const taskLabels = useTaskLabels(client)
   // This view's placements whose record the project state does not show yet: asset ID → on the canvas.
   const [inFlight, setInFlight] = useState<ReadonlyMap<string, boolean>>(new Map())
   // The project's canvas, with this view's placements in flight already applied.
@@ -774,6 +778,7 @@ export function CanvasView({ projectId, client: given, session = null, t: givenT
               zoomRef={editorZoom.targetRef}
               state={graph.state}
               operations={operations.value ?? []}
+              taskLabels={taskLabels.value ?? NO_TASK_LABELS}
               client={client}
               project={projectId}
               session={session}
@@ -798,6 +803,7 @@ export function CanvasView({ projectId, client: given, session = null, t: givenT
               zoomRef={noZoom}
               state={graph.state}
               operations={operations.value ?? []}
+              taskLabels={taskLabels.value ?? NO_TASK_LABELS}
               client={client}
               project={projectId}
               session={session}

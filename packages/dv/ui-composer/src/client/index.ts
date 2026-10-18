@@ -23,6 +23,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type { ToolCallViewProps } from '@deepseek-ai/dsh-client-ui-tool/client'
 import { createElement, useEffect, type ComponentType } from 'react'
+import { DvClient } from '@dv/ui-kit/api.ts'
 import { DV_COMPOSE_EVENT, type DvComposeDetail } from '@dv/ui-kit/compose.ts'
 import { getCurrentProject } from '@dv/ui-kit/current-project.ts'
 import { pickText } from '@dv/ui-kit/locale.ts'
@@ -30,6 +31,7 @@ import { registerChatMedia } from './chat-media.ts'
 import { deliverCompose, mountComposer } from './compose.ts'
 import { MENTION_SOURCE, projectMentionSource } from './mention.ts'
 import { DV_TOOL_LABELS } from '@dv/ui-kit/tool-labels.ts'
+import { useTaskLabels } from '@dv/ui-kit/useProject.ts'
 import { registerOperationRows } from './tool-labels.ts'
 import { RenderCard, ToolLabelRow } from './views.tsx'
 // The DreamVerse look of the DSH composer card in the 对话 tab; the bundle injects the sheet when the plugin loads.
@@ -116,10 +118,13 @@ export function apply(ctx: ClientContext): void {
   // hidden: an empty entry at a lower priority shadows the permission picker.
   ctx.slots.inject('conversation.input.permission', () => ctx.slots.register({ name: 'conversation.input.permission', priority: -1 }, () => null))
 
+  const client = new DvClient()
   function RenderRow(props: ToolCallViewProps) {
     const label = DV_TOOL_LABELS[props.toolName] ?? [props.toolName, props.toolName]
+    // Until the labels load, or when the read fails, the card shows the task name.
+    const taskLabels = useTaskLabels(client).value ?? {}
     return createElement(RenderCard, {
-      toolName: props.toolName, label, sessionId: props.sessionId, callId: props.callId, phase: props.phase, block: props.block,
+      toolName: props.toolName, label, taskLabels, sessionId: props.sessionId, callId: props.callId, phase: props.phase, block: props.block,
     })
   }
   ctx.slots.inject('tool.call.toolview', () => ctx.slots.register({ name: 'tool.call.toolview', key: RENDER_TOOL }, RenderRow))
