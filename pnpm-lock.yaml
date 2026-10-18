@@ -7937,6 +7937,15 @@ importers:
         specifier: ^18.2.0
         version: 18.3.1(react@18.3.1)
 
+  packages/dv/ui-workflow-story:
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:~
+        version: link:../../../vendor/cordis
+      '@dv/ui-kit':
+        specifier: workspace:*
+        version: link:../ui-kit
+
   packages/dv/workflow-kit:
     dependencies:
       '@dv/generation':
