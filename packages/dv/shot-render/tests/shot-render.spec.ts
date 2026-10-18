@@ -321,11 +321,10 @@ describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
     expect(renderSpec(fixture)?.estimate?.({ ...REF, duration_sec: 2 })).toEqual({ gpu_seconds: 6 })
     expect(renderSpec(fixture)?.estimate?.({ ...TXT })).toEqual({ gpu_seconds: 7.5 })
     expect(renderSpec(fixture)?.estimate?.({ ...TXT, model: 'other' })).toEqual({ gpu_seconds: 0 })
-    // An approved plan schedules renders with the params `plan`, `plan_version` and `shot`, so the spec declares them,
-    // after `seed` and `extra`.
+    // The key and the prompt, the shot's geometry, then `seed` and `extra`; a render carries no plan params.
     const params = renderSpec(fixture)?.params ?? {}
     expect(Object.keys(params)).toEqual([
-      'modality', 'task', 'provider', 'model', 'prompt', 'duration_sec', 'aspect_ratio', 'resolution', 'seed', 'extra', 'plan', 'plan_version', 'shot',
+      'modality', 'task', 'provider', 'model', 'prompt', 'duration_sec', 'aspect_ratio', 'resolution', 'seed', 'extra',
     ])
     // The key fields are free strings: dv_models_list lists their values and the precondition refuses an unknown key.
     for (const field of ['modality', 'task', 'provider', 'model']) {
@@ -420,13 +419,12 @@ describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
     expect(renderSpec(fixture)?.summarize(shot)).toBe('shot "Picture 1 waves" (2s, seed 42)')
     const { report: _report, ...withoutReport } = shot
     expect(renderSpec(fixture)?.summarize({ ...withoutReport, params: {} })).toBe('shot "" (?s, seed ?)')
-    expect(renderSpec(fixture)?.summarize({ ...withoutReport, params: { prompt: 'x', plan: 'p1', plan_version: 2, shot: 7 } }))
-      .toBe('shot 7 of plan p1 v2 "x" (?s, seed ?)')
-    // The slot that the starter record gave the render wins over the plan's shot param.
+    // The plan params of an older render name no shot; only the slot that the starter record gave the render does.
+    const oldParams = { prompt: 'x', plan: 'p1', plan_version: 2, shot: 7 }
+    expect(renderSpec(fixture)?.summarize({ ...withoutReport, params: oldParams })).toBe('shot "x" (?s, seed ?)')
     const started_by = { record: shot.id, slot: 2 }
     expect(renderSpec(fixture)?.summarize({ ...withoutReport, params: { prompt: 'x' }, started_by })).toBe('shot 2 "x" (?s, seed ?)')
-    expect(renderSpec(fixture)?.summarize({ ...withoutReport, params: { prompt: 'x', plan: 'p1', plan_version: 2, shot: 7 }, started_by }))
-      .toBe('shot 2 of plan p1 v2 "x" (?s, seed ?)')
+    expect(renderSpec(fixture)?.summarize({ ...withoutReport, params: oldParams, started_by })).toBe('shot 2 "x" (?s, seed ?)')
     // The next shot continues from the last still, which is the first frame.
     const next = await fixture.record('shot.render', { ...REF, prompt: 'keeps waving' }, [c1(), { role: 'first_frame', ref: { record: shot.id, output: 1 } }])
     expect(fixture.reference.requests[1]).toMatchObject({ references: [image], firstFrame: shot.outputs[1] })
@@ -493,15 +491,16 @@ describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
     expect(refused).toContain('Render shot with video/ref2v/test/fake, 2 s: "Picture 1 walks a long way"')
     expect(fixture.reference.requests).toHaveLength(0)
     expect(value(await fixture.call('dv_shot_render', { ...args, user_requested: true })).status).toBe('done')
+    // The plan params of an older render name no shot in the agreement text either.
     const summary = renderSpec(fixture)?.confirmSummary?.({
       args: {}, request: { params: { ...TXT, prompt: 'x', plan: 'p1', plan_version: 1, shot: 3 } }, state: {}, exec: {},
     } as never, {} as never)
-    expect(summary).toEqual({ text: 'Render shot 3 of plan p1 v1 with video/t2v/test/fake: "x"', gpu_seconds: 7.5 })
+    expect(summary).toEqual({ text: 'Render shot with video/t2v/test/fake: "x"', gpu_seconds: 7.5 })
   })
 
   it('refuses a call that the model\'s validation refuses before recording anything, and tells the agent what to change', async () => {
     const fixture = await start()
-    await fixture.record('bible.character_create', { character: 'c2' })
+    const created = await fixture.record('bible.character_create', { character: 'c2' })
     fixture.reference.check = request => request.references.length === 0 ? ['It needs a reference asset; this shot has none.'] : []
     const before = fixture.ctx.dvProject.listHistory({ project: fixture.project }).length
     const noImages = await fixture.call('dv_shot_render', { ...REF, reason: 'cat', prompt: 'a cat', inputs: { reference: 'c2@1' } })
@@ -509,9 +508,9 @@ describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
       'Model video/ref2v/test/fake cannot generate this: It needs a reference asset; this shot has none. Nothing was generated; '
       + 'change the inputs or params, then call again.',
     )
-    // A render that a plan scheduled gets the same text.
+    // A render that a record started gets the same text.
     const c2 = { role: 'reference', ref: { test_character: 'c2', version: 1 } }
-    await expect(fixture.record('shot.render', { ...REF, prompt: 'a cat', plan: 'p1', plan_version: 1, shot: 2 }, [c2]))
+    await expect(fixture.record('shot.render', { ...REF, prompt: 'a cat' }, [c2], { started_by: { record: created.id, slot: 2 } }))
       .rejects.toThrow(/Nothing was generated; change the inputs or params, then call again\.$/)
     expect(fixture.ctx.dvProject.listHistory({ project: fixture.project })).toHaveLength(before)
     expect(fixture.reference.requests).toHaveLength(0)
@@ -550,14 +549,14 @@ describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
       ? ['Its first frame must be an image.']
       : []
     const firstFrame = await fixture.record('shot.render', { ...REF, prompt: 'x' }, [c1(), { role: 'first_frame', ref: { record: producer.id, output: 0 } }], { after: [producer.id] })
-    const planned = await fixture.record('shot.render', { ...REF, prompt: 'x', plan: 'p1', plan_version: 1, shot: 2 }, [
+    const started = await fixture.record('shot.render', { ...REF, prompt: 'x' }, [
       c1(), { role: 'first_frame', ref: { record: producer.id, output: 0 } },
-    ], { after: [producer.id] })
+    ], { after: [producer.id], started_by: { record: producer.id, slot: 2 } })
     expect(fixture.reference.validations).toHaveLength(0)
     release()
-    await fixture.ctx.dvProject.wait(fixture.project, [producer.id, firstFrame.id, planned.id])
-    // A render that a plan scheduled gets the same text at render time as before recording.
-    expect(fixture.ctx.dvProject.getRecord(fixture.project, planned.id).error?.message)
+    await fixture.ctx.dvProject.wait(fixture.project, [producer.id, firstFrame.id, started.id])
+    // A render that a record started gets the same text at render time as before recording.
+    expect(fixture.ctx.dvProject.getRecord(fixture.project, started.id).error?.message)
       .toMatch(/Nothing was generated; change the inputs or params, then call again\.$/)
     const output = fixture.ctx.dvProject.getRecord(fixture.project, producer.id).outputs[0]
     expect(fixture.reference.validations.map(request => request.firstFrame)).toEqual([output, output])
@@ -688,9 +687,10 @@ describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
     const live = new FakeLiveStream()
     const fixture = await start({ live })
     await withCharacter(fixture)
-    const shot = await fixture.record('shot.render', { ...REF, prompt: 'Picture 1 waves', shot: 3 }, [c1()])
-    expect(live.shots).toEqual([{ record: shot.id, init: { mime: 'video/mp4; codecs="avc1.64001f"', segmentIdx: 3 }, bytes: fixture.ctx.dvAssetPool.get(shot.outputs[0] as AssetId).size_bytes, end: 'complete' }])
-    const started = await fixture.record('shot.render', { ...REF, prompt: 'Picture 1 waves', shot: 3 }, [c1()], { started_by: { record: shot.id, slot: 4 } })
+    // The `shot` param of an older render is no slot.
+    const old = await fixture.record('shot.render', { ...REF, prompt: 'Picture 1 waves', shot: 3 }, [c1()])
+    expect(live.shots).toEqual([{ record: old.id, init: { mime: 'video/mp4; codecs="avc1.64001f"', segmentIdx: 0 }, bytes: fixture.ctx.dvAssetPool.get(old.outputs[0] as AssetId).size_bytes, end: 'complete' }])
+    const started = await fixture.record('shot.render', { ...REF, prompt: 'Picture 1 waves' }, [c1()], { started_by: { record: old.id, slot: 4 } })
     expect(live.shots[1]).toMatchObject({ record: started.id, init: { segmentIdx: 4 }, end: 'complete' })
     fixture.reference.omit = 'done'
     await fixture.record('shot.render', { ...REF, prompt: 'cut short' }, [c1()])

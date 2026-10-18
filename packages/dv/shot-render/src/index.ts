@@ -77,23 +77,13 @@ const CONTINUE_FROM_PARAM: ParameterSchemaSpec = {
 }
 
 /**
- * The params of `shot.render` after the model key and the prompt that `defineGeneration` puts first: the shot's geometry
- * and seed, the model's own parameters, and the plan that scheduled it. `seed` and `extra` are listed so that they keep
- * their place before the plan params in the tool schema; `defineGeneration` gives them its shared descriptions.
+ * The params of `shot.render` between the model key and prompt and the `seed` and `extra` params, which
+ * `defineGeneration` adds with its shared descriptions: the shot's geometry.
  */
 const RENDER_PARAMS: OperationSpec['params'] = {
   duration_sec: { type: 'integer', description: 'Whole seconds within the model range; default the model minimum.' },
   aspect_ratio: { type: 'string', description: 'One of the model aspect ratios; default the first.' },
   resolution: { type: 'string', description: 'One of the model resolutions; default the first.' },
-  seed: { type: 'integer', description: 'Fixed seed; omitted, a random seed is drawn and recorded.' },
-  extra: {
-    type: 'object', additionalProperties: true,
-    description: 'The model\'s own parameters, as dv_models_get lists them; omit it when the model has none.',
-  },
-  // Set only in the renders that a plan approval of an older project scheduled; the live stream shows the shot position.
-  plan: { type: 'string', description: 'The plan ID (p1, p2, …) whose approval scheduled this render in an older project; leave it out.' },
-  plan_version: { type: 'integer', description: 'The approved version of that plan; leave it out.' },
-  shot: { type: 'integer', description: 'The shot position in that version, 1 = first; leave it out.' },
 }
 
 /** The inputs of `shot.render`; a model accepts the subset its schema lists. */
@@ -266,10 +256,10 @@ async function streamShot(
           break
         case 'video_start':
           mime = event.mime
-          // The slot that the starter record gave the render (else the shot number of a plan approval) tells the page
-          // which shot is playing; a free-standing shot has none.
+          // The slot that the starter record gave the render tells the page which shot is playing; a free-standing shot
+          // has none and plays at index 0.
           live = liveSink(ctx)?.openSegment(context.project, record, {
-            mime: event.mime, segmentIdx: context.record?.started_by?.slot ?? number(context.params['shot'], 0),
+            mime: event.mime, segmentIdx: context.record?.started_by?.slot ?? 0,
           }) ?? null
           break
         case 'chunk':
@@ -343,10 +333,10 @@ const RENDER_DECLARATION: GenerationSpec<'video'> = {
   },
   confirmText(params) {
     const durationSec = number(params['duration_sec'], 0)
-    return `Render ${shotName(params)} with ${formatModelKey(modelKey(params))}${durationSec > 0 ? `, ${durationSec} s` : ''}: `
+    return `Render shot with ${formatModelKey(modelKey(params))}${durationSec > 0 ? `, ${durationSec} s` : ''}: `
       + `"${text(params['prompt']).slice(0, 80)}"`
   },
-  summarize: record => `${shotName(record.params, record.started_by)} "${text(record.params['prompt']).slice(0, 60)}" `
+  summarize: record => `${shotName(record.started_by)} "${text(record.params['prompt']).slice(0, 60)}" `
     + `(${label(record.report?.['duration_sec'] ?? record.params['duration_sec'])}s, seed ${label(record.report?.['seed'])})`,
 }
 
@@ -363,17 +353,10 @@ export default class DvShotRender extends defineGeneration(RENDER_DECLARATION) {
   }
 }
 
-/**
- * How a summary or a confirmation text names the shot: `shot 7 of plan p1 v2` for a render an approved plan scheduled,
- * `shot 7` for a render that a record started at slot 7, else `shot`.
- * @param params - the render params; an approved plan sets `plan`, `plan_version` and `shot`.
- * @param startedBy - the record that started the render; its `slot` wins over the `shot` param.
- * @returns the name.
- */
-function shotName(params: Record<string, unknown>, startedBy?: StartedBy): string {
+/** How a summary names the shot: `shot 7` for a render that a record started at slot 7, else `shot`. */
+function shotName(startedBy?: StartedBy): string {
   const slot = startedBy?.slot ?? null
-  if (typeof params['plan'] !== 'string') return slot === null ? 'shot' : `shot ${String(slot)}`
-  return `shot ${label(slot ?? params['shot'])} of plan ${params['plan']} v${label(params['plan_version'])}`
+  return slot === null ? 'shot' : `shot ${String(slot)}`
 }
 
 /** A number or string field as display text, or `?` for anything else. */

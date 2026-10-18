@@ -144,9 +144,11 @@ describe('shot.render with a live stream', () => {
       ...user, project: projectId, operation: 'bible.character_create', inputs: imported.outputs.map(asset => ({ role: 'reference', ref: { asset } })), params: { character: 'c1', name: 'Lead' },
       intent: 'character',
     })
+    // The slot that the starter record gave the render becomes the segment index.
     const { record: shot } = await fixture.project.run({
       ...user, project: projectId, operation: 'shot.render', inputs: [{ role: 'reference', ref: { character: brandString<CharacterId>('c1'), version: 1 } }],
-      params: { modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', prompt: 'Picture 1 waves', duration_sec: 1, shot: 3 }, intent: 'shot',
+      params: { modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', prompt: 'Picture 1 waves', duration_sec: 1 }, intent: 'shot',
+      started_by: { record: OP, slot: 3 },
     })
     if (shot === null) throw new Error('shot.render wrote no record')
     expect(shot.status).toBe('done')

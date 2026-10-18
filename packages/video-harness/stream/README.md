@@ -39,7 +39,7 @@ Mount the plugin in a profile that has the DSH web server (`webServer`); the `/v
 | `bufferBytes` | 64 MiB | The most bytes one in-flight segment keeps for browsers that subscribe mid-shot |
 | `pingMs` | 20000 | Interval of the server pings that keep idle proxies from closing the socket |
 
-`@dv/shot-render` looks up the `vhStream` service with `ctx.get` on every render and, when the service exists, calls `openSegment(project, record, {mime, segmentIdx})` at the start of the backend's video stream. The record ID becomes the `stream_id` the browser sees, and the record's `started_by.slot` becomes `segment_idx`, else the render's `shot` param (0 for a render with neither). The writer end that `openSegment` returns has `chunk(bytes)`, `complete()`, and `fail(error)`. `subscribe(project, listener)` receives the same frames in the Host process, and `openSockets` counts the open browser sockets. <!-- names:allow (the live stream service keeps its name) -->
+`@dv/shot-render` looks up the `vhStream` service with `ctx.get` on every render and, when the service exists, calls `openSegment(project, record, {mime, segmentIdx})` at the start of the backend's video stream. The record ID becomes the `stream_id` the browser sees, and the render's `started_by.slot` (0 for a render without one) becomes `segment_idx`. The writer end that `openSegment` returns has `chunk(bytes)`, `complete()`, and `fail(error)`. `subscribe(project, listener)` receives the same frames in the Host process, and `openSockets` counts the open browser sockets. <!-- names:allow (the live stream service keeps its name) -->
 
 The `/vh/ws` route works as follows:
 
