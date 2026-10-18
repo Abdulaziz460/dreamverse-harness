@@ -101,7 +101,6 @@ export function fixtureState(): WireState {
         styles: {},
       },
       plan: { plans: { p1: [{ version: 1, shots: [{ prompt: 'hero walks', modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3' }, { prompt: 'hero turns', modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', continue_previous: true }], created_by: 'p1' }] } },
-      shot: { takes: { g1: ['g1', 'g3'] }, roots: { g3: 'g1' } },
       asset: { placed: [] },
       timeline: {
         timelines: [{

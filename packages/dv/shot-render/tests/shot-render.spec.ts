@@ -344,8 +344,6 @@ describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
     expect(renderSpec(fixture)).toBeUndefined()
     expect(fixture.ctx.dvModels.taskLabels()).toEqual({})
     expect(fixture.ctx.tools.get('dv_shot_render')).toBeUndefined()
-    // The reducer went with the plugin: a state no longer has the `shot` slice.
-    expect(fixture.ctx.dvProject.getState(fixture.project).components).not.toHaveProperty('shot')
   })
 
   it('refuses a key that names no catalog entry, and extra values the model\'s validation refuses', async () => {
@@ -383,7 +381,8 @@ describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
     const fixture = await start({ tasks: [] })
     expect(renderSpec(fixture)).toBeUndefined()
     expect(fixture.ctx.tools.schemas().filter(tool => tool.name.startsWith('dv_shot_render'))).toEqual([])
-    expect(fixture.ctx.dvProject.getState(fixture.project).components.shot).toEqual({ takes: {}, roots: {} })
+    // The service registers no reducer, so a state has no `shot` slice.
+    expect(fixture.ctx.dvProject.getState(fixture.project).components).not.toHaveProperty('shot')
     // The first model registers the operation and a second keeps it; removing the last model removes it.
     const removeFirst = fixture.ctx.dvModels.register(fakeEntry('t2v', fixture.text))
     const spec = renderSpec(fixture)
@@ -448,17 +447,6 @@ describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
     await withCharacter(fixture)
     const next = await fixture.record('shot.render', { ...REF, prompt: 'Picture 1 enters' }, [c1(), { role: 'first_frame', ref: { record: shot.id, output: 1 } }])
     expect(next.status).toBe('done')
-  })
-
-  it('groups the takes of a shot in the shot slice for every task', async () => {
-    const fixture = await start()
-    await withCharacter(fixture)
-    const first = await fixture.record('shot.render', { ...REF, prompt: 'Picture 1 waves' }, [c1()])
-    const retake = await fixture.record('shot.render', { ...REF, prompt: 'Picture 1 waves slowly' }, [c1()], { based_on: first.id, supersedes: [first.id] })
-    const third = await fixture.record('shot.render', { ...TXT, prompt: 'A man waves twice' }, [], { based_on: retake.id })
-    expect(fixture.ctx.dvProject.getState(fixture.project).components.shot).toEqual({
-      takes: { [first.id]: [first.id, retake.id, third.id] }, roots: { [retake.id]: first.id, [third.id]: first.id },
-    })
   })
 
   it('runs the agent tools at the end of the project\'s history, with continue_from as the first frame', async () => {
@@ -672,7 +660,6 @@ describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
     expect(await failed({ prompt: 'x' })).toBe('backend down')
     fixture.text.failure = new Error('text backend down')
     expect(await failed({ prompt: 'x' }, [], TXT)).toBe('text backend down')
-    expect(fixture.ctx.dvProject.getState(fixture.project).components.shot).toEqual({ takes: {}, roots: {} })
   })
 
   it('drains large chunks into the video file', async () => {

@@ -116,7 +116,6 @@ function rollbackProject(until?: string): WireState {
     created_by: Object.fromEntries([['ref.png', 'u1'], ...renders.flatMap(entry => entry.outputs.map(output => [output, entry.id]))]),
   }
   state.components.plan.plans = { p1: versions }
-  state.components.shot = { takes: {}, roots: {} }
   state.components.timeline.timelines = [{ id: 't1', name: '', clips }]
   state.assets = [
     asset('ref.png', 'image/png', 'u1'),

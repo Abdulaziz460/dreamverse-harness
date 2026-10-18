@@ -103,7 +103,7 @@ The turn's GPU seconds are the cost of the turn's finished records, the `estimat
 
 ## Project state
 
-A reducer reads records and computes state; it writes no record. The runner and the record store are the only writers. The current state is the result of folding the chain that ends at the current position through the reducers: Project walks back from that record by `parents[0]` and passes the records, oldest first, through every registered reducer. Each component's reducer turns its records into its slice of `ProjectState.components` (Story bible `bible`, Shot plan `plan`, Shot render `shot`, Timeline `timeline`), and Project's own reducer keeps the `proj` slice: the records of that chain, the stale and superseded records, and the record that created each asset. A reducer's `agentSummary` adds that component's fields to the project summary that the `dv_proj_*` tools and the `dv:project` prompt section give the agent.
+A reducer reads records and computes state; it writes no record. The runner and the record store are the only writers. The current state is the result of folding the chain that ends at the current position through the reducers: Project walks back from that record by `parents[0]` and passes the records, oldest first, through every registered reducer. Each component's reducer turns its records into its slice of `ProjectState.components` (Story bible `bible`, Shot plan `plan`, Timeline `timeline`), and Project's own reducer keeps the `proj` slice: the records of that chain, the stale and superseded records, and the record that created each asset. A reducer's `agentSummary` adds that component's fields to the project summary that the `dv_proj_*` tools and the `dv:project` prompt section give the agent.
 
 The views show either records or state. The History panel lists records: the steps of the history list, newest first; discarded records do not show. The canvas, the timeline editor, and the asset pool panel show state: the current state, so an undo, a redo, or a move to a step changes what they draw. The asset pool panel lists every asset of the current state and every imported asset of the project, discarded steps included ([history rules](#history-rules), rule 4). No view holds project state: each fetches the current state and fetches it again on every event of the live stream.
 
@@ -141,7 +141,7 @@ Project's reducer marks records stale; it reruns nothing. When a record lists a 
 
 ## Deterministic reuse
 
-When an operation with `deterministic: true` is called with the same operation and version, equal params, and the same resolved input assets as an earlier `done` record, the runner reuses that record's outputs instead of running the operation; the call is still recorded, with `cost.reused: true`. Renders are not deterministic: rendering a shot again gives a new take, a `shot.render` record whose `based_on` names the earlier render, and Shot render's reducer groups the takes of a shot under its first render, whichever model and task each take used.
+When an operation with `deterministic: true` is called with the same operation and version, equal params, and the same resolved input assets as an earlier `done` record, the runner reuses that record's outputs instead of running the operation; the call is still recorded, with `cost.reused: true`. Renders are not deterministic: rendering a shot again gives a new take, a `shot.render` record whose `based_on` names the earlier render, whichever model and task each take used.
 
 <a id="where-new-behavior-goes"></a>
 ## Where new behavior goes

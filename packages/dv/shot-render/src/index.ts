@@ -9,8 +9,8 @@
  *
  * The operation exists while the catalog holds a model of task `t2v` or `ref2v`. The model's facts decide the frame size
  * and frame count. Every render stores the video and its last still as two outputs (`video`, `last_still`), so a later shot
- * can start from output `#1`. The component's reducer groups the takes of each shot in the `shot` slice. While the
- * optional live stream service is mounted, the video bytes also go to browsers as the model produces them.
+ * can start from output `#1`. While the optional live stream service is mounted, the video bytes also go to browsers as
+ * the model produces them.
  *
  * `defineGeneration` of `@dv/generation` builds the service from the declaration of `shot.render`: it registers the
  * component, the task labels and the operation, draws the seed, checks a call against the model before its record, and
@@ -32,10 +32,7 @@ import {
   citedAsset, citedInput, elementCitationUri, parsePromptCitations, replacePromptCitations, type AssetId, type OperationContext,
   type OperationInput, type OperationResult, type OperationSpec, type ProjectId, type RecordId, type RecordInput, type StartedBy,
 } from '@dv/project'
-import { RENDER_OPERATION, shotReducer } from './reducer.ts'
 import { backendSeconds, baseMime, number, shotGeometry, text } from './render.ts'
-
-export type * from './types.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -305,7 +302,7 @@ function liveSink(ctx: Context): LiveShotSink | undefined {
 const RENDER_DECLARATION: GenerationSpec<'video'> = {
   service: 'dvShotRender',
   component: 'shot',
-  operation: RENDER_OPERATION,
+  operation: 'shot.render',
   primitive: 'video',
   tasks: { t2v: { zh: '文字生成', en: 'From text' }, ref2v: { zh: '参考图生成', en: 'From references' } },
   label: { zh: '渲染镜头', en: 'Render shot' },
@@ -342,15 +339,10 @@ const RENDER_DECLARATION: GenerationSpec<'video'> = {
 
 /**
  * The Shot render service: the `shot.render` operation and the `GenerationApi` methods that `defineGeneration` builds
- * from the declaration, and the `shot` reducer.
+ * from the declaration.
  */
 export default class DvShotRender extends defineGeneration(RENDER_DECLARATION) {
   static Config = Config
-
-  constructor(ctx: Context) {
-    super(ctx)
-    ctx.effect(() => ctx.dvProject.registerReducer('shot', shotReducer), 'dvShotRender reducer')
-  }
 }
 
 /** How a summary names the shot: `shot 7` for a render that a record started at slot 7, else `shot`. */

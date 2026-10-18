@@ -212,14 +212,6 @@ export interface PlanState {
   plans: Record<string, PlanVersion[]>
 }
 
-/** The `shot` slice: the takes of each shot. */
-export interface ShotState {
-  /** The root record of each shot → the root and every take based on it. */
-  takes: Record<string, string[]>
-  /** Each take with a `based_on` → its root record. */
-  roots: Record<string, string>
-}
-
 /** The `timeline` slice. */
 export interface TimelineState {
   /** Every timeline of the project, in creation order. */
@@ -240,7 +232,6 @@ export interface ComponentStates {
   }
   bible: StoryBibleState
   plan: PlanState
-  shot: ShotState
   timeline: TimelineState
   /** The assets on the canvas, in the order they were placed. */
   asset: { placed: string[] }
