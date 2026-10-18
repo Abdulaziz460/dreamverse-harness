@@ -1,0 +1,32 @@
+{
+  "name": "@dv/ui-story-bible",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Browser half of the DreamVerse story bible: the canvas node kind that draws each character, location and style at its newest version, the version kinds of the reference kinds character, location and style, and the records whose outputs the newest versions use as references.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./client": {
+      "types": "./lib/types/client/index.d.ts",
+      "default": "./lib/client.js"
+    },
+    "./src/*": "./src/*",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "client": {
+      "inject": [],
+      "platform": "web"
+    }
+  },
+  "scripts": {
+    "bundle": "tsdown"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "workspace:~"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "workspace:~",
+    "@dv/ui-kit": "workspace:*"
+  }
+}

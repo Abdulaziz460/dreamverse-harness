@@ -1,6 +1,6 @@
 /**
  * The asset pool as the canvas editors use it, drawn with the asset pool panel of `@dv/ui-asset-pool`: the picker that
- * adds references (the project's characters, locations and styles, then the asset pool with its import drop zone), the
+ * adds references (the items of the registered version kinds, then the asset pool with its import drop zone), the
  * preview of one asset, and the thumbnail of an image or a video asset. This file is the canvas's only import of
  * `@dv/ui-asset-pool`. The picker and the preview render on `document.body` and close on Escape before the canvas sees
  * the key, so the editor beneath them stays open.
@@ -13,9 +13,9 @@ import { createPortal } from 'react-dom'
 import { AssetsPanel, Preview } from '@dv/ui-asset-pool/src/client/AssetsPanel.tsx'
 import { assetUrl } from '@dv/ui-kit/api.ts'
 import type { DvClient } from '@dv/ui-kit/api.ts'
+import type { VersionKind } from '@dv/ui-kit/registries.ts'
 import type { Asset, WireState } from '@dv/ui-kit/types.ts'
 import { useZoomPresence } from '@dv/ui-kit/zoom.ts'
-import { bibleItems } from './graph.ts'
 import type { CanvasTranslate } from './NodeCard.tsx'
 
 const overlay: CSSProperties = {
@@ -76,17 +76,17 @@ export interface AssetPickerProps {
   /** The chat session the canvas sits beside, recorded as the `session` of the picker's imports. */
   session: string | null
   t: CanvasTranslate
-  /** Whether the picker also offers the latest version of each character, location and style. */
-  withBible: boolean
-  /** The references the editor already holds; a story bible version among them is not offered again. */
+  /** The version kinds whose items the picker offers at their newest version; none for a picker of assets only. */
+  kinds: readonly VersionKind[]
+  /** The references the editor already holds; an item version among them is not offered again. */
   chosen: readonly string[]
-  /** Receives the picked references in pick order: asset IDs, and `<id>@<version>` for story bible versions. */
+  /** Receives the picked references in pick order: asset IDs, and `<id>@<version>` for item versions. */
   onConfirm: (refs: string[]) => void
   onCancel: () => void
 }
 
 /**
- * The picker: the project's characters, locations and styles when `withBible`, then the asset pool panel, whose clicks pick assets.
+ * The picker: the newest version of each item of `kinds`, then the asset pool panel, whose clicks pick assets.
  * A click toggles an item; the confirm button hands over every picked reference.
  * @param props - the project, the offered kinds, and the callbacks.
  * @returns the dialog.
@@ -99,14 +99,11 @@ export function AssetPicker(props: AssetPickerProps): ReactNode {
     setPicked(current => current.includes(ref) ? current.filter(other => other !== ref) : [...current, ref])
   }
   const assets = new Map(props.state.assets.map(asset => [asset.id, asset]))
-  const bible = props.withBible
-    ? bibleItems(props.state).flatMap(({ id, versions }) => {
-      const latest = versions.at(-1)
-      const ref = latest === undefined ? '' : `${id}@${String(latest.version)}`
-      if (latest === undefined || props.chosen.includes(ref)) return []
-      return [{ ref, name: latest.name || id, cover: assets.get(latest.references[0] ?? '') }]
-    })
-    : []
+  const bible = props.kinds.flatMap(kind => kind.latest(props.state).flatMap(({ id, version }) => {
+    const ref = `${id}@${String(version)}`
+    if (props.chosen.includes(ref)) return []
+    return [{ ref, name: kind.name(props.state, id, version) || id, cover: assets.get(kind.assets(props.state, id, version)[0] ?? '') }]
+  }))
   const pickedSet = new Set(picked)
   // The asset pool panel marks each tile with `data-asset-id`; the picker rings the picked ones.
   const pickedRing = picked.length === 0

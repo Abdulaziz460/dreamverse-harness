@@ -1,10 +1,41 @@
+// @vitest-environment jsdom
 /** Canvas nodes and edges derived from the shared project state. */
 import { describe, expect, it } from 'vitest'
 import type { ChainAnchor, NodeKind, TakesInUse } from '@dv/ui-kit/registries.ts'
+import type { DvLanguage } from '@dv/ui-kit/locale.ts'
 import type { PlanVersion, ProjectRecord, WireOperation, WireState } from '@dv/ui-kit/types.ts'
 import { formatInputRef } from '@dv/ui-kit/references.ts'
+import { bibleNodeKind, bibleReferencesInUse, bibleVersionKinds } from '@dv/ui-story-bible/src/client/index.ts'
 import { asset, fixtureState, OPERATIONS, record } from '../../ui-kit/tests/fixture.client.tsx'
 import { buildCanvasGraph, freePositions, NODE_WIDTH, ROW, slotFrames } from '../src/client/graph.ts'
+import type { CanvasGraph, CanvasNode } from '../src/client/graph.ts'
+
+/**
+ * The canvas graph with the story bible's node kind, references in use and version kinds registered, as the bundle
+ * mounts `@dv/ui-story-bible`.
+ * @param state - the state.
+ * @param placed - the assets on the canvas.
+ * @param operations - the operation declarations.
+ * @param language - the label language.
+ * @param anchors - the chain anchors.
+ * @param inUse - other `TakesInUse` descriptors, such as the timeline clips.
+ * @returns the graph.
+ */
+function bibleGraph(
+  state: WireState, placed?: ReadonlySet<string>, operations: readonly WireOperation[] = [], language: DvLanguage = 'zh',
+  anchors: readonly ChainAnchor[] = [], inUse: readonly TakesInUse[] = [],
+): CanvasGraph {
+  const uses = [bibleReferencesInUse, ...inUse]
+  return buildCanvasGraph(state, placed, operations, language, anchors, uses, [bibleNodeKind], bibleVersionKinds)
+}
+
+/**
+ * @param node - a drawn node.
+ * @returns its `data-node-kind`: the `NodeKind.kind` of a seed, else the core kind.
+ */
+function kindOf(node: CanvasNode): string {
+  return node.kind === 'seed' ? node.nodeKind.kind : node.kind
+}
 
 /** A chain anchor of each approval operation: the records an approval started hang off the node of its plan. */
 const anchorOf = (starter: string): ChainAnchor => ({ starter, anchor: approval => `plan:${String(approval.params['plan'])}` })
@@ -106,17 +137,17 @@ function byRecordOrder(a: string | string[], b: string | string[]): number {
  * @returns the pairs, in node order.
  */
 function drawn(state: WireState): string[][] {
-  return buildCanvasGraph(state, undefined, [], 'zh', [APPROVAL], [CLIPS]).nodes.map(node => [node.id, node.kind])
+  return bibleGraph(state, undefined, [], 'zh', [APPROVAL], [CLIPS]).nodes.map(node => [node.id, kindOf(node)])
 }
 
 describe('buildCanvasGraph', () => {
-  it('draws characters, locations, styles, plans, and takes, and hides reference imports, exports, still grabs, and timeline records', () => {
-    const graph = buildCanvasGraph(fixtureState(), undefined, OPERATIONS, 'zh', [], [CLIPS])
-    expect(graph.nodes.map(node => [node.id, node.kind])).toEqual([
-      ['bible:hero', 'bible'], ['plan:p1', 'plan'], ['g1', 'take'], ['g2', 'take'], ['g3', 'take'],
+  it('draws the story bible\'s seeds, plans, and takes, and hides reference imports, exports, still grabs, and timeline records', () => {
+    const graph = bibleGraph(fixtureState(), undefined, OPERATIONS, 'zh', [], [CLIPS])
+    expect(graph.nodes.map(node => [node.id, kindOf(node)])).toEqual([
+      ['plan:p1', 'plan'], ['bible:hero', 'bible'], ['g1', 'take'], ['g2', 'take'], ['g3', 'take'],
     ])
     const byId = new Map(graph.nodes.map(node => [node.id, node]))
-    expect(byId.get('bible:hero')).toMatchObject({ thumb: null, references: ['ref.png'], bibleKind: 'character', bibleId: 'hero' })
+    expect(byId.get('bible:hero')).toMatchObject({ kind: 'seed', nodeKind: bibleNodeKind, thumb: null, references: ['ref.png'], x: 0 })
     expect(byId.get('g1')).toMatchObject({ thumb: 'shot1-last.png', video: 'shot1.mp4', durationSec: 4 })
     expect(byId.get('g2')?.flags.stale).toBe(true)
     expect(byId.get('g2')?.badges).toEqual(['trim'])
@@ -157,7 +188,7 @@ describe('buildCanvasGraph', () => {
       id: 'g9', operation: 'shot.render', deterministic: false, params: { prompt: 'alone' },
       inputs: [{ role: 'reference', ref: { asset: 'used.png' }, resolved_asset: 'used.png' }],
     }))
-    const graph = buildCanvasGraph(state, new Set(['listed.png', 'side.png', 'ref.png']), OPERATIONS)
+    const graph = bibleGraph(state, new Set(['listed.png', 'side.png', 'ref.png']), OPERATIONS)
     expect(graph.nodes.filter(node => node.kind === 'asset').map(node => node.id)).toEqual(['u4'])
     expect(graph.nodes.find(node => node.id === 'bible:hero')?.references).toEqual(['ref.png', 'side.png'])
     expect(graph.edges.filter(edge => edge.to === 'g9')).toEqual([])
@@ -166,6 +197,22 @@ describe('buildCanvasGraph', () => {
     // On the list, used.png is drawn with an edge to the take that reads it.
     const listed = buildCanvasGraph(state, new Set(['listed.png', 'used.png']), OPERATIONS)
     expect(listed.edges).toContainEqual({ from: 'u3', to: 'g9', kind: 'reference' })
+  })
+
+  it('gives an earlier version\'s assets to the node of its item, and links a version input from that node, through the version kinds', () => {
+    const state = fixtureState()
+    state.assets.push(asset('side.png', 'image/png', null))
+    // Version 2 of Hero replaced ref.png with side.png; ref.png stays on the canvas.
+    state.components.bible.characters['hero']?.push({ id: 'hero', version: 2, name: 'Hero', description: '', references: ['side.png'], created_by: 'e2' })
+    const placed = new Set(['ref.png'])
+    const graph = bibleGraph(state, placed, OPERATIONS)
+    expect(graph.nodes.filter(node => node.kind === 'asset')).toEqual([])
+    expect(graph.assetNodes['ref.png']).toBe('bible:hero')
+    expect(graph.edges).toContainEqual({ from: 'bible:hero', to: 'g1', kind: 'reference' })
+    // With the node kind alone, the import of ref.png is an asset node, and g1 reads hero@1 from it.
+    const seedsOnly = buildCanvasGraph(state, placed, OPERATIONS, 'zh', [], [], [bibleNodeKind])
+    expect(seedsOnly.nodes.filter(node => node.kind === 'asset').map(node => node.id)).toEqual(['u1'])
+    expect(seedsOnly.edges).toContainEqual({ from: 'u1', to: 'g1', kind: 'reference' })
   })
 
   it('draws a placed asset that no record of the current state imported as asset:<id>, and no second node for a take output', () => {
@@ -211,10 +258,10 @@ describe('buildCanvasGraph', () => {
   })
 
   it('shows the latest plan version and the current take of each of its shots, not every take ever rendered', () => {
-    const graph = buildCanvasGraph(rollbackProject(), undefined, [], 'zh', [APPROVAL], [CLIPS])
+    const graph = bibleGraph(rollbackProject(), undefined, [], 'zh', [APPROVAL], [CLIPS])
     // v4 has 6 shots and its approval reused every v1 take: no shot 7, no v2 or v3 take, no retake of the removed shot.
-    expect(graph.nodes.map(node => [node.id, node.kind])).toEqual([
-      ['bible:hero', 'bible'], ['plan:p1', 'plan'], ...['r1', 'r2', 'r3', 'r4', 'r5', 'r6'].map(id => [id, 'take']),
+    expect(graph.nodes.map(node => [node.id, kindOf(node)])).toEqual([
+      ['plan:p1', 'plan'], ['bible:hero', 'bible'], ...['r1', 'r2', 'r3', 'r4', 'r5', 'r6'].map(id => [id, 'take']),
     ])
     const plan = graph.nodes.find(node => node.kind === 'plan')
     expect([plan?.subtitle, plan?.record?.id]).toEqual(['6', 'q4'])
@@ -229,11 +276,11 @@ describe('buildCanvasGraph', () => {
   it('a jump back to an earlier step changes the canvas to that step\'s plan version and takes', () => {
     // Back to just after the v3 approval: plan v3 with 7 shots, the takes its timeline plays.
     expect(drawn(rollbackProject('l3'))).toEqual([
-      ['bible:hero', 'bible'], ['plan:p1', 'plan'], ...['r1', 'r2', 's3', 'r4', 's7', 'x7', 'w5', 'r6'].map(id => [id, 'take']).sort(byRecordOrder),
+      ['plan:p1', 'plan'], ['bible:hero', 'bible'], ...['r1', 'r2', 's3', 'r4', 's7', 'x7', 'w5', 'r6'].map(id => [id, 'take']).sort(byRecordOrder),
     ])
     // Back to just after the v1 approval: v1 and its 6 takes only.
     expect(drawn(rollbackProject('l1'))).toEqual([
-      ['bible:hero', 'bible'], ['plan:p1', 'plan'], ...['r1', 'r2', 'r3', 'r4', 'r5', 'r6'].map(id => [id, 'take']),
+      ['plan:p1', 'plan'], ['bible:hero', 'bible'], ...['r1', 'r2', 'r3', 'r4', 'r5', 'r6'].map(id => [id, 'take']),
     ])
     // Back to before the plan: the character and its reference only.
     expect(drawn(rollbackProject('e1'))).toEqual([['bible:hero', 'bible']])
@@ -420,8 +467,8 @@ describe('T1c: the canvas writes a reference of any kind', () => {
     expect(chips?.join(' ')).not.toContain('undefined')
   })
 
-  it('T1c.2: a version of a kind without a canvas node links from the node of its asset; a character version links from its bible node', () => {
-    const graph = buildCanvasGraph(unknownKindState(), new Set(['zz.png']), OPERATIONS)
+  it('T1c.2: a version of a kind without a version kind links from the node of its asset; a character version links from its bible node', () => {
+    const graph = bibleGraph(unknownKindState(), new Set(['zz.png']), OPERATIONS)
     expect(graph.edges).toContainEqual({ from: 'u9', to: 'g9', kind: 'reference' })
     expect(graph.edges).toContainEqual({ from: 'bible:hero', to: 'g1', kind: 'reference' })
   })

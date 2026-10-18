@@ -110,6 +110,9 @@
     - id: dv-ui-workflow-story
       name: '@dv/ui-workflow-story'
 
+    - id: dv-ui-story-bible
+      name: '@dv/ui-story-bible'
+
     - id: dv-ui-shell
       name: '@dv/ui-shell'
 

@@ -141,6 +141,7 @@
     { "path": "./packages/dv/ui-shell" },
     { "path": "./packages/dv/ui-composer" },
     { "path": "./packages/dv/ui-workflow-story" },
+    { "path": "./packages/dv/ui-story-bible" },
     { "path": "./apps/web" }
   ]
 }

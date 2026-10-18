@@ -10,13 +10,14 @@
  * and the task is not `t2v`, and offers "渲染新版本" (a user record of the take's operation in the take's model and task,
  * whose `based_on` is the take); a take whose operation the list does not name shows no params and no button.
  * While the render starts the button is disabled and reads 渲染中…, and a refused request shows its error under the
- * button. "添加素材" opens the asset picker; a reference chip opens the preview of its asset, or the editor of its character,
- * location or style over this one. A character, location or style shows its references, adds assets from the picker, and
- * removes one reference while it has more than one. A plan switches between its versions (第 1 版,
+ * button. "添加素材" opens the asset picker; a reference chip opens the preview of its asset, or the editor of the node of
+ * its versioned item (read through the registered version kinds) over this one. A seed of the `bible` node kind shows
+ * its references, adds assets from the picker, and removes one reference while it has more than one. A plan switches
+ * between its versions (第 1 版,
  * 第 2 版, …) and shows the chosen version's approval status (from the approved versions that the registered chain
  * anchors report for the node), its reference assets, and one card per shot with exactly
  * what the plan holds: duration, model and task, reference assets, whether the shot continues the previous shot, and the
- * full prompt with each `Picture N` drawn as its image. A seed (a node that a registered `NodeKind` drew) shows the
+ * full prompt with each `Picture N` drawn as its image. Any other seed (a node that a registered `NodeKind` drew) shows the
  * `dv.canvas.editor` entry keyed by its `NodeKind.id`, and only the header when no entry is registered or the host
  * renders no entries. A stale node offers "仍然保留", which keeps its record as it is (`proj.stale_accept`).
  */
@@ -29,13 +30,12 @@ import { dispatchCompose, type DvComposeRef } from '@dv/ui-kit/compose.ts'
 import { fieldsOf, paramsOf, type FormField } from '@dv/ui-kit/form.ts'
 import { useText } from '@dv/ui-kit/locale.ts'
 import { formatInputRef, isPicture, pictureParts, referenceAssets, shotReferences } from '@dv/ui-kit/references.ts'
-import type { ChainAnchor } from '@dv/ui-kit/registries.ts'
+import type { ChainAnchor, VersionKind } from '@dv/ui-kit/registries.ts'
 import { readStored, writeStored } from '@dv/ui-kit/storage.ts'
 import { clockText } from '@dv/ui-kit/timeline.ts'
 import { taskLabel, type WireTaskLabels } from '@dv/ui-kit/tool-labels.ts'
 import type { OperationRequest, PlanVersion, ProjectAsset, Shot, WireOperation, WireState } from '@dv/ui-kit/types.ts'
 import { AssetMedia, AssetPicker, AssetPreview } from './AssetPicker.tsx'
-import { bibleVersions } from './graph.ts'
 import type { CanvasNode } from './graph.ts'
 import { kindColor, kindLabel, mono, nodeTitle, planTotalSec } from './NodeCard.tsx'
 import type { CanvasTranslate } from './NodeCard.tsx'
@@ -53,6 +53,8 @@ export interface NodeEditorProps {
   taskLabels: WireTaskLabels
   /** The registered chain anchors; a plan version is approved when one of them lists it for the plan's node. */
   anchors: readonly ChainAnchor[]
+  /** The registered version kinds; reference chips, the picker and reference lists read versioned items through them. */
+  versionKinds: readonly VersionKind[]
   client: DvClient
   project: string
   /** The chat session the canvas sits beside, recorded as the `session` of the editor's writes. */
@@ -305,27 +307,66 @@ interface EditedInput {
   ref: string
 }
 
+/** A versioned item at its newest version, with the version kind that reads it. */
+interface VersionedItem {
+  kind: VersionKind
+  id: string
+  version: number
+}
+
 /**
- * The asset that shows a reference: the latest reference image of a character, location or style, or the asset itself.
+ * The first item of the version kinds that matches, at its newest version.
  * @param state - the project state.
+ * @param kinds - the registered version kinds.
+ * @param matches - whether an item ID of a kind is the one sought.
+ * @returns the item, or null when no kind holds a matching item.
+ */
+function findItem(
+  state: WireState, kinds: readonly VersionKind[], matches: (kind: VersionKind, id: string) => boolean,
+): VersionedItem | null {
+  for (const kind of kinds) {
+    const item = kind.latest(state).find(entry => matches(kind, entry.id))
+    if (item !== undefined) return { kind, ...item }
+  }
+  return null
+}
+
+/**
+ * The item that reference text such as `hero@1` names, at its newest version.
+ * @param state - the project state.
+ * @param kinds - the registered version kinds.
+ * @param ref - reference text.
+ * @returns the item; null for `<id>@<n>` text that no kind holds; undefined for any other text.
+ */
+function namedItem(state: WireState, kinds: readonly VersionKind[], ref: string): VersionedItem | null | undefined {
+  const id = /^(.+)@\d+$/.exec(ref)?.[1]
+  return id === undefined ? undefined : findItem(state, kinds, (_kind, other) => other === id)
+}
+
+/**
+ * The asset that shows a reference: the first reference asset of the newest version of its item, or the asset itself.
+ * @param state - the project state.
+ * @param kinds - the registered version kinds.
  * @param ref - reference text such as `hero@1` or an asset ID.
  * @returns the asset ID, or null.
  */
-function refImage(state: WireState, ref: string): string | null {
-  const bibleId = /^(.+)@\d+$/.exec(ref)?.[1]
-  if (bibleId !== undefined) return bibleVersions(state, bibleId)?.at(-1)?.references[0] ?? null
+function refImage(state: WireState, kinds: readonly VersionKind[], ref: string): string | null {
+  const item = namedItem(state, kinds, ref)
+  if (item !== undefined) return item === null ? null : item.kind.assets(state, item.id, item.version)[0] ?? null
   return state.assets.some(asset => asset.id === ref) ? ref : null
 }
 
 /**
- * A reference chip label: the name of the character, location or style, or the asset's name.
+ * A reference chip label: the name of the newest version of its item, or the asset's name.
  * @param state - the project state.
+ * @param kinds - the registered version kinds.
  * @param ref - reference text.
  * @returns the label.
  */
-function refName(state: WireState, ref: string): string {
-  const bibleId = /^(.+)@\d+$/.exec(ref)?.[1]
-  if (bibleId !== undefined) return bibleVersions(state, bibleId)?.at(-1)?.name ?? bibleId
+function refName(state: WireState, kinds: readonly VersionKind[], ref: string): string {
+  const item = namedItem(state, kinds, ref)
+  if (item === null) return ref.slice(0, ref.lastIndexOf('@'))
+  if (item !== undefined) return item.kind.name(state, item.id, item.version) ?? item.id
   return state.assets.find(asset => asset.id === ref)?.name ?? ref
 }
 
@@ -445,23 +486,26 @@ export function NodeEditor(props: NodeEditorProps): ReactNode {
   const approved = plan !== undefined
     && props.anchors.some(anchor => anchor.approvedVersions?.(props.state, node.id).includes(plan.version) === true)
   const placement = useEditorPlacement()
+  // The versioned item that a seed stands for: the item whose version kind names the seed's node.
+  const item = node.kind === 'seed' ? findItem(props.state, props.versionKinds, (kind, id) => kind.node(id) === node.id) : null
   const askAgent = (): void => {
     const shown = node.thumb ?? node.video ?? node.references[0] ?? null
     // An asset node without a record (`asset:<id>`) is referenced as the asset itself.
     const ref: DvComposeRef = node.kind === 'asset' && node.record === null && shown !== null
       ? { kind: 'asset', id: shown, label: title, assetId: shown }
-      : { kind: node.bibleKind ?? 'record', id: node.bibleId ?? node.record?.id ?? node.id, label: title, ...shown === null ? {} : { assetId: shown } }
+      : { kind: item?.kind.kind ?? 'record', id: item?.id ?? node.record?.id ?? node.id, label: title, ...shown === null ? {} : { assetId: shown } }
     dispatchCompose({ text: t('compose.text', { title }), refs: [ref] })
     onClose()
   }
   let body: ReactNode
   switch (node.kind) {
     case 'take': body = <TakeForm {...props} title={title} />; break
-    case 'bible': body = <BibleForm {...props} />; break
-    case 'plan': body = plan === undefined ? null : <PlanShots plan={plan} state={props.state} t={t} taskLabels={props.taskLabels} />; break
+    case 'plan': body = plan === undefined ? null : <PlanShots plan={plan} state={props.state} kinds={props.versionKinds} t={t} taskLabels={props.taskLabels} />; break
     case 'asset': body = <AssetPanel node={node} t={t} onRemoveFromCanvas={props.onRemoveFromCanvas} />; break
     case 'seed':
-      body = props.renderEditor?.('dv.canvas.editor', { node: node.seed, state: props.state }, { entryKey: node.nodeKind.id })
+      body = node.nodeKind.kind === 'bible'
+        ? <BibleForm {...props} item={item} />
+        : props.renderEditor?.('dv.canvas.editor', { node: node.seed, state: props.state }, { entryKey: node.nodeKind.id })
       break
   }
   const { panelRef, rect, begin, follow, finish, reset, resizeBy } = placement
@@ -495,7 +539,12 @@ export function NodeEditor(props: NodeEditorProps): ReactNode {
           </button>
         </div>
         {node.kind === 'plan' && plan !== undefined
-          ? <PlanHeader versions={planVersions} plan={plan} approved={approved} state={props.state} t={t} onChoose={setChosen} />
+          ? (
+            <PlanHeader
+              versions={planVersions} plan={plan} approved={approved} state={props.state} kinds={props.versionKinds} t={t}
+              onChoose={setChosen}
+            />
+          )
           : null}
       </header>
       <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: node.kind === 'plan' ? 12 : 16 }}>
@@ -583,7 +632,8 @@ function AssetPanel(
  * @returns the element.
  */
 function TakeForm(
-  { node, state, operations, taskLabels, client, project, session, t, onRender, onOpenNode, title }: NodeEditorProps & { title: string },
+  { node, state, operations, taskLabels, versionKinds, client, project, session, t, onRender, onOpenNode, title }:
+    NodeEditorProps & { title: string },
 ): ReactNode {
   const pick = useText()
   const record = node.record
@@ -651,13 +701,13 @@ function TakeForm(
       {fields.filter(param => param.key === 'prompt').map(fieldOf)}
       {!withReferences ? null : <><span style={label}>{t('editor.references')}</span><div ref={chips} style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
         {references.map((input) => {
-          const shown = refImage(state, input.ref)
-          const name = refName(state, input.ref)
-          const bibleId = /^(.+)@\d+$/.exec(input.ref)?.[1]
+          const shown = refImage(state, versionKinds, input.ref)
+          const name = refName(state, versionKinds, input.ref)
+          const item = namedItem(state, versionKinds, input.ref)
           const asset = shown === null ? undefined : assets.get(shown)
-          // A character, location or style opens its editor; an asset opens its preview.
+          // A versioned item opens the editor of its node; an asset opens its preview.
           const open = (): void => {
-            if (bibleId !== undefined) onOpenNode(`bible:${bibleId}`)
+            if (item !== undefined && item !== null) onOpenNode(item.kind.node(item.id))
             else if (asset !== undefined) setPreviewed(asset)
           }
           return (
@@ -675,7 +725,7 @@ function TakeForm(
       {picking
         ? (
           <AssetPicker
-            state={state} client={client} project={project} session={session} t={t} withBible
+            state={state} client={client} project={project} session={session} t={t} kinds={versionKinds}
             chosen={references.map(input => input.ref)} onConfirm={addReferences} onCancel={() => { setPicking(false) }}
           />
         )
@@ -699,17 +749,16 @@ function TakeForm(
 }
 
 /**
- * A character, location or style: its references, each opening its preview and removable while more than one is left,
- * its description, and "添加素材", which appends the assets picked from the asset pool.
- * @param props - editor props.
+ * A character, location or style: the references of its newest version, each opening its preview and removable while
+ * more than one is left, and "添加素材", which appends the assets picked from the asset pool.
+ * @param props - editor props and the versioned item that the seed stands for.
  * @returns the element.
  */
-function BibleForm({ node, state, client, project, session, t, run }: NodeEditorProps): ReactNode {
-  const bibleId = node.bibleId ?? ''
-  const kind = node.bibleKind ?? 'character'
-  const latest = bibleVersions(state, bibleId)?.at(-1)
-  const references = latest?.references ?? []
-  const name = latest?.name || bibleId
+function BibleForm({ state, client, project, session, t, run, item }: NodeEditorProps & { item: VersionedItem | null }): ReactNode {
+  const bibleId = item?.id ?? ''
+  const kind = item?.kind.kind ?? 'character'
+  const references = item === null ? [] : item.kind.assets(state, item.id, item.version)
+  const name = (item === null ? null : item.kind.name(state, item.id, item.version)) || bibleId
   const [picking, setPicking] = useState(false)
   const [previewed, setPreviewed] = useState<ProjectAsset | null>(null)
   const list = useRef<HTMLDivElement | null>(null)
@@ -717,7 +766,7 @@ function BibleForm({ node, state, client, project, session, t, run }: NodeEditor
   const sessionField = session === null ? {} : { session }
   // `bible.<kind>_update` writes the next version with exactly these references.
   const update = (next: readonly string[], intent: string): void => {
-    if (latest === undefined) return
+    if (item === null) return
     void run(() => client.runOperation({
       project, operation: `bible.${kind}_update`, params: { [kind]: bibleId }, inputs: next.map(ref => ({ role: 'reference', ref })), surface: 'canvas',
       intent, ...sessionField,
@@ -755,16 +804,13 @@ function BibleForm({ node, state, client, project, session, t, run }: NodeEditor
           )
         })}
       </div>
-      {latest !== undefined && latest.description !== ''
-        ? (<><span style={label}>{t('editor.description')}</span><p style={{ margin: 0 }}>{latest.description}</p></>)
-        : null}
       <div style={{ marginTop: 12 }}>
         <button type="button" className="dv-canvas-btn" style={secondaryButton} onClick={() => { setPicking(true) }}>{t('editor.addAsset')}</button>
       </div>
       {picking
         ? (
           <AssetPicker
-            state={state} client={client} project={project} session={session} t={t} withBible={false}
+            state={state} client={client} project={project} session={session} t={t} kinds={[]}
             chosen={references} onConfirm={addReferences} onCancel={() => { setPicking(false) }}
           />
         )
@@ -787,19 +833,19 @@ interface NamedReference {
 
 /**
  * The reference assets that reference texts stand for, of any media type, in input order (see `referenceAssets`), each
- * with the name of the character, location or style version it belongs to, else the asset's name, and the images
- * numbered in `Picture N` order.
+ * with the name of the item version it belongs to, else the asset's name, and the images numbered in `Picture N` order.
  * @param state - the branch state.
+ * @param kinds - the registered version kinds.
  * @param references - the reference texts, in input order.
  * @returns the reference assets.
  */
-function namedReferences(state: WireState, references: readonly string[]): NamedReference[] {
+function namedReferences(state: WireState, kinds: readonly VersionKind[], references: readonly string[]): NamedReference[] {
   let pictures = 0
   return references.flatMap((ref) => {
-    const bible = /^(.+)@(\d+)$/.exec(ref)
-    const bibleName = bible === null ? undefined : bibleVersions(state, bible[1] ?? '')?.find(version => version.version === Number(bible[2]))?.name
-    return referenceAssets(state, [ref])
-      .map(asset => ({ asset, name: bibleName || asset.name, picture: isPicture(asset) ? ++pictures : null }))
+    const named = /^(.+)@(\d+)$/.exec(ref)
+    const itemName = named === null ? undefined : kinds.map(kind => kind.name(state, named[1] ?? '', Number(named[2]))).find(entry => entry !== null)
+    return referenceAssets(state, [ref], kinds)
+      .map(asset => ({ asset, name: itemName || asset.name, picture: isPicture(asset) ? ++pictures : null }))
   })
 }
 
@@ -831,16 +877,17 @@ function ReferenceChip({ reference, t }: { reference: NamedReference; t: CanvasT
  * The plan's second header row: the version switch, the chosen version's approval status, its shot count, total
  * duration and aspect ratio, and the plan's reference assets. The status is approved, awaiting approval (the latest
  * version only), or replaced by the next version.
- * @param props - every version, the chosen one, whether a chain anchor approved it, the branch state, the canvas
- * translate, and the version choice callback.
+ * @param props - every version, the chosen one, whether a chain anchor approved it, the branch state, the version
+ * kinds, the canvas translate, and the version choice callback.
  * @returns the element.
  */
 function PlanHeader(
-  { versions, plan, approved, state, t, onChoose }: {
+  { versions, plan, approved, state, kinds, t, onChoose }: {
     versions: PlanVersion[]
     plan: PlanVersion
     approved: boolean
     state: WireState
+    kinds: readonly VersionKind[]
     t: CanvasTranslate
     onChoose: (version: number) => void
   },
@@ -853,7 +900,7 @@ function PlanHeader(
   else if (replaced) { status = t('editor.planReplaced', { version: plan.version + 1 }); tone = 'var(--dv-text-2)' }
   const total = planTotalSec(plan.shots)
   const summary = [t('node.planShots', { count: plan.shots.length }), ...total === null ? [] : [clockText(total)], ...plan.aspect_ratio === undefined ? [] : [plan.aspect_ratio]]
-  const references = namedReferences(state, plan.references ?? [])
+  const references = namedReferences(state, kinds, plan.references ?? [])
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
       <div role="group" aria-label={t('editor.planVersions')} style={{ display: 'inline-flex', padding: 3, borderRadius: 'var(--dv-radius-md)', background: 'var(--dv-surface-3)' }}>
@@ -901,17 +948,23 @@ function PlanHeader(
 /**
  * The shots of one plan version as cards. Memoized, because a move or resize of the editor panel re-renders the editor
  * on every pointer move and the shot cards look up their reference assets.
- * @param props - the version, the branch state, the canvas translate, and the task labels.
+ * @param props - the version, the branch state, the version kinds, the canvas translate, and the task labels.
  * @returns the element.
  */
 const PlanShots = memo(function PlanShots(
-  { plan, state, t, taskLabels }: { plan: PlanVersion; state: WireState; t: CanvasTranslate; taskLabels: WireTaskLabels },
+  { plan, state, kinds, t, taskLabels }: {
+    plan: PlanVersion
+    state: WireState
+    kinds: readonly VersionKind[]
+    t: CanvasTranslate
+    taskLabels: WireTaskLabels
+  },
 ): ReactNode {
   return (
     <ol aria-label={t('editor.shots')} style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 10 }}>
       {plan.shots.map((shot, index) => (
         <ShotCard
-          key={index} number={index + 1} shot={shot} references={namedReferences(state, shotReferences(plan, shot))}
+          key={index} number={index + 1} shot={shot} references={namedReferences(state, kinds, shotReferences(plan, shot))}
           t={t} taskLabels={taskLabels}
         />
       ))}

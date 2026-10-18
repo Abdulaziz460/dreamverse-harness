@@ -4,6 +4,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { formatInputRef, isPicture, pictureParts, referenceAssets, shotReferences, versionRefOf } from '../src/client/references.ts'
+import type { VersionKind } from '../src/client/registries.ts'
 import type { WireInputRef } from '../src/client/types.ts'
 import { asset, fixtureState } from './fixture.client.tsx'
 
@@ -28,16 +29,33 @@ describe('versionRefOf', () => {
   })
 })
 
+/**
+ * A test version kind over a fixed list of versions.
+ * @param kind - the reference kind.
+ * @param versions - item ID → its versions with their reference assets.
+ * @returns the version kind.
+ */
+function testKind(kind: string, versions: Record<string, Array<{ version: number; assets: string[] }>>): VersionKind {
+  const find = (id: string, version: number) => versions[id]?.find(entry => entry.version === version)
+  return {
+    kind, node: id => `test:${id}`, latest: () => [], name: (_state, id, version) => find(id, version) === undefined ? null : id,
+    assets: (_state, id, version) => find(id, version)?.assets ?? [],
+  }
+}
+
 describe('referenceAssets', () => {
-  it('expands a character version to its references in version order, keeps input order and every media type, and skips what the state lacks', () => {
+  it('expands a version through the version kinds to its assets in version order, keeps input order and every media type, and skips what the state lacks', () => {
     const state = fixtureState()
-    state.components.bible.characters['hero']?.push({
-      id: 'hero', version: 2, name: 'Hero', description: '', references: ['side.png', 'ref.png'], created_by: 'e2',
-    })
-    state.components.bible.locations['alley'] = [{ id: 'alley', version: 1, name: 'Alley', description: '', references: ['alley.png'], created_by: 'e3' }]
     state.assets.push(asset('side.png', 'image/png', null), asset('alley.png', 'image/png', null), asset('score.wav', 'audio/wav', null))
-    expect(referenceAssets(state, ['alley@1', 'hero@2', 'g1#1', 'shot1-last.png', 'hero@9', 'g1#0', 'score.wav', 'missing.png']).map(entry => entry.id))
+    const kinds = [
+      testKind('test_character', { hero: [{ version: 1, assets: ['ref.png'] }, { version: 2, assets: ['side.png', 'ref.png'] }] }),
+      testKind('test_location', { alley: [{ version: 1, assets: ['alley.png'] }] }),
+    ]
+    const refs = ['alley@1', 'hero@2', 'g1#1', 'shot1-last.png', 'hero@9', 'g1#0', 'score.wav', 'missing.png']
+    expect(referenceAssets(state, refs, kinds).map(entry => entry.id))
       .toEqual(['alley.png', 'side.png', 'ref.png', 'shot1-last.png', 'shot1-last.png', 'shot1.mp4', 'score.wav'])
+    // Without a version kind, a version reference stands for no asset.
+    expect(referenceAssets(state, ['hero@2', 'score.wav'], []).map(entry => entry.id)).toEqual(['score.wav'])
   })
 })
 

@@ -11,6 +11,7 @@ import type { PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-
 import { makeTranslate, SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import { DvClient } from '@dv/ui-kit/api.ts'
 import type { NodeKind } from '@dv/ui-kit/registries.ts'
+import { bibleNodeKind } from '@dv/ui-story-bible/src/client/index.ts'
 import { asset, fixtureState, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
 import { CanvasView } from '../src/client/CanvasView.tsx'
 import { createDvCanvas } from '../src/client/dv-canvas.ts'
@@ -48,6 +49,8 @@ describe('node kinds', () => {
   it('draws each seed with the default card, shows the kind\'s editor entry, and removes both on disposal', async () => {
     const runtime = await SlotTestRuntime.create()
     const canvas = createDvCanvas()
+    // The story bible's seeds hold column 0, as in the bundle, so the plan stays in the column it had before the kind came.
+    canvas.nodeKinds.register(bibleNodeKind)
     runtime.ctx.provide('dvCanvas', canvas)
     const state = fixtureState()
     state.assets.push(asset('umbrella.png', 'image/png', null), asset('umbrella-back.png', 'image/png', null))
@@ -99,7 +102,7 @@ describe('node kinds', () => {
     expect(within(editor).getByRole('heading').textContent).toBe('红伞')
 
     await kinds.dispose()
-    expect(canvas.nodeKinds.list()).toEqual([])
+    expect(canvas.nodeKinds.list()).toEqual([bibleNodeKind])
     await waitFor(() => { expect(card('prop:p1')).toBeNull() })
     expect(card('prop:p2')).toBeNull()
     await runtime.dispose()

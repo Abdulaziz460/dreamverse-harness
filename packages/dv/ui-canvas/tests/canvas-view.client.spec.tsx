@@ -9,6 +9,7 @@ import type { DvComposeDetail } from '@dv/ui-kit/compose.ts'
 import type { ChainAnchor, DvCanvas } from '@dv/ui-kit/registries.ts'
 import type { WireOperation, WireState } from '@dv/ui-kit/types.ts'
 import { DV_ASSET_DRAG_TYPE, DV_CANVAS_FOCUS_EVENT } from '@dv/ui-kit/workspace-events.ts'
+import { bibleNodeKind, bibleReferencesInUse, bibleVersionKinds } from '@dv/ui-story-bible/src/client/index.ts'
 import { asset, fixtureState, OPERATIONS, record, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
 import { CanvasView } from '../src/client/CanvasView.tsx'
 import { createDvCanvas } from '../src/client/dv-canvas.ts'
@@ -23,6 +24,20 @@ const APPROVAL: ChainAnchor = {
   approvedVersions: (_state, anchorId) => anchorId === 'plan:p1' ? [1] : [],
 }
 
+/**
+ * Canvas registries that hold the story bible's node kind, references in use and version kinds, as the bundle mounts
+ * `@dv/ui-story-bible`.
+ * @returns the registries and the disposer of the story bible's descriptors.
+ */
+function bibleCanvas(): { canvas: DvCanvas; dispose: () => void } {
+  const canvas = createDvCanvas()
+  const disposers = [
+    canvas.nodeKinds.register(bibleNodeKind), canvas.takesInUse.register(bibleReferencesInUse),
+    ...bibleVersionKinds.map(kind => canvas.versionKinds.register(kind)),
+  ]
+  return { canvas, dispose: () => { for (const dispose of disposers) dispose() } }
+}
+
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
@@ -30,6 +45,7 @@ afterEach(() => {
   vi.useRealTimers()
   window.localStorage.removeItem(EDITOR_RECT_KEY)
   window.localStorage.removeItem('dv-canvas-seen:p1')
+  document.documentElement.lang = ''
 })
 
 /**
@@ -38,12 +54,12 @@ afterEach(() => {
  * @param edit - changes to the fixture state, applied to every state the route serves.
  * @param holdOperations - whether `POST /api/dv/operation` stays unanswered, as a render does until it ends.
  * @param operations - the operation declarations the route serves; the fixture's by default.
- * @param canvas - the `dvCanvas` registries the view reads; none by default.
+ * @param canvas - the `dvCanvas` registries the view reads; the story bible's descriptors by default.
  * @returns the rendered view, the recorded writes, and a node lookup.
  */
 function mount(
   withTranslate = true, edit: (state: WireState) => void = () => undefined, holdOperations = false, operations = OPERATIONS,
-  canvas?: DvCanvas,
+  canvas: DvCanvas = bibleCanvas().canvas,
 ) {
   const scripted = scriptedFetch({
     state: () => {
@@ -68,7 +84,7 @@ function mount(
   }
   const client = new DvClient(fetchWithLayout)
   const t: CanvasTranslate = makeTranslate(zh)
-  const view = render(<CanvasView projectId="p1" client={client} session="s5" {...withTranslate ? { t } : {}} {...canvas === undefined ? {} : { canvas }} />)
+  const view = render(<CanvasView projectId="p1" client={client} session="s5" {...withTranslate ? { t } : {}} canvas={canvas} />)
   const node = (id: string): HTMLElement => {
     const element = view.container.querySelector(`[data-node-id="${id}"]`)
     if (!(element instanceof HTMLElement)) throw new Error(`no node ${id}`)
@@ -79,7 +95,7 @@ function mount(
 
 describe('CanvasView', () => {
   it('draws the project\'s current state with nodes at stored positions, stores the others\' spots, and stores a dragged position', async () => {
-    const canvas = createDvCanvas()
+    const { canvas } = bibleCanvas()
     canvas.takesInUse.register({ id: 'clips', uses: () => [], badges: () => [{ asset: 'shot2.mp4', label: '已裁剪' }] })
     const { view, node, layoutWrites } = mount(true, undefined, false, OPERATIONS, canvas)
     await waitFor(() => { node('g3') })
@@ -194,6 +210,7 @@ describe('CanvasView', () => {
   }, 10_000)
 
   it('draws a character as its name and its first reference image with a count of the rest', async () => {
+    document.documentElement.lang = 'zh-CN'
     const references = ['ref.png', 'r2.png', 'r3.png', 'r4.png', 'r5.png', 'r6.png']
     const { node } = mount(true, (state) => {
       state.assets.push(...references.slice(1).map(id => asset(id, 'image/png', 'u1')))
@@ -203,9 +220,21 @@ describe('CanvasView', () => {
     await waitFor(() => { node('bible:hero') })
     const card = node('bible:hero')
     expect([...card.querySelectorAll('img')].map(image => image.getAttribute('src'))).toEqual([assetUrl('ref.png')])
-    expect(card.textContent).toContain(zh['node.character'])
+    // The story bible labels the card with the item's kind in the interface language.
+    expect(card.textContent).toContain('角色')
     expect(card.textContent).toContain('Hero')
     expect(card.textContent).toContain('+5')
+  })
+
+  it('draws the story bible\'s items and links their version inputs from them only while its descriptors are registered', async () => {
+    const bible = bibleCanvas()
+    const { view, node } = mount(true, undefined, false, OPERATIONS, bible.canvas)
+    const edge = (): Element | null => view.container.querySelector('path[data-edge="bible:hero>g1"]')
+    await waitFor(() => { expect(edge()).not.toBeNull() })
+    expect(node('bible:hero').getAttribute('data-node-kind')).toBe('bible')
+    act(() => { bible.dispose() })
+    await waitFor(() => { expect(view.container.querySelector('[data-node-id="bible:hero"]')).toBeNull() })
+    expect(edge()).toBeNull()
   })
 
   it('draws a character whose first reference is a video as the video\'s first frame', async () => {
@@ -524,7 +553,7 @@ describe('CanvasView', () => {
   })
 
   it('the plan editor marks a version replaced before approval as 已被第 {n} 版取代 and shows each shot\'s reference images', async () => {
-    const canvas = createDvCanvas()
+    const { canvas } = bibleCanvas()
     canvas.chainAnchors.register(APPROVAL)
     const { view, node } = mount(true, (state) => {
       const [v1] = state.components.plan.plans['p1'] ?? []

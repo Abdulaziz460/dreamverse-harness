@@ -34,6 +34,7 @@
     "@dv/ui-mcp-presets": "workspace:*",
     "@dv/ui-skills": "workspace:*",
     "@dv/ui-shell": "workspace:*",
+    "@dv/ui-story-bible": "workspace:*",
     "@dv/ui-timeline": "workspace:*",
     "@dv/ui-workflow-story": "workspace:*",
     "@dv/workflow-story": "workspace:*"

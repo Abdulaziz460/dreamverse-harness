@@ -1,12 +1,11 @@
 /**
- * One canvas node as a card on the `--dv-*` theme variables. Every card has a kind dot: pink for characters, locations,
- * styles and imported assets, orange for plans, teal for takes, and the `NodeKind` color for a seed. A take or an
- * imported asset shows a header row (dot, title, duration) above its 16:9 frame at full card width; a failed take is a
- * compact danger row instead of a frame. A finished take that the user has not opened yet shows an accent dot in its
- * header row. A story bible card shows a 40 × 40 reference image beside its kind and name. A plan card shows its
+ * One canvas node as a card on the `--dv-*` theme variables. Every card has a kind dot: pink for imported assets, orange
+ * for plans, teal for takes, and the `NodeKind` color for a seed. A take or an imported asset shows a header row (dot,
+ * title, duration) above its 16:9 frame at full card width; a failed take is a compact danger row instead of a frame. A
+ * finished take that the user has not opened yet shows an accent dot in its header row. A plan card shows its
  * version, a mini grid of its shots' frames when any shot has one, and its shot count and total duration. A seed draws
  * the default card: its kind label and subtitle, then a seed with slots shows the frame grid and its title, as a plan card
- * does, and any other seed shows its first media at 40 × 40 and its title, as a story bible card does.
+ * does, and any other seed shows its first media at 40 × 40 beside its kind label and its title.
  */
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-locale/client'
@@ -22,7 +21,7 @@ export type CanvasTranslate = TranslateNS<'dvCanvas'>
 
 /** The kind dot color of each node kind of the core; a seed takes the color of its `NodeKind`. */
 const KIND_COLOR: Record<Exclude<CanvasNodeKind, 'seed'>, string> = {
-  bible: 'var(--dv-kind-character)', asset: 'var(--dv-kind-character)', plan: 'var(--dv-kind-plan)', take: 'var(--dv-kind-take)',
+  asset: 'var(--dv-kind-character)', plan: 'var(--dv-kind-plan)', take: 'var(--dv-kind-take)',
 }
 
 /**
@@ -56,8 +55,6 @@ export function nodeTitle(node: CanvasNode, t: CanvasTranslate): string {
  */
 export function kindLabel(node: CanvasNode, t: CanvasTranslate): string {
   switch (node.kind) {
-    case 'bible':
-      return node.bibleKind === 'location' ? t('node.location') : node.bibleKind === 'style' ? t('node.style') : t('node.character')
     case 'asset': return t('node.asset')
     case 'plan': return t('node.plan')
     case 'take': return t('node.takeKind')
@@ -80,7 +77,6 @@ export function nodeHeight(node: CanvasNode, hasFrames = false): number {
   switch (node.kind) {
     case 'take': return node.flags.failed ? 52 : HEADER_HEIGHT + FRAME_HEIGHT
     case 'asset': return HEADER_HEIGHT + FRAME_HEIGHT
-    case 'bible': return 60
     case 'plan': return hasFrames ? 140 : 76
     case 'seed': return node.seed.slots === undefined ? 60 : hasFrames ? 140 : 76
   }
@@ -207,7 +203,7 @@ export function NodeCard(
           )}
       </div>
     )
-  } else if (node.kind === 'bible' || (node.kind === 'seed' && node.seed.slots === undefined)) {
+  } else if (node.kind === 'seed' && node.seed.slots === undefined) {
     const extra = node.references.length - 1
     body = (
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 10 }}>
