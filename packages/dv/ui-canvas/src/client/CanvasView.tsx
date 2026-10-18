@@ -27,7 +27,7 @@ import type { CanvasViewport, NodePosition, OperationRequest } from '@dv/ui-kit/
 import { DV_ASSET_DRAG_TYPE, DV_CANVAS_FOCUS_EVENT } from '@dv/ui-kit/workspace-events.ts'
 import type { DvWorkspaceEventMap } from '@dv/ui-kit/workspace-events.ts'
 import { readStored, writeStored } from '@dv/ui-kit/storage.ts'
-import { useProjectState } from '@dv/ui-kit/useProject.ts'
+import { useOperations, useProjectState } from '@dv/ui-kit/useProject.ts'
 import { useZoomPresence } from '@dv/ui-kit/zoom.ts'
 import { buildCanvasGraph, freePositions, NODE_WIDTH, planShotFrames, ROW } from './graph.ts'
 import type { CanvasEdge, CanvasNode } from './graph.ts'
@@ -191,6 +191,7 @@ export function CanvasView({ projectId, client: given, session = null, t: givenT
   const language = useLanguage()
   const t = givenT ?? translates[language]
   const base = useProjectState(client, projectId)
+  const operations = useOperations(client)
   // This view's placements whose record the project state does not show yet: asset ID → on the canvas.
   const [inFlight, setInFlight] = useState<ReadonlyMap<string, boolean>>(new Map())
   // The project's canvas, with this view's placements in flight already applied.
@@ -226,8 +227,8 @@ export function CanvasView({ projectId, client: given, session = null, t: givenT
   // The previous project's state stays loaded until the next project's arrives; the canvas draws only this project's.
   const graph = useMemo(() => {
     if (base.value === null || base.value.project.id !== projectId) return null
-    return { state: base.value, ...buildCanvasGraph(base.value, placed) }
-  }, [base.value, placed, projectId])
+    return { state: base.value, ...buildCanvasGraph(base.value, placed, operations.value ?? [], language) }
+  }, [base.value, placed, projectId, operations.value, language])
   // Each plan node's latest version and its shots' frames, for the plan card's version label, mini grid, and duration.
   // Memoized on the graph, because a pan or zoom re-renders the view on every pointer move.
   const plans = useMemo(() => new Map(graph === null ? [] : graph.nodes.flatMap((node) => {

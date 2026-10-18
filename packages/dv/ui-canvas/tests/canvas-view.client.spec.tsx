@@ -6,9 +6,9 @@ import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { assetUrl, DvClient } from '@dv/ui-kit/api.ts'
 import { DV_COMPOSE_EVENT } from '@dv/ui-kit/compose.ts'
 import type { DvComposeDetail } from '@dv/ui-kit/compose.ts'
-import type { WireState } from '@dv/ui-kit/types.ts'
+import type { WireOperation, WireState } from '@dv/ui-kit/types.ts'
 import { DV_ASSET_DRAG_TYPE, DV_CANVAS_FOCUS_EVENT } from '@dv/ui-kit/workspace-events.ts'
-import { asset, fixtureState, record, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
+import { asset, fixtureState, OPERATIONS, record, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
 import { CanvasView } from '../src/client/CanvasView.tsx'
 import { NODE_WIDTH } from '../src/client/graph.ts'
 import { EDITOR_RECT_KEY } from '../src/client/NodeEditor.tsx'
@@ -29,15 +29,17 @@ afterEach(() => {
  * @param withTranslate - whether the host passes the Chinese translate.
  * @param edit - changes to the fixture state, applied to every state the route serves.
  * @param holdOperations - whether `POST /api/dv/operation` stays unanswered, as a render does until it ends.
+ * @param operations - the operation declarations the route serves; the fixture's by default.
  * @returns the rendered view, the recorded writes, and a node lookup.
  */
-function mount(withTranslate = true, edit: (state: WireState) => void = () => undefined, holdOperations = false) {
+function mount(withTranslate = true, edit: (state: WireState) => void = () => undefined, holdOperations = false, operations = OPERATIONS) {
   const scripted = scriptedFetch({
     state: () => {
       const state = fixtureState()
       edit(state)
       return state
     },
+    operations,
   })
   const layoutWrites: unknown[] = []
   const fetchWithLayout: typeof fetch = (input, init) => {
@@ -117,6 +119,28 @@ describe('CanvasView', () => {
     expect(view.queryByTestId('dv-canvas-node-editor')).toBeNull()
     expect(node('g1').getAttribute('data-node-selected')).toBeNull()
   }, 10_000)
+
+  it('draws a record of a generation operation from the served declarations as a take titled by the operation label', async () => {
+    const lang = document.documentElement.lang
+    document.documentElement.lang = 'zh-CN'
+    try {
+      const generate: WireOperation = {
+        name: 'image.generate', version: '1', description: 'One image.', inputs: {}, params: {}, outputs: [{ role: 'image', type: 'image' }],
+        deterministic: false, resource: 'gpu', confirm: 'never', label: { zh: '生成图像', en: 'Generate image' },
+      }
+      const { node } = mount(true, (state) => {
+        state.components.proj.records.push(record({ id: 'i1', operation: 'image.generate', deterministic: false, outputs: ['cat.png'] }))
+        state.assets.push(asset('cat.png', 'image/png', 'i1'))
+        state.components.proj.created_by['cat.png'] = 'i1'
+      }, false, [...OPERATIONS, generate])
+      await waitFor(() => { node('i1') })
+      expect(node('i1').getAttribute('data-node-kind')).toBe('take')
+      expect(node('i1').getAttribute('aria-label')).toBe('生成图像')
+      expect(node('i1').querySelector('img')?.getAttribute('src')).toBe(assetUrl('cat.png'))
+    } finally {
+      document.documentElement.lang = lang
+    }
+  })
 
   it('marks a take that finished after the first load as unseen until its editor opens', async () => {
     let finished = false

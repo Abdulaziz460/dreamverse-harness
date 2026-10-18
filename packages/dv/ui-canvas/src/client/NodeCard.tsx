@@ -31,7 +31,7 @@ export const KIND_COLOR: Record<CanvasNode['kind'], string> = {
  */
 export function nodeTitle(node: CanvasNode, t: CanvasTranslate): string {
   if (node.kind === 'take') {
-    const shot = node.title === '' ? t('node.takeKind') : t('node.shot', { shot: node.title })
+    const shot = node.title === '' ? node.label ?? t('node.takeKind') : t('node.shot', { shot: node.title })
     return node.take === null ? shot : t('node.take', { title: shot, take: node.take })
   }
   if (node.kind === 'plan') return node.title === '' ? t('node.plan') : node.title

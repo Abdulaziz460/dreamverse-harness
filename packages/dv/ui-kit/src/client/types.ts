@@ -46,6 +46,13 @@ export interface RecordFailure {
   message: string
 }
 
+/** The record whose execute started a call, the position it gave the call (or null), and its parallel sequence. */
+export interface WireStartedBy {
+  record: string
+  slot: number | null
+  lane?: string
+}
+
 /** One record of a project in its current form: one operation call. */
 export interface ProjectRecord {
   id: string
@@ -69,6 +76,8 @@ export interface ProjectRecord {
   outputs: string[]
   /** The record this one repeats with changes, such as a take with an edited prompt; null when none. */
   based_on: string | null
+  /** The record whose execute started this call; absent on a record that no record started. */
+  started_by?: WireStartedBy
   supersedes: string[]
   deterministic: boolean
   status: RecordStatus

@@ -1,8 +1,8 @@
 /** Canvas nodes and edges derived from the shared project state. */
 import { describe, expect, it } from 'vitest'
-import type { PlanVersion, ProjectRecord, WireState } from '@dv/ui-kit/types.ts'
+import type { PlanVersion, ProjectRecord, WireOperation, WireState } from '@dv/ui-kit/types.ts'
 import { formatInputRef } from '@dv/ui-kit/references.ts'
-import { asset, fixtureState, record } from '../../ui-kit/tests/fixture.client.tsx'
+import { asset, fixtureState, OPERATIONS, record } from '../../ui-kit/tests/fixture.client.tsx'
 import { buildCanvasGraph, freePositions, NODE_WIDTH, ROW } from '../src/client/graph.ts'
 
 /** Six shot prompts of plan p1 version 1; versions 2 and 3 change shot 3 and add shot 7, version 4 returns to these. */
@@ -227,6 +227,40 @@ describe('buildCanvasGraph', () => {
     const pending = rollbackProject('q4')
     expect(pending.components.plan.plans['p1']?.at(-1)?.approved_by).toBeNull()
     expect(drawn(pending).filter(([, kind]) => kind === 'take').map(([id]) => id)).toEqual(['r1', 'r2', 'r3', 'r4', 's7', 'w5', 'r6'].sort(byRecordOrder))
+  })
+
+  it('draws each record of a generation operation that no node kind draws as a take, titled by its slot, else its operation label', () => {
+    const generation = (name: string, type: string, label: WireOperation['label']): WireOperation => ({
+      name, version: '1', description: name, inputs: {}, params: {}, outputs: [{ role: type, type }], deterministic: false, resource: 'gpu', confirm: 'never',
+      ...label === undefined ? {} : { label },
+    })
+    // A timeline export is not deterministic and outputs a video, but it runs on the CPU.
+    const exported: WireOperation = { ...generation('timeline.export', 'video', undefined), resource: 'cpu' }
+    const operations = [...OPERATIONS, generation('image.generate', 'image', { zh: '生成图像', en: 'Generate image' }), generation('audio.generate', 'audio', undefined), exported]
+    const state = fixtureState()
+    const proj = state.components.proj
+    proj.records.push(
+      record({ id: 'i1', operation: 'image.generate', deterministic: false, params: { prompt: 'a cat' }, outputs: ['cat.png'] }),
+      record({ id: 'i2', operation: 'image.generate', deterministic: false, based_on: 'i1', started_by: { record: 'w1', slot: 2 }, outputs: ['cat2.png'] }),
+      record({ id: 'v1', operation: 'audio.generate', deterministic: false, outputs: ['line.wav'] }),
+      record({ id: 'c9', operation: 'timeline.export', deterministic: false, outputs: ['cut.mp4'] }),
+    )
+    state.assets.push(asset('cat.png', 'image/png', 'i1'), asset('cat2.png', 'image/png', 'i2'), asset('line.wav', 'audio/wav', 'v1', 2), asset('cut.mp4', 'video/mp4', 'c9', 3))
+    Object.assign(proj.created_by, { 'cat.png': 'i1', 'cat2.png': 'i2', 'line.wav': 'v1', 'cut.mp4': 'c9' })
+    const graph = buildCanvasGraph(state, new Set(['cat.png']), operations, 'en')
+    const byId = new Map(graph.nodes.map(node => [node.id, node]))
+    expect(byId.get('i1')).toMatchObject({ kind: 'take', title: '', label: 'Generate image', subtitle: 'a cat', thumb: 'cat.png', video: null, take: 1 })
+    expect(byId.get('i2')).toMatchObject({ kind: 'take', title: '2', label: 'Generate image', thumb: 'cat2.png', take: 2 })
+    expect(byId.get('v1')).toMatchObject({ kind: 'take', title: '', label: 'audio.generate', thumb: null, video: 'line.wav', durationSec: 2 })
+    expect(graph.edges).toContainEqual({ from: 'i1', to: 'i2', kind: 'take' })
+    // The export and the render takes keep their nodes as before; the placed take output gets no node of its own.
+    expect(byId.has('c9')).toBe(false)
+    expect(byId.get('g1')).toMatchObject({ kind: 'take', title: '', take: 1 })
+    expect(byId.get('g1')?.label).toBeUndefined()
+    expect(graph.nodes.filter(node => node.kind === 'asset')).toEqual([])
+    expect(graph.assetNodes).toMatchObject({ 'cat.png': 'i1', 'line.wav': 'v1' })
+    // Without the declarations, the canvas draws none of these records.
+    expect(buildCanvasGraph(state).nodes.map(node => node.id)).not.toContain('i1')
   })
 })
 

@@ -2,11 +2,14 @@
  * Canvas nodes and edges derived from a project state. The canvas shows the project's current state only: a
  * node is an item a creator works with now: a character, a location or a style at its current version, an imported asset
  * on the project's canvas list (see {@link buildCanvasGraph}), a plan at its latest version, the current take of each
- * shot of that version, a take that is not part of a plan, and a take whose outputs are in use. Deterministic edits
- * (still grabs, timeline records) do not become nodes; a timeline trim shows as a badge on the take it shortened.
+ * shot of that version, a take that is not part of a plan, a take whose outputs are in use, and every record of a
+ * generation operation that no other node kind draws. Deterministic edits (still grabs, timeline records) do not become
+ * nodes; a timeline trim shows as a badge on the take it shortened.
  */
+import type { DvLanguage } from '@dv/ui-kit/locale.ts'
 import type {
   Character, Clip, Location, NodePosition, PlanVersion, ProjectRecord, RecordInput, StoryBibleState, Style, WireState,
+  WireOperation,
 } from '@dv/ui-kit/types.ts'
 import { versionRefOf } from '@dv/ui-kit/references.ts'
 import { isRenderOperation } from '@dv/ui-kit/state.ts'
@@ -40,13 +43,15 @@ export interface CanvasNode {
   bibleId?: string
   /** For plan nodes, the `PlanId` (`p1`). */
   planId?: string
+  /** For a take of a generation operation other than the render operation, the operation label; shown when `title` is empty. */
+  label?: string
   title: string
   subtitle: string
   /** An image asset shown as the thumbnail; null for story bible nodes, which show {@link CanvasNode.references}. */
   thumb: string | null
   /** For story bible nodes, the image and video references of the current version in order; empty for other nodes. */
   references: string[]
-  /** A video asset the editor plays; for a story bible node, its first reference when that reference is a video. */
+  /** A video or audio asset the editor plays; for a story bible node, its first reference when that reference is a video. */
   video: string | null
   durationSec: number | null
   /** The record behind the node; for story bible and plan nodes, the record that wrote the latest version. */
@@ -89,6 +94,23 @@ export const ROW = 200
 /** A `shot.render` record, whose outputs are the takes the creator judges. */
 function isRender(record: ProjectRecord): boolean {
   return isRenderOperation(record.operation)
+}
+
+/** The output types of a generation operation whose records the canvas draws as takes. */
+const MEDIA_TYPES: ReadonlySet<string> = new Set(['image', 'video', 'audio'])
+
+/**
+ * The generation operations that the canvas draws as takes besides the render operation: not deterministic, GPU, with
+ * an image, video or audio output.
+ * @param operations - the operation declarations.
+ * @param language - the interface language.
+ * @returns operation name → its label in the interface language, else its name.
+ */
+function generationLabels(operations: readonly WireOperation[], language: DvLanguage): Map<string, string> {
+  return new Map(operations
+    .filter(operation => !operation.deterministic && operation.resource === 'gpu' && !isRenderOperation(operation.name)
+      && operation.outputs.some(output => MEDIA_TYPES.has(output.type)))
+    .map(operation => [operation.name, operation.label?.[language] ?? operation.name]))
 }
 
 /**
@@ -223,19 +245,25 @@ export function bibleVersions(state: WireState, id: string): Character[] | Locat
  * Every image or video on the project's canvas (`placed`) gets one node, unless a story bible node (a reference image) or
  * a take node (a take output) already shows it: drawn from its first `asset.import` record of the current state when
  * there is one, else as `asset:<id>` with no record (an import that an undo went back past, a still, an export). A take that
- * reads an asset off the canvas has no edge from it.
+ * reads an asset off the canvas has no edge from it. A record of a generation operation that `operations` lists (see
+ * {@link generationLabels}) is a take titled by its `started_by` slot, else by its operation label.
  * @param state - a project state.
  * @param placed - the assets on the canvas; defaults to the state's `asset` slice.
+ * @param operations - the operation declarations; none by default, which draws no such take.
+ * @param language - the language of the operation labels.
  * @returns the nodes and edges.
  */
 export function buildCanvasGraph(
   state: WireState, placed: ReadonlySet<string> = new Set(state.components.asset.placed),
+  operations: readonly WireOperation[] = [], language: DvLanguage = 'zh',
 ): CanvasGraph {
   const proj = state.components.proj
   const assets = new Map(state.assets.map(asset => [asset.id, asset]))
   const records = new Map(proj.records.map(record => [record.id, record]))
   const isImage = (id: string | undefined): boolean => id !== undefined && assets.get(id)?.mime.startsWith('image/') === true
   const isVideo = (id: string | undefined): boolean => id !== undefined && assets.get(id)?.mime.startsWith('video/') === true
+  const isAudio = (id: string | undefined): boolean => id !== undefined && assets.get(id)?.mime.startsWith('audio/') === true
+  const labels = generationLabels(operations, language)
   const flagsOf = (record: ProjectRecord | null): CanvasNodeFlags => ({
     stale: record !== null && proj.stale[record.id] !== undefined,
     rendering: record !== null && (record.status === 'pending' || record.status === 'running'),
@@ -274,6 +302,7 @@ export function buildCanvasGraph(
     })
   }
   for (const record of proj.records) {
+    const label = labels.get(record.operation ?? '')
     if (record.operation === 'asset.import') {
       // An import off the canvas stays in the asset pool only.
       const imported = record.outputs.find(id => isImage(id) || isVideo(id))
@@ -284,11 +313,12 @@ export function buildCanvasGraph(
         video: isVideo(imported) ? imported : null, durationSec: assets.get(imported)?.duration_sec ?? null,
         record, flags: flagsOf(record), badges: [], take: null, x: 0, y: 0,
       })
-    } else if (isRender(record) && takes.has(record.id)) {
-      const video = record.outputs.find(id => isVideo(id)) ?? null
+    } else if ((isRender(record) && takes.has(record.id)) || label !== undefined) {
+      const video = record.outputs.find(id => isVideo(id) || isAudio(id)) ?? null
       const shot = typeof record.params['shot'] === 'number' ? record.params['shot'] : null
+      const slot = label === undefined ? shot : record.started_by?.slot ?? null
       nodes.push({
-        id: record.id, kind: 'take', title: shot === null ? '' : String(shot),
+        id: record.id, kind: 'take', title: slot === null ? '' : String(slot), ...label === undefined ? {} : { label },
         subtitle: typeof record.params['prompt'] === 'string' ? record.params['prompt'] : '',
         thumb: record.outputs.find(id => isImage(id)) ?? null, references: [], video,
         durationSec: video === null ? null : assets.get(video)?.duration_sec ?? null,
@@ -299,7 +329,7 @@ export function buildCanvasGraph(
   }
   // A placed asset that no node shows yet (an import that an undo went back past, a still, an export, or another take
   // output) gets its own node, `asset:<id>`, with no record.
-  const shownByTake = new Set(proj.records.flatMap(record => byRecord.has(record.id) && isRender(record) ? record.outputs : []))
+  const shownByTake = new Set(nodes.flatMap(node => node.kind === 'take' ? node.record?.outputs ?? [] : []))
   for (const assetId of placed) {
     const shown = bibleOfAsset.has(assetId) || importNodes.has(assetId) || shownByTake.has(assetId)
     if (!(isImage(assetId) || isVideo(assetId)) || shown) continue
