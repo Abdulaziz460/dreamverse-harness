@@ -30,9 +30,9 @@ import {
 } from '@dv/project'
 import type {} from '@dv/timeline'
 import { planOf, planReducer, reportedPlan } from './reducer.ts'
-import type { Plan, PlanId, PlanVersion, Shot } from './types.ts'
+import type { Plan, PlanId, PlanVersion, ResolvedShot, Shot } from './types.ts'
 
-export type { Plan, PlanId, PlanState, PlanVersion, Shot } from './types.ts'
+export type { Plan, PlanId, PlanState, PlanVersion, ResolvedShot, Shot } from './types.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -58,6 +58,11 @@ function takesReferences(shot: Shot): boolean {
 /** Whether a shot's task can start from a first frame, which `continue_previous` supplies. */
 function takesFirstFrame(shot: Shot): boolean {
   return shot.task === 'ref2v'
+}
+
+/** The references a shot carries: its own, else the plan's; none when its task takes no references. */
+function shotReferences(shot: Shot, plan: Plan): string[] {
+  return takesReferences(shot) ? shot.references ?? plan.references ?? [] : []
 }
 
 /** The key in the model catalog of the model that renders a shot. */
@@ -215,7 +220,7 @@ function approvalShots(
     canonical(Object.fromEntries(Object.entries(params).filter(([key]) => !PLAN_RENDER_PARAMS.has(key))))
   const shots: ApprovalShot[] = []
   for (const [index, shot] of version.shots.entries()) {
-    const references = takesReferences(shot) ? shot.references ?? version.references ?? [] : []
+    const references = shotReferences(shot, version)
     const inputs: RunRequest['inputs'] = references.length === 0 ? [] : project.parseInputs(RENDER_OPERATION, { reference: references }, state)
     const params: Record<string, unknown> = {
       ...shotKey(shot), prompt: shot.prompt, plan, plan_version: version.version, shot: index + 1,
@@ -285,8 +290,33 @@ export default class DvShotPlan extends Service {
    * @returns the version.
    * @throws Error naming the unknown plan or version.
    */
-  getPlan(state: ProjectState, plan: PlanId | string, version?: number): PlanVersion {
+  get(state: ProjectState, plan: PlanId | string, version?: number): PlanVersion {
     return versionIn(state, plan, version)
+  }
+
+  /**
+   * Resolve the shots of one plan version, the way every workflow reads a plan: each shot with its 1-based slot, the
+   * plan's `aspect_ratio` and `resolution`, its own `seed` else the plan's, its own references else the plan's (none for a
+   * task other than `ref2v`), and whether it continues the previous shot (`continue_previous`, task `ref2v`, not slot 1).
+   * @param state - the state the plan is read in.
+   * @param plan - the PlanId.
+   * @param version - the version number; the latest version when omitted.
+   * @returns one entry per shot, in shot order.
+   * @throws Error naming the unknown plan or version.
+   */
+  shots(state: ProjectState, plan: PlanId | string, version?: number): ResolvedShot[] {
+    const found = versionIn(state, plan, version)
+    return found.shots.map((shot, index) => {
+      const seed = shot.seed ?? found.seed
+      return {
+        slot: index + 1, shot,
+        ...found.aspect_ratio === undefined ? {} : { aspect_ratio: found.aspect_ratio },
+        ...found.resolution === undefined ? {} : { resolution: found.resolution },
+        ...seed === undefined ? {} : { seed },
+        references: shotReferences(shot, found),
+        continuePrevious: shot.continue_previous === true && takesFirstFrame(shot) && index > 0,
+      }
+    })
   }
 
   /**
@@ -388,7 +418,7 @@ export default class DvShotPlan extends Service {
     const problems = shotProblems(plan.shots, this.ctx.dvModels)
     if (problems.length > 0) throw new Error(`The plan cannot be rendered as written. ${problems.join(' ')}`)
     for (const shot of plan.shots) {
-      const references = takesReferences(shot) ? shot.references ?? plan.references ?? [] : []
+      const references = shotReferences(shot, plan)
       if (references.length > 0) project.parseInputs(RENDER_OPERATION, { reference: references }, state)
     }
   }

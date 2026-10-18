@@ -39,7 +39,7 @@ The plugin has no configuration fields.
 | `plan.update` | `dv_plan_update` | `plan` (PlanId) and the params of `plan.create`: the complete next version | `plan` (`plan.json`); report `{plan, version, shots, gpu_seconds}` | `never` |
 | `plan.approve` | `dv_plan_approve` | `plan` (PlanId), `version?` (default the latest) | none; report `{plan, version, scheduled}` (the scheduled shot renders in shot order, then the timeline record) | `always`, with `confirmSummary` |
 
-A `PlanId` is `p<n>`: `plan.create` assigns one more than the highest number any Shot plan record of the project stored in `report.plan`, anywhere in the history list, steps after the current position included, so no two plans of the history list share an ID. A version is numbered from 1, and a shot by its 1-based position in the version, so a shot added after six shots is shot 7. A reference is a character, location or style version (`c1@1`) or an asset ID. The slice `components.plan` is `{plans: Record<PlanId, PlanVersion[]>}`, oldest version first; a `PlanVersion` is the `Plan` fields with `version`, `created_by` (the `plan.create` or `plan.update` record) and `approved_by` (the latest finished `plan.approve` record of the version, or null). The service method `getPlan(state, plan, version?)` returns one `PlanVersion` of a project state, and `shotsToRender(state, plan, version?)` the shot positions an approval of that version would render. `approvePlan(context)` schedules the renders of a running `plan.approve` call.
+A `PlanId` is `p<n>`: `plan.create` assigns one more than the highest number any Shot plan record of the project stored in `report.plan`, anywhere in the history list, steps after the current position included, so no two plans of the history list share an ID. A version is numbered from 1, and a shot by its 1-based position in the version, so a shot added after six shots is shot 7. A reference is a character, location or style version (`c1@1`) or an asset ID. The slice `components.plan` is `{plans: Record<PlanId, PlanVersion[]>}`, oldest version first; a `PlanVersion` is the `Plan` fields with `version`, `created_by` (the `plan.create` or `plan.update` record) and `approved_by` (the latest finished `plan.approve` record of the version, or null). The service method `get(state, plan, version?)` returns one `PlanVersion` of a project state, `shots(state, plan, version?)` resolves its shots the way every workflow reads a plan, and `shotsToRender(state, plan, version?)` returns the shot positions an approval of that version would render. A `ResolvedShot` holds the shot's 1-based `slot`, the `shot` as written, the plan's `aspect_ratio` and `resolution`, the shot's `seed` else the plan's, the `references` that apply (its own, else the plan's, none for a task other than `ref2v`) and `continuePrevious` (`continue_previous` on a shot of task `ref2v` after slot 1). `approvePlan(context)` schedules the renders of a running `plan.approve` call.
 
 -----
 
@@ -52,9 +52,9 @@ The reducer ignores records that are not `done`: a finished `plan.create` adds v
 
 | File | Content |
 | --- | --- |
-| [`src/index.ts`](src/index.ts) | `dvShotPlan`: the three operations, PlanId assignment, `getPlan`, `shotsToRender` and `approvePlan` |
+| [`src/index.ts`](src/index.ts) | `dvShotPlan`: the three operations, PlanId assignment, `get`, `shots`, `shotsToRender` and `approvePlan` |
 | [`src/reducer.ts`](src/reducer.ts) | The `plan` reducer |
-| [`src/types.ts`](src/types.ts) | `PlanId`, `Plan`, `Shot`, `PlanVersion`, `PlanState` |
+| [`src/types.ts`](src/types.ts) | `PlanId`, `Plan`, `Shot`, `PlanVersion`, `ResolvedShot`, `PlanState` |
 
 -----
 

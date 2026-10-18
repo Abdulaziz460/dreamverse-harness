@@ -62,6 +62,27 @@ export interface PlanVersion extends Plan {
   approved_by: RecordId | null
 }
 
+/**
+ * One shot of a plan version as `dvShotPlan.shots` resolves it, so every workflow reads a plan the same way: the shot
+ * with the plan-level values and the references that apply to it.
+ */
+export interface ResolvedShot {
+  /** 1-based position in the version. */
+  slot: number
+  /** The shot as written in the plan. */
+  shot: Shot
+  /** The plan's aspect ratio, when the version sets one. */
+  aspect_ratio?: string
+  /** The plan's resolution, when the version sets one. */
+  resolution?: string
+  /** The shot's own seed, else the plan's, when either is set. */
+  seed?: number
+  /** The shot's own references, else the plan's; empty when its task takes no references (only task `ref2v` does). */
+  references: string[]
+  /** `continue_previous` on a shot after slot 1 whose task takes a first frame (only task `ref2v` does). */
+  continuePrevious: boolean
+}
+
 /** The `plan` slice: the versions of every plan in the state, oldest first. */
 export interface PlanState {
   plans: Record<PlanId, PlanVersion[]>

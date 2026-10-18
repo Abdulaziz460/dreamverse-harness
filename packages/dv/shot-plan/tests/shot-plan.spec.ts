@@ -28,7 +28,7 @@ import DvProject, {
 import DvShotRender from '@dv/shot-render'
 import DvTimeline from '@dv/timeline'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import DvShotPlan, { type PlanId } from '../src/index.ts'
+import DvShotPlan, { type PlanId, type Shot } from '../src/index.ts'
 
 const FFMPEG = process.env['DV_FFMPEG'] ?? '/mnt/lustre/vlm-d1su/opt/ffmpeg-native/bin/ffmpeg'
 const FFPROBE = process.env['DV_FFPROBE'] ?? 'ffprobe'
@@ -281,8 +281,8 @@ describe('dvShotPlan', () => {
         { shots: [one], version: 2, created_by: revised.record, approved_by: null },
       ],
     })
-    expect(fixture.ctx.dvShotPlan.getPlan(state, 'p1')).toMatchObject({ version: 2 })
-    expect(fixture.ctx.dvShotPlan.getPlan(state, 'p1', 1)).toMatchObject({ version: 1, title: 'dance' })
+    expect(fixture.ctx.dvShotPlan.get(state, 'p1')).toMatchObject({ version: 2 })
+    expect(fixture.ctx.dvShotPlan.get(state, 'p1', 1)).toMatchObject({ version: 1, title: 'dance' })
     // A second plan gets the next ID; plan IDs are never reused within the project.
     const other = value(await fixture.call('dv_plan_create', { reason: 'another story', shots: [ref('x')] }))
     expect(other.report).toMatchObject({ plan: 'p2', version: 1 })
@@ -292,6 +292,33 @@ describe('dvShotPlan', () => {
     const { task: _task, ...noTask } = TXT
     expect((await fixture.call('dv_plan_create', { reason: 'no model', shots: [{ ...noModel, prompt: 'x' }] })).isError).toBe(true)
     expect((await fixture.call('dv_plan_create', { reason: 'no task', shots: [{ ...noTask, prompt: 'x' }] })).isError).toBe(true)
+  })
+
+  it('resolves each shot of a version with the plan values, references and continuation that apply to it', async () => {
+    const fixture = await start()
+    const picture = fixture.put('face', 'image/png', 'face.png')
+    const hat = fixture.put('hat', 'image/png', 'hat.png')
+    const shots = [ref('one'), ref('two', { references: [hat], seed: 9, continue_previous: true }), { ...TXT, prompt: 'three' }]
+    await fixture.record('plan.create', { references: [picture], aspect_ratio: '16:9', resolution: '720p', seed: 7, shots })
+    await fixture.record('plan.update', { plan: 'p1', shots: [{ ...TXT, prompt: 'solo' }] })
+    const state = fixture.ctx.dvProject.getState(fixture.project)
+    const plan = { aspect_ratio: '16:9', resolution: '720p' }
+    expect(fixture.ctx.dvShotPlan.shots(state, 'p1', 1)).toEqual([
+      { slot: 1, shot: shots[0], ...plan, seed: 7, references: [picture], continuePrevious: false },
+      { slot: 2, shot: shots[1], ...plan, seed: 9, references: [hat], continuePrevious: true },
+      { slot: 3, shot: shots[2], ...plan, seed: 7, references: [], continuePrevious: false },
+    ])
+    // The latest version by default; a version without plan values resolves shots without them.
+    expect(fixture.ctx.dvShotPlan.shots(state, 'p1')).toEqual([{ slot: 1, shot: { ...TXT, prompt: 'solo' }, references: [], continuePrevious: false }])
+    expect(() => fixture.ctx.dvShotPlan.shots(state, 'p1', 3)).toThrow("Plan 'p1' has no version 3; it has 2.")
+    // A stored version that the plan checks refuse: shot 1 and a shot of task t2v never continue, and t2v takes no references.
+    const key = { modality: 'video', provider: 'test', model: 'fake' } as const
+    const loose: Shot[] = [
+      { ...key, task: 'ref2v', prompt: 'a', continue_previous: true }, { ...key, task: 't2v', prompt: 'b', references: [hat], continue_previous: true },
+    ]
+    const version = { shots: loose, version: 1, created_by: brandString<RecordId>('r1'), approved_by: null }
+    const unchecked = { ...state, components: { ...state.components, plan: { plans: { [brandString<PlanId>('p9')]: [version] } } } }
+    expect(fixture.ctx.dvShotPlan.shots(unchecked, 'p9').map(entry => [entry.references, entry.continuePrevious])).toEqual([[[], false], [[], false]])
   })
 
   it('approves a plan into ordered shot renders with each shot\'s model and one timeline, written by the system actor', async () => {
@@ -613,6 +640,6 @@ describe('dvShotPlan', () => {
       .rejects.toThrow("Unknown version 's9@1'; reference kinds: none.")
     expect((await fixture.record('plan.update', { plan: 'p1', shots: [] })).error?.message).toBe('plan.update needs at least one shot.')
     expect(fixture.recordsOf('shot.render')).toEqual([])
-    expect(() => fixture.ctx.dvShotPlan.getPlan(fixture.ctx.dvProject.getState(fixture.project), 'ghost')).toThrow("Unknown plan 'ghost'")
+    expect(() => fixture.ctx.dvShotPlan.get(fixture.ctx.dvProject.getState(fixture.project), 'ghost')).toThrow("Unknown plan 'ghost'")
   })
 })
