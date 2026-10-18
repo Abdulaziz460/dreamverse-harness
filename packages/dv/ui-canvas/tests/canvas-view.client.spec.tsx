@@ -515,6 +515,8 @@ describe('CanvasView', () => {
   })
 
   it('the plan editor marks a version replaced before approval as 已被第 {n} 版取代 and shows each shot\'s reference images', async () => {
+    const canvas = createDvCanvas()
+    canvas.chainAnchors.register(planApprovalAnchor)
     const { view, node } = mount(true, (state) => {
       const [v1] = state.components.plan.plans['p1'] ?? []
       if (v1 === undefined) throw new Error('fixture lacks plan p1')
@@ -523,7 +525,7 @@ describe('CanvasView', () => {
         shots: [{ prompt: '<Picture 1> walks in the rain', modality: 'video' as const, task: 'ref2v' as const, provider: 'fastvideo', model: 'fasth3' }, { prompt: 'the sky clears', modality: 'video' as const, task: 't2v' as const, provider: 'fastvideo', model: 'fasth3' }],
       }
       state.components.plan.plans['p1'] = [v1, { ...v1, version: 2, approved_by: null }, v3]
-    })
+    }, false, OPERATIONS, canvas)
     await waitFor(() => { node('plan:p1') })
     fireEvent.pointerDown(node('plan:p1'), { button: 0, clientX: 5, clientY: 5, pointerId: 1 })
     fireEvent.pointerUp(view.getByTestId('dv-canvas-view'), { pointerId: 1 })
@@ -545,6 +547,34 @@ describe('CanvasView', () => {
     expect(textShot?.querySelectorAll('img')).toHaveLength(0)
     expect(textShot?.querySelector('[data-testid="dv-canvas-shot-mode"]')?.textContent).toBe('fasth3 · From text')
     expect(textShot?.textContent).toContain(zh['editor.textOnlyReferences'])
+  })
+
+  it('the plan editor reads approval status from the union of the chain anchors\' approved versions until an anchor\'s disposal', async () => {
+    const canvas = createDvCanvas()
+    const disposePlanAnchor = canvas.chainAnchors.register(planApprovalAnchor)
+    // A second anchor approves v2 of p1 from its own slice; the plan slice records only the approval of v1.
+    const disposeTestAnchor = canvas.chainAnchors.register({
+      starter: 'test.approve', anchor: () => 'plan:p1', approvedVersions: (_state, anchorId) => anchorId === 'plan:p1' ? [2] : [],
+    })
+    const { view, node } = mount(true, (state) => {
+      const [v1] = state.components.plan.plans['p1'] ?? []
+      if (v1 === undefined) throw new Error('fixture lacks plan p1')
+      state.components.plan.plans['p1'] = [v1, { ...v1, version: 2, approved_by: null }, { ...v1, version: 3, approved_by: null }]
+    }, false, OPERATIONS, canvas)
+    await waitFor(() => { node('plan:p1') })
+    fireEvent.pointerDown(node('plan:p1'), { button: 0, clientX: 5, clientY: 5, pointerId: 1 })
+    fireEvent.pointerUp(view.getByTestId('dv-canvas-view'), { pointerId: 1 })
+    await view.findByTestId('dv-canvas-node-editor')
+    const statuses = (): string[] => [1, 2, 3].map((version) => {
+      fireEvent.click(view.getByRole('button', { name: `第 ${String(version)} 版` }))
+      return view.getByTestId('dv-canvas-plan-status').textContent ?? ''
+    })
+    expect(statuses()).toEqual([zh['editor.planApproved'], zh['editor.planApproved'], zh['editor.planPending']])
+    act(() => { disposeTestAnchor() })
+    expect(statuses()).toEqual([zh['editor.planApproved'], '已被第 3 版取代', zh['editor.planPending']])
+    // With no anchor left, the approved_by of v1 approves nothing.
+    act(() => { disposePlanAnchor() })
+    expect(statuses()).toEqual(['已被第 2 版取代', '已被第 3 版取代', zh['editor.planPending']])
   })
 
   it('the plan editor shows reference assets of every media type and numbers only the images as Picture N', async () => {

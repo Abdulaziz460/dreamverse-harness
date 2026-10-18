@@ -13,7 +13,8 @@
  * button. "添加素材" opens the asset picker; a reference chip opens the preview of its asset, or the editor of its character,
  * location or style over this one. A character, location or style shows its references, adds assets from the picker, and
  * removes one reference while it has more than one. A plan switches between its versions (第 1 版,
- * 第 2 版, …) and shows the chosen version's approval status, its reference assets, and one card per shot with exactly
+ * 第 2 版, …) and shows the chosen version's approval status (from the approved versions that the registered chain
+ * anchors report for the node), its reference assets, and one card per shot with exactly
  * what the plan holds: duration, model and task, reference assets, whether the shot continues the previous shot, and the
  * full prompt with each `Picture N` drawn as its image. A stale node offers "仍然保留", which keeps its record as it is
  * (`proj.stale_accept`).
@@ -26,6 +27,7 @@ import { dispatchCompose, type DvComposeRef } from '@dv/ui-kit/compose.ts'
 import { fieldsOf, paramsOf, type FormField } from '@dv/ui-kit/form.ts'
 import { useText } from '@dv/ui-kit/locale.ts'
 import { formatInputRef, isPicture, pictureParts, referenceAssets, shotReferences } from '@dv/ui-kit/references.ts'
+import type { ChainAnchor } from '@dv/ui-kit/registries.ts'
 import { readStored, writeStored } from '@dv/ui-kit/storage.ts'
 import { clockText } from '@dv/ui-kit/timeline.ts'
 import { taskLabel, type WireTaskLabels } from '@dv/ui-kit/tool-labels.ts'
@@ -44,6 +46,8 @@ export interface NodeEditorProps {
   operations: readonly WireOperation[]
   /** The task labels of `GET /api/dv/tasks`; a take and a shot show their task by its label, else by its name. */
   taskLabels: WireTaskLabels
+  /** The registered chain anchors; a plan version is approved when one of them lists it for the plan's node. */
+  anchors: readonly ChainAnchor[]
   client: DvClient
   project: string
   /** The chat session the canvas sits beside, recorded as the `session` of the editor's writes. */
@@ -430,6 +434,9 @@ export function NodeEditor(props: NodeEditorProps): ReactNode {
   const planVersions = node.kind === 'plan' ? props.state.components.plan.plans[node.planId ?? ''] ?? [] : []
   const [chosen, setChosen] = useState<number | null>(null)
   const plan = planVersions.find(version => version.version === chosen) ?? planVersions.at(-1)
+  // The approved versions of the node are the union of what every chain anchor reports for it.
+  const approved = plan !== undefined
+    && props.anchors.some(anchor => anchor.approvedVersions?.(props.state, node.id).includes(plan.version) === true)
   const placement = useEditorPlacement()
   const askAgent = (): void => {
     const shown = node.thumb ?? node.video ?? node.references[0] ?? null
@@ -478,7 +485,7 @@ export function NodeEditor(props: NodeEditorProps): ReactNode {
           </button>
         </div>
         {node.kind === 'plan' && plan !== undefined
-          ? <PlanHeader versions={planVersions} plan={plan} state={props.state} t={t} onChoose={setChosen} />
+          ? <PlanHeader versions={planVersions} plan={plan} approved={approved} state={props.state} t={t} onChoose={setChosen} />
           : null}
       </header>
       <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: node.kind === 'plan' ? 12 : 16 }}>
@@ -814,19 +821,20 @@ function ReferenceChip({ reference, t }: { reference: NamedReference; t: CanvasT
  * The plan's second header row: the version switch, the chosen version's approval status, its shot count, total
  * duration and aspect ratio, and the plan's reference assets. The status is approved, awaiting approval (the latest
  * version only), or replaced by the next version.
- * @param props - every version, the chosen one, the branch state, the canvas translate, and the version choice callback.
+ * @param props - every version, the chosen one, whether a chain anchor approved it, the branch state, the canvas
+ * translate, and the version choice callback.
  * @returns the element.
  */
 function PlanHeader(
-  { versions, plan, state, t, onChoose }: {
+  { versions, plan, approved, state, t, onChoose }: {
     versions: PlanVersion[]
     plan: PlanVersion
+    approved: boolean
     state: WireState
     t: CanvasTranslate
     onChoose: (version: number) => void
   },
 ): ReactNode {
-  const approved = plan.approved_by !== null
   // A version that a later version replaced before anyone approved it never waits for approval again.
   const replaced = !approved && plan !== versions.at(-1)
   let status = t('editor.planPending')
