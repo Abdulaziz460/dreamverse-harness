@@ -7,11 +7,14 @@
  *
  * The operations write only their records. `dvProject` turns each into its agent tool (`dv_bible_character_create`,
  * and so on). Each kind is a reference kind of `dvProject`, which resolves `<id>@<version>` inputs through the kind's
- * `assetsOf` and marks every record that read a version stale once an update supersedes the record that wrote it.
+ * `assetsOf` and marks every record that read a version stale once an update supersedes the record that wrote it. While
+ * the DSH skill registry is mounted, the component registers the `story-bible` skill: how to create and update its kinds.
  *
  * @module @dv/story-bible
  */
+import { readFileSync } from 'node:fs'
 import { Service, type Context } from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/dsh-skill'
 import z from '@deepseek-ai/schemastery'
 import type { OperationContext, OperationResult, OperationSpec, ProjectState, RecordId } from '@dv/project'
 import { BIBLE_KINDS, bibleReducer, latestVersion, referenceKind, type BibleKind } from './reducer.ts'
@@ -31,6 +34,16 @@ export type Config = Record<string, unknown>
 
 /** Loader validation. */
 export const Config: z<Config> = z.object({})
+
+/** The skill that tells the agent when and how to create and update characters, locations and styles. */
+const STORY_BIBLE_SKILL = {
+  name: 'story-bible',
+  description: 'How to create and update characters, locations and styles, the reference kinds of the story bible, with the '
+    + 'dv_bible_* tools and their required arguments.',
+  whenToUse: 'You set up a project, or the user wants a person, a place or a look kept the same across shots, or changed.',
+  content: readFileSync(new URL('../skills/story-bible/SKILL.md', import.meta.url), 'utf8'),
+  source: 'runtime',
+}
 
 /** What each kind is, in the words of the operation descriptions. */
 const MEANING: Record<BibleKind, string> = {
@@ -57,7 +70,7 @@ function text(value: unknown, fallback = ''): string {
   return typeof value === 'string' ? value : fallback
 }
 
-/** The Story bible service: the `bible` reducer, the three reference kinds and the six operations. */
+/** The Story bible service: the `bible` reducer, the three reference kinds, the six operations and the `story-bible` skill. */
 export default class DvStoryBible extends Service {
   static inject = ['dvProject']
   static Config = Config
@@ -72,6 +85,9 @@ export default class DvStoryBible extends Service {
         ctx.effect(() => ctx.dvProject.registerOperation(spec), `dvStoryBible ${spec.name}`)
       }
     }
+    ctx.inject(['skills'], (child) => {
+      child.effect(() => child.skills.register(STORY_BIBLE_SKILL), `dvStoryBible ${STORY_BIBLE_SKILL.name}`)
+    })
   }
 }
 

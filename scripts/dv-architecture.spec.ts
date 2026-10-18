@@ -39,6 +39,7 @@ describe('DreamVerse architecture fitness test', () => {
     ['R8-negative.txt', ['R8c']],
     ['R8d-negative.txt', ['R8d', 'R8d']],
     ['R8e-negative.txt', ['R8e']],
+    ['R8f-negative.txt', ['R8f']],
   ])('rejects the fixture %s with %j', (name, expected) => {
     expect(rules(fixture(name)).sort()).toEqual(expected)
   })

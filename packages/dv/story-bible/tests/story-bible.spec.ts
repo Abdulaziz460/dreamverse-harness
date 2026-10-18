@@ -1,6 +1,6 @@
 /**
- * The Story bible component in a REAL composition: a test-only `cordis.yml` boots the DSH tool registry, `dvProject`,
- * `dvFfmpeg`, the asset pool and `dvStoryBible` through the Loader. The agent's `dv_bible_*` calls write versions,
+ * The Story bible component in a REAL composition: a test-only `cordis.yml` boots the DSH skill and tool registries,
+ * `dvProject`, `dvFfmpeg`, the asset pool and `dvStoryBible` through the Loader. The agent's `dv_bible_*` calls write versions,
  * `<id>@<version>` inputs resolve to the version's reference images, and an update makes the records that read the
  * previous version stale. The only fake is a test `shot.render` that stands for the generation backend.
  */
@@ -13,6 +13,7 @@ import Include from '@deepseek-ai/cordis-plugin-include'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
+import { SkillRegistry } from '@deepseek-ai/dsh-skill'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import DvAssetPool from '@dv/asset-pool'
@@ -24,7 +25,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import DvStoryBible, { type CharacterId } from '../src/index.ts'
 
 /** The plugin classes the fixture rows resolve through `globalThis`, because Node imports the rows outside Vite. */
-const PLUGINS = { SystemPrompt, ToolRuntime, DvProject, DvFfmpeg, DvAssetPool, DvStoryBible }
+const PLUGINS = { SkillRegistry, SystemPrompt, ToolRuntime, DvProject, DvFfmpeg, DvAssetPool, DvStoryBible }
 
 /** The six operations, in registration order. */
 const OPERATIONS = [
@@ -64,6 +65,7 @@ async function start(): Promise<Fixture> {
     writeFileSync(join(dir, `${id}.mjs`), `export default globalThis.__dvStoryBibleComposition.${key}\n`)
     rows.push(`- id: ${id}`, `  name: ${pathToFileURL(join(dir, `${id}.mjs`)).href}`, ...config.length === 0 ? [] : ['  config:', ...config.map(line => `    ${line}`)])
   }
+  row('skills', 'SkillRegistry', [])
   row('system-prompt', 'SystemPrompt', [])
   row('tools', 'ToolRuntime', [])
   row('dv-project', 'DvProject', [`root: ${join(dir, 'projects')}`, `sessionRoot: ${join(dir, 'sessions')}`])
@@ -156,6 +158,17 @@ describe('dvStoryBible', () => {
     expect(fixture.ctx.dvProject.listOperations().filter(spec => spec.component === 'bible')).toEqual([])
     expect(fixture.ctx.tools.get('dv_bible_character_create')).toBeUndefined()
     expect(fixture.ctx.dvProject.getState(fixture.project).components).not.toHaveProperty('bible')
+  })
+
+  it('registers the story-bible skill while dvStoryBible is mounted, and removes it on disposal', async () => {
+    const fixture = await start()
+    const skill = await fixture.ctx.skills.get('story-bible')
+    expect(skill).toMatchObject({ name: 'story-bible', source: 'runtime', invocation: { modelInvocable: true } })
+    expect(skill?.content.startsWith('# Story bible\n')).toBe(true)
+    expect(skill?.content).toContain('`dv_bible_character_create` for every person who must stay the same across shots')
+    const entry = [...fixture.ctx.loader.entries()].find(candidate => candidate.options.name.endsWith('/dv-story-bible.mjs'))
+    await entry?.fiber?.dispose()
+    expect(await fixture.ctx.skills.get('story-bible')).toBeUndefined()
   })
 
   it('creates a character from the agent tool and resolves <id>@1 to its reference images', async () => {

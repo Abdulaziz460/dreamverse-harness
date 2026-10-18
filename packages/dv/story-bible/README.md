@@ -24,7 +24,7 @@ Use this package to keep the characters, locations and styles of a project, each
 <a id="use-this-package"></a>
 ## Use this package
 
-Mount the plugin after `@dv/project`. The component has no configuration fields.
+Mount the plugin after `@dv/project`. The component has no configuration fields. While the skill registry `skills` of `@deepseek-ai/dsh-skill` is mounted, the plugin registers the `story-bible` skill from [`skills/story-bible/SKILL.md`](skills/story-bible/SKILL.md) with `ctx.skills.register`; without the registry the operations work and no skill is registered.
 
 ```yaml
 - id: dv-story-bible
@@ -49,9 +49,10 @@ The reducer reads only finished `bible.*` records. A version's reference images 
 
 | File | Content |
 | --- | --- |
-| [`src/index.ts`](src/index.ts) | `dvStoryBible`: the six operations and their ID checks |
+| [`src/index.ts`](src/index.ts) | `dvStoryBible`: the six operations and their ID checks, and the `story-bible` skill |
 | [`src/reducer.ts`](src/reducer.ts) | The `bible` reducer, and the reference kinds with `assetsOf`, `createdBy` and `latest` |
 | [`src/types.ts`](src/types.ts) | `Character`, `Location`, `Style`, `StoryBibleState` and the `ComponentStates` and `ReferenceKinds` declarations |
+| [`skills/story-bible/SKILL.md`](skills/story-bible/SKILL.md) | The body of the `story-bible` skill |
 
 -----
 
@@ -93,6 +94,20 @@ About 50 tokens per call.
 #### KV Cache effect
 
 The result is appended to the conversation after the call; the cached prefix stays intact.
+
+### Skill
+
+#### What the model sees
+
+The skill catalog lists `story-bible` with its description and when to use it. When the agent loads the skill, it reads when to create a character, a location or a style during project setup, the arguments of each `dv_bible_*` tool, and what an update does: it writes the next version, and the agent lists the stale shots and asks before any retake. Other skills name no `dv_bible_*` tool; the bundle skill tells the agent to load the skill of a reference kind before it creates or changes a reference of that kind.
+
+#### Token effect
+
+About 60 tokens in the skill catalog while the plugin is mounted; about 400 tokens each time the agent loads the skill.
+
+#### KV Cache effect
+
+The catalog entry sits in the stable skill section; mounting or removing the plugin changes the catalog. A loaded skill is appended to the conversation as a tool result; the cached prefix stays intact.
 
 ## Known Limitations and Deferred Work
 

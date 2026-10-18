@@ -49,6 +49,8 @@ interface Facts {
   slotPackages: Set<string>
   /** Packages whose `package.json` exports a `./types` entry. */
   typesEntries: Set<string>
+  /** Packages whose `src` calls `registerReferenceKind(` (R8 f). */
+  kindOwners: Set<string>
 }
 
 const BASE = ['models', 'generation', 'asset-pool', 'ffmpeg']
@@ -118,7 +120,7 @@ function walk(node: ts.Node, visit: (node: ts.Node) => void): void {
 function collectFacts(sources: readonly Source[], files: readonly ScanFile[]): Facts {
   const facts: Facts = {
     packages: new Set(files.map(file => packageOf(file.path))), owners: new Map(), claims: [], providers: new Set(),
-    primitives: new Set(), primitivePackages: new Set(), slotPackages: new Set(), typesEntries: new Set(),
+    primitives: new Set(), primitivePackages: new Set(), slotPackages: new Set(), typesEntries: new Set(), kindOwners: new Set(),
   }
   for (const file of files) {
     if (file.path.endsWith('/package.json') && /"\.\/types"\s*:/u.test(file.text)) facts.typesEntries.add(packageOf(file.path))
@@ -133,6 +135,7 @@ function collectFacts(sources: readonly Source[], files: readonly ScanFile[]): F
         add(facts.owners, key, pkg)
       }
       if (callee === 'registerComponent' && arg !== undefined && ts.isStringLiteralLike(arg)) claim(arg.text)
+      if (callee === 'registerReferenceKind') facts.kindOwners.add(pkg)
       if (ts.isPropertyAssignment(node) && textOf(node.name) === 'component' && ts.isStringLiteralLike(node.initializer)) {
         claim(node.initializer.text)
       }
@@ -212,6 +215,7 @@ function scanSkillText(
     const higher = skillText && ownerLayer !== undefined && SKILL_ORDER.indexOf(ownerLayer) > SKILL_ORDER.indexOf(layer)
     if (higher) report('R8a', match.index, match[0])
     if (skillText && ownerLayer === 'workflow' && !(md && pkg === owner)) report('R8c', match.index, match[0])
+    if (skillText && owner !== undefined && facts.kindOwners.has(owner) && pkg !== owner) report('R8f', match.index, match[0])
     if (!higher && (described || (catalog && !match[0].startsWith('dv_models_')))) report('R8d', match.index, match[0])
   }
   if (!skillText) return

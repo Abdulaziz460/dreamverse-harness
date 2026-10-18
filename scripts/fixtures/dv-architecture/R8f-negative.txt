@@ -1,0 +1,7 @@
+--- packages/dv/story-bible/src/index.ts
+export const spec = { component: 'bible' }
+ctx.dvProject.registerReferenceKind(kind)
+--- packages/dv/story-bible/skills/story-bible/SKILL.md
+Create each person with `dv_bible_character_create`.
+--- packages/bundle/dv/skills/video-directing/SKILL.md
+Create each person with `dv_bible_character_create`.

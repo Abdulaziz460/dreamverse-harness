@@ -24,7 +24,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-在 `@dv/project` 之后挂载插件。该组件没有配置字段。
+在 `@dv/project` 之后挂载插件。该组件没有配置字段。挂载 `@deepseek-ai/dsh-skill` 的技能注册表 `skills` 时，插件用 `ctx.skills.register` 注册 [`skills/story-bible/SKILL.md`](skills/story-bible/SKILL.md) 中的 `story-bible` 技能；没有注册表时，操作照常工作，不注册技能。
 
 ```yaml
 - id: dv-story-bible
@@ -49,9 +49,10 @@ kind: "package-reference"
 
 | 文件 | 内容 |
 | --- | --- |
-| [`src/index.ts`](src/index.ts) | `dvStoryBible`：六个操作及其 ID 检查 |
+| [`src/index.ts`](src/index.ts) | `dvStoryBible`：六个操作及其 ID 检查，以及 `story-bible` 技能 |
 | [`src/reducer.ts`](src/reducer.ts) | `bible` 归约函数，以及带 `assetsOf`、`createdBy` 和 `latest` 的引用种类 |
 | [`src/types.ts`](src/types.ts) | `Character`、`Location`、`Style`、`StoryBibleState` 以及 `ComponentStates` 和 `ReferenceKinds` 声明 |
+| [`skills/story-bible/SKILL.md`](skills/story-bible/SKILL.md) | `story-bible` 技能的正文 |
 
 -----
 
@@ -93,6 +94,20 @@ kind: "package-reference"
 #### KV Cache 影响
 
 结果在调用之后追加到对话中；已缓存的前缀保持不变。
+
+### 技能
+
+#### 模型看到什么
+
+技能目录列出 `story-bible` 及其描述和使用时机。智能体加载该技能时，读到项目准备阶段何时创建角色、场景或风格，每个 `dv_bible_*` 工具的参数，以及更新做什么：它写出下一个版本，智能体列出过期镜头并在任何重做之前询问。其他技能不提任何 `dv_bible_*` 工具；bundle 技能让智能体在创建或修改某个引用种类的引用之前，先加载该种类的技能。
+
+#### Token 影响
+
+插件挂载期间，技能目录中约 60 个 token；智能体每次加载该技能约 400 个 token。
+
+#### KV Cache 影响
+
+目录条目位于稳定的技能部分；挂载或移除插件会改变目录。加载的技能作为工具结果追加到对话中；已缓存的前缀保持不变。
 
 ## 已知限制与延期工作
 
