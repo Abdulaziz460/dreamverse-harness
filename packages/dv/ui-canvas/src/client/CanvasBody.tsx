@@ -1,7 +1,8 @@
 /**
  * The canvas as a right-Sidebar tab body: the project and undo bar (`ProjectBar`) above a {@link CanvasView} of the
  * selected project's current state. The body declares no canvas slot and passes no slot renderer, so its seed editors
- * show only their header; the center view (`CanvasCenter.tsx`) renders the `dv.canvas.editor` entries.
+ * show only their header, its asset picker lists only the version items, and an asset chip opens no preview; the center
+ * view (`CanvasCenter.tsx`) renders the `dv.canvas.editor`, `dv.canvas.picker` and `dv.canvas.preview` entries.
  */
 import { useMemo } from 'react'
 import type { CSSProperties, ReactNode } from 'react'

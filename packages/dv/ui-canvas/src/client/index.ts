@@ -1,7 +1,8 @@
 /**
  * Browser half: provide `dvCanvas`, the registries that plugin UI halves fill; register `dv-canvas` as a right-Sidebar
  * tab type, its dictionaries, and its body; register the canvas as the 画布 view of the workspace center
- * (`dv.center.view`), which declares the `dv.canvas.editor` slot of the seed editors.
+ * (`dv.center.view`), which declares the slots of the editors: `dv.canvas.editor` of the seeds, and `dv.canvas.picker`
+ * and `dv.canvas.preview` of the asset pool.
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
@@ -25,8 +26,8 @@ export const inject = ['slots', 'locale', 'sidebarRightTabs']
 
 /**
  * Client plugin body: provide `dvCanvas`; register the type, its dictionaries, and its body under the type's id, and the
- * center view `canvas`, which draws the project and chat session that the workspace center passes and declares the slot
- * of the seed editors (one entry declares a slot, so the tab body declares none).
+ * center view `canvas`, which draws the project and chat session that the workspace center passes and declares the slots
+ * of the seed editors, the asset picker and the asset preview (one entry declares a slot, so the tab body declares none).
  * @param ctx - client root context.
  */
 export function apply(ctx: ClientContext): void {
@@ -44,7 +45,11 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.slots.inject('dv.center.view', () => ctx.slots.register(
     {
       name: 'dv.center.view', id: 'canvas', order: 0, label: () => t('type.label'), inject: () => injected,
-      children: { 'dv.canvas.editor': { kind: 'keyed', scope: 'root' } },
+      children: {
+        'dv.canvas.editor': { kind: 'keyed', scope: 'root' },
+        'dv.canvas.picker': { kind: 'keyed', scope: 'root' },
+        'dv.canvas.preview': { kind: 'keyed', scope: 'root' },
+      },
     },
     CanvasCenter,
   )), 'ui-canvas: center view')

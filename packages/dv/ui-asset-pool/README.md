@@ -31,7 +31,7 @@ Mount the plugin in a profile that stacks `dsh-web-app` (which provides the righ
   name: '@dv/ui-asset-pool'
 ```
 
-The Host half registers nothing. The browser half registers the `dv-asset-pool` tab type (a page the Sidebar's guide offers as "Asset pool") and the tab body under its own id `@dv/ui-asset-pool`. The tab stays mounted while another tab is in front.
+The Host half registers nothing. The browser half registers the `dv-asset-pool` tab type (a page the Sidebar's guide offers as "Asset pool") and the tab body under its own id `@dv/ui-asset-pool`. The tab stays mounted while another tab is in front. It also fills two keyed slots of the canvas of `@dv/ui-canvas` at key `assets` (their `SlotMap` entries are in `@dv/ui-kit/registries.ts`): `dv.canvas.picker` with `AssetsPanel`, the panel inside the canvas's asset picker, whose thumbnail clicks pick assets, and `dv.canvas.preview` with `Preview`, the canvas's preview of one asset.
 
 | Gesture | Request or event |
 | --- | --- |
@@ -53,13 +53,13 @@ The panel lists every image and video that the state lists in `assets` (every as
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-`assetLibrary` groups the assets of the state, each asset once, into images and videos; an image whose producer record (`created_by`) also output a video, such as the last frame of a rendered shot, goes to `extracted`. The state already carries this project's own import name and time of each asset (`ProjectAsset`), because the asset pool keeps the name and time of the first import of identical bytes in any project. The preview reads the width and height from the loaded media when the asset pool could not read them at import, and renders on `document.body` so the right Sidebar cannot cover its buttons; Escape or a click outside closes it. With the `onOpen` prop, a click on a thumbnail calls it instead of opening the preview; the asset picker of `@dv/ui-canvas` passes it and reuses the exported `Preview`.
+`assetLibrary` groups the assets of the state, each asset once, into images and videos; an image whose producer record (`created_by`) also output a video, such as the last frame of a rendered shot, goes to `extracted`. The state already carries this project's own import name and time of each asset (`ProjectAsset`), because the asset pool keeps the name and time of the first import of identical bytes in any project. The preview reads the width and height from the loaded media when the asset pool could not read them at import, and renders on `document.body` so the right Sidebar cannot cover its buttons; Escape or a click outside closes it. With the `onOpen` prop, a click on a thumbnail calls it instead of opening the preview; the canvas passes it to the `dv.canvas.picker` entry. The entries register while the canvas declares the slots, and leave with the plugin.
 
 | File | Content |
 | --- | --- |
 | [`src/index.ts`](src/index.ts) | The Host half, which registers nothing |
 | [`src/css-modules.d.ts`](src/css-modules.d.ts) | The type of the CSS Module imports |
-| [`src/client/index.ts`](src/client/index.ts) | Registrations of the tab type and the tab body |
+| [`src/client/index.ts`](src/client/index.ts) | Registrations of the tab type, the tab body, and the entries of the canvas's picker and preview slots |
 | [`src/client/definition.ts`](src/client/definition.ts) | The tab type |
 | [`src/client/AssetsPanel.tsx`](src/client/AssetsPanel.tsx) | The panel, the drop zone, the thumbnail grids by section, the preview, and the tab body |
 | [`src/client/AssetsPanel.module.css`](src/client/AssetsPanel.module.css) | Styles of the panel and the preview |

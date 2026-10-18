@@ -24,9 +24,6 @@
       "path": "../../client/ui-slots"
     },
     {
-      "path": "../ui-asset-pool"
-    },
-    {
       "path": "../ui-kit"
     }
   ]

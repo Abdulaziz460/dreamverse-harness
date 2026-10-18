@@ -10,11 +10,13 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { SidebarRightTabRegistry } from '@deepseek-ai/dsh-client-ui-sidebar-right/src/client/tab-registry.ts'
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
+import { apply as assetPoolApply, inject as assetPoolInject } from '@dv/ui-asset-pool/src/client/index.ts'
 import type { NodeKind } from '@dv/ui-kit/registries.ts'
 import { apply as storyBibleApply } from '@dv/ui-story-bible/src/client/index.ts'
 import { scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
 import { apply, inject } from '../src/client/index.ts'
 import { EDITOR_RECT_KEY } from '../src/client/NodeEditor.tsx'
+import { zh } from '../src/client/locales.ts'
 
 /** A node kind as a plugin's UI half registers it: one seed per project. */
 const PROPS: NodeKind = {
@@ -107,6 +109,28 @@ describe('canvas slots in the workspace center', () => {
     expect(within(editor).getByRole('button', { name: '查看 ref.png' })).toBeTruthy()
     expect(within(editor).getByText('A tired detective.')).toBeTruthy()
     expect(within(editor).getByText('＋ 添加素材')).toBeTruthy()
+    await runtime.dispose()
+  })
+
+  it('shows the asset pool tiles in the asset picker and the asset preview in the center canvas', async () => {
+    document.documentElement.lang = 'zh-CN'
+    const { runtime, view } = await centerCanvas()
+    await runtime.mount({ inject: [...assetPoolInject], apply: assetPoolApply })
+
+    const editor = await openEditor(view.container, 'g1')
+    // 添加素材 opens the picker, which shows the asset pool's `dv.canvas.picker` entry below the versioned items.
+    fireEvent.click(within(editor).getByText(zh['editor.addAsset']))
+    const picker = await view.findByTestId('dv-canvas-asset-picker')
+    const tile = await waitFor(() => {
+      const found = picker.querySelector('[data-asset-id="shot1.mp4"]')
+      expect(found).not.toBeNull()
+      return found as HTMLElement
+    })
+    fireEvent.click(tile)
+    fireEvent.click(view.getByText('确认（1）'))
+    // The picked asset's chip opens the asset pool's `dv.canvas.preview` entry.
+    fireEvent.click(within(editor).getByRole('button', { name: '查看 shot1.mp4' }))
+    expect(await view.findByRole('dialog', { name: 'shot1.mp4' })).toBeTruthy()
     await runtime.dispose()
   })
 })

@@ -24,8 +24,6 @@
   "packages/dv/project/src/proj-tools.ts R1d styles": 1,
   "packages/dv/project/src/proj-tools.ts R1d timelines": 1,
   "packages/dv/project/src/types.ts R1c bible": 1,
-  "packages/dv/ui-canvas/src/client/AssetPicker.tsx R6 @dv/ui-asset-pool/src/client/AssetsPanel.tsx": 1,
-  "packages/dv/ui-canvas/src/client/AssetPicker.tsx R7a @dv/ui-asset-pool/src/client/AssetsPanel.tsx": 1,
   "packages/dv/ui-canvas/src/client/CanvasView.tsx R5b components.plan": 2,
   "packages/dv/ui-canvas/src/client/graph.ts R5b components.plan": 1,
   "packages/dv/ui-canvas/src/client/graph.ts R5c plan": 3,

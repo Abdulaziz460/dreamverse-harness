@@ -1,16 +1,17 @@
 /**
- * The asset pool as the canvas editors use it, drawn with the asset pool panel of `@dv/ui-asset-pool`: the picker that
- * adds references (the items of the registered version kinds, then the asset pool with its import drop zone), the
- * preview of one asset, and the thumbnail of an image or a video asset. This file is the canvas's only import of
- * `@dv/ui-asset-pool`. The picker and the preview render on `document.body` and close on Escape before the canvas sees
+ * The asset pool as the canvas editors use it: the picker that adds references (the items of the registered version
+ * kinds, then the `dv.canvas.picker` entry at key `assets`, which `@dv/ui-asset-pool` fills with its asset pool panel and
+ * import drop zone), the preview of one asset (the `dv.canvas.preview` entry at key `assets`, the asset pool's preview),
+ * and the thumbnail of an image or a video asset. Without a slot renderer the picker offers only the items and the
+ * preview shows nothing. The picker and the preview render on `document.body` and close on Escape before the canvas sees
  * the key, so the editor beneath them stays open.
  *
  * @module @dv/ui-canvas/AssetPicker
  */
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { AssetsPanel, Preview } from '@dv/ui-asset-pool/src/client/AssetsPanel.tsx'
+import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import { assetUrl } from '@dv/ui-kit/api.ts'
 import type { DvClient } from '@dv/ui-kit/api.ts'
 import type { VersionKind } from '@dv/ui-kit/registries.ts'
@@ -83,10 +84,13 @@ export interface AssetPickerProps {
   /** Receives the picked references in pick order: asset IDs, and `<id>@<version>` for item versions. */
   onConfirm: (refs: string[]) => void
   onCancel: () => void
+  /** Renders the `dv.canvas.picker` entry, the asset pool panel; without it the picker offers only the items. */
+  renderSlot?: PropsRenderSlots<'dv.canvas.picker'>['renderSlot']
 }
 
 /**
- * The picker: the newest version of each item of `kinds`, then the asset pool panel, whose clicks pick assets.
+ * The picker: the newest version of each item of `kinds`, then the asset pool panel of the `dv.canvas.picker` entry,
+ * whose clicks pick assets.
  * A click toggles an item; the confirm button hands over every picked reference.
  * @param props - the project, the offered kinds, and the callbacks.
  * @returns the dialog.
@@ -133,7 +137,9 @@ export function AssetPicker(props: AssetPickerProps): ReactNode {
           )}
         <div style={{ flex: 1, minHeight: 0 }}>
           {pickedRing === null ? null : <style>{pickedRing}</style>}
-          <AssetsPanel projectId={props.project} session={props.session} client={props.client} onOpen={(asset) => { toggle(asset.id) }} />
+          {props.renderSlot?.('dv.canvas.picker', {
+            projectId: props.project, session: props.session, client: props.client, onOpen: (asset) => { toggle(asset.id) },
+          }, { entryKey: 'assets' })}
         </div>
         <footer style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '12px 16px', borderTop: '1px solid var(--dv-line)' }}>
           <button type="button" className="dv-canvas-btn" style={{ ...button, border: '1px solid var(--dv-line-strong)', color: 'var(--dv-text)' }} onClick={onCancel}>{t('picker.cancel')}</button>
@@ -150,13 +156,25 @@ export function AssetPicker(props: AssetPickerProps): ReactNode {
   )
 }
 
+/** Props of {@link AssetPreview}. */
+export interface AssetPreviewProps {
+  asset: Asset | null
+  openerOf: (asset: Asset) => Element | null
+  onClose: () => void
+  /** Renders the `dv.canvas.preview` entry, the asset pool's preview; without it nothing shows. */
+  renderSlot?: PropsRenderSlots<'dv.canvas.preview'>['renderSlot']
+}
+
 /**
- * The asset pool's preview of one asset, growing out of the element that opened it and shrinking back into it.
- * @param props - the asset on show or null, the element it grows out of, and the close callback.
+ * The preview of one asset in the `dv.canvas.preview` entry, growing out of the element that opened it and shrinking
+ * back into it.
+ * @param props - the asset on show or null, the element it grows out of, the close callback, and the slot renderer.
  * @returns the preview, or nothing while no asset is on show.
  */
-export function AssetPreview(props: { asset: Asset | null; openerOf: (asset: Asset) => Element | null; onClose: () => void }): ReactNode {
+export function AssetPreview(props: AssetPreviewProps): ReactNode {
   const zoom = useZoomPresence(props.asset, props.openerOf)
   useEscapeFirst(props.asset !== null, props.onClose)
-  return zoom.shown === null ? null : <Preview key={zoom.shown.id} asset={zoom.shown} onClose={props.onClose} zoom={zoom} />
+  if (zoom.shown === null) return null
+  // Keyed by the asset, so the preview of another asset starts fresh.
+  return <Fragment key={zoom.shown.id}>{props.renderSlot?.('dv.canvas.preview', { asset: zoom.shown, onClose: props.onClose, zoom }, { entryKey: 'assets' })}</Fragment>
 }

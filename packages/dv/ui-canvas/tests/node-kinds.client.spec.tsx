@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 /**
  * Node kinds in `dvCanvas`: the canvas draws each seed of a registered `NodeKind` with the default card, its editor shows
- * the `dv.canvas.editor` entry keyed by the kind's `id` and lends it the canvas's writes, asset picker and asset preview,
- * and both leave when the registering plugin is disposed.
+ * the `dv.canvas.editor` entry keyed by the kind's `id` and lends it the canvas's writes, asset picker and asset preview
+ * (the asset pool's `dv.canvas.picker` and `dv.canvas.preview` entries), and both leave when the registering plugin is
+ * disposed.
  */
 import { afterEach, describe, expect, it } from 'vitest'
 import { cleanup, fireEvent, waitFor, within } from '@testing-library/react'
@@ -10,6 +11,8 @@ import type { ReactNode } from 'react'
 import type { Context } from '@deepseek-ai/cordis'
 import type { PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { makeTranslate, SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
+import { SidebarRightTabRegistry } from '@deepseek-ai/dsh-client-ui-sidebar-right/src/client/tab-registry.ts'
+import { apply as assetPoolApply, inject as assetPoolInject } from '@dv/ui-asset-pool/src/client/index.ts'
 import { DvClient } from '@dv/ui-kit/api.ts'
 import type { NodeKind } from '@dv/ui-kit/registries.ts'
 import { apply as storyBibleApply, bibleNodeKind } from '@dv/ui-story-bible/src/client/index.ts'
@@ -30,6 +33,14 @@ const PROPS: NodeKind = {
     ]
     : [],
 }
+
+/** The slots that the canvas center view declares for its editors. */
+type CanvasSlot = 'dv.canvas.editor' | 'dv.canvas.picker' | 'dv.canvas.preview'
+const CANVAS_SLOTS = {
+  'dv.canvas.editor': { kind: 'keyed', scope: 'root' },
+  'dv.canvas.picker': { kind: 'keyed', scope: 'root' },
+  'dv.canvas.preview': { kind: 'keyed', scope: 'root' },
+} as const
 
 /**
  * The `dv.canvas.editor` entry of the node kind.
@@ -59,10 +70,10 @@ describe('node kinds', () => {
     state.components.asset.placed = ['umbrella.png']
     const client = new DvClient(scriptedFetch({ state }).fetch)
     const t: CanvasTranslate = makeTranslate(zh)
-    // The root frame declares the slot, as the canvas center view does, and hands its renderSlot to the canvas.
-    const Frame = ({ renderSlot }: PropsRenderSlots<'dv.canvas.editor'>): ReactNode =>
-      <CanvasView projectId="p1" client={client} t={t} canvas={canvas} renderEditor={renderSlot} />
-    await runtime.root.declare({ 'dv.canvas.editor': { kind: 'keyed', scope: 'root' } }, Frame)
+    // The root frame declares the slots, as the canvas center view does, and hands its renderSlot to the canvas.
+    const Frame = ({ renderSlot }: PropsRenderSlots<CanvasSlot>): ReactNode =>
+      <CanvasView projectId="p1" client={client} t={t} canvas={canvas} renderSlot={renderSlot} />
+    await runtime.root.declare(CANVAS_SLOTS, Frame)
     const { container } = runtime.renderRoot()
     const card = (id: string): HTMLElement | null => container.querySelector(`[data-node-id="${id}"]`)
     await waitFor(() => { expect(card('g1')).not.toBeNull() })
@@ -118,10 +129,13 @@ describe('node kinds', () => {
     const scripted = scriptedFetch()
     const client = new DvClient(scripted.fetch)
     const t: CanvasTranslate = makeTranslate(zh)
-    const Frame = ({ renderSlot }: PropsRenderSlots<'dv.canvas.editor'>): ReactNode =>
-      <CanvasView projectId="p1" client={client} session="s5" t={t} canvas={canvas} renderEditor={renderSlot} />
-    await runtime.root.declare({ 'dv.canvas.editor': { kind: 'keyed', scope: 'root' } }, Frame)
+    // The asset pool fills the picker and the preview slots.
+    const Frame = ({ renderSlot }: PropsRenderSlots<CanvasSlot>): ReactNode =>
+      <CanvasView projectId="p1" client={client} session="s5" t={t} canvas={canvas} renderSlot={renderSlot} />
+    await runtime.root.declare(CANVAS_SLOTS, Frame)
     await runtime.mount({ apply: storyBibleApply })
+    runtime.ctx.provide('sidebarRightTabs', new SidebarRightTabRegistry(runtime.ctx) as never)
+    await runtime.mount({ inject: [...assetPoolInject], apply: assetPoolApply })
     const { container } = runtime.renderRoot()
     const hero = await waitFor(() => {
       const found = container.querySelector('[data-node-id="bible:hero"]')

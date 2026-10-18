@@ -38,7 +38,7 @@ import type { CanvasEdge, CanvasNode } from './graph.ts'
 import { NodeCard, nodeHeight, nodeTitle } from './NodeCard.tsx'
 import type { CanvasTranslate } from './NodeCard.tsx'
 import { NodeEditor } from './NodeEditor.tsx'
-import type { RenderEditor } from './NodeEditor.tsx'
+import type { RenderCanvasSlot } from './NodeEditor.tsx'
 import { en, zh } from './locales.ts'
 
 /** Props of {@link CanvasView}. */
@@ -53,8 +53,10 @@ export interface CanvasViewProps {
   t?: CanvasTranslate
   /** The `dvCanvas` registries that plugin UI halves fill for this view; without them, every take is a free take. */
   canvas?: DvCanvas
-  /** Renders the `dv.canvas.editor` entry of a seed in its editor; without it, a seed's editor shows only its header. */
-  renderEditor?: RenderEditor
+  /** Renders the canvas's slots in its editors: the `dv.canvas.editor` entry of a seed, and the `dv.canvas.picker` and
+   *  `dv.canvas.preview` entries of the asset pool; without it, a seed's editor shows only its header, the asset picker
+   *  offers only versioned items, and the asset preview shows nothing. */
+  renderSlot?: RenderCanvasSlot
 }
 
 /** The tallest a card grows (larger text at low zoom plus a badge row), used when fitting. */
@@ -209,7 +211,7 @@ function withoutKeys<V>(map: ReadonlyMap<string, V>, keys: readonly string[]): M
  * @returns the element.
  */
 export function CanvasView(
-  { projectId, client: given, session = null, t: givenT, canvas = NO_CANVAS, renderEditor }: CanvasViewProps,
+  { projectId, client: given, session = null, t: givenT, canvas = NO_CANVAS, renderSlot }: CanvasViewProps,
 ): ReactNode {
   const client = useMemo(() => given ?? new DvClient(), [given])
   const language = useLanguage()
@@ -816,7 +818,7 @@ export function CanvasView(
               project={projectId}
               session={session}
               t={t}
-              {...renderEditor === undefined ? {} : { renderEditor }}
+              {...renderSlot === undefined ? {} : { renderSlot }}
               onClose={() => { setEditing(null) }}
               run={run}
               onRender={startRender}
@@ -844,7 +846,7 @@ export function CanvasView(
               project={projectId}
               session={session}
               t={t}
-              {...renderEditor === undefined ? {} : { renderEditor }}
+              {...renderSlot === undefined ? {} : { renderSlot }}
               onClose={() => { setStacked(null) }}
               run={run}
               onRender={startRender}

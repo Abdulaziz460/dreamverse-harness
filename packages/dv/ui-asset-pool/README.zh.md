@@ -31,7 +31,7 @@ kind: "package-reference"
   name: '@dv/ui-asset-pool'
 ```
 
-Host 半边不注册任何东西。浏览器半边注册 `dv-asset-pool` 标签类型（侧栏指南页以"素材库"提供的页面）和以自身 id `@dv/ui-asset-pool` 为键的标签主体。其他标签在前面时，该标签保持挂载。
+Host 半边不注册任何东西。浏览器半边注册 `dv-asset-pool` 标签类型（侧栏指南页以"素材库"提供的页面）和以自身 id `@dv/ui-asset-pool` 为键的标签主体。其他标签在前面时，该标签保持挂载。它还以键 `assets` 填充 `@dv/ui-canvas` 画布的两个键控插槽（它们的 `SlotMap` 条目在 `@dv/ui-kit/registries.ts` 中）：`dv.canvas.picker` 填入 `AssetsPanel`，即画布素材选择窗口里的面板，点击缩略图选中素材；`dv.canvas.preview` 填入 `Preview`，即画布对单个素材的预览。
 
 | 手势 | 请求或事件 |
 | --- | --- |
@@ -53,13 +53,13 @@ Host 半边不注册任何东西。浏览器半边注册 `dv-asset-pool` 标签�
 <details>
 <summary>实现内部——点击展开</summary>
 
-`assetLibrary` 把状态中的素材分为图片和视频，每个素材只出现一次；生产记录（`created_by`）同时输出了视频的图片（例如渲染镜头的最后一帧）归入 `extracted`。状态已经带上每个素材在本项目中的导入名字和时间（`ProjectAsset`），因为素材库保存的是任意项目中相同字节第一次导入时的名字和时间。素材库在导入时没能读出宽高时，预览从加载的媒体读取宽高；预览渲染在 `document.body` 上，所以右侧栏不会盖住它的按钮；按 Escape 或点击外面关闭。传入 `onOpen` 属性时，点击缩略图调用它，而不是打开预览；`@dv/ui-canvas` 的素材选择窗口传入它，并复用导出的 `Preview`。
+`assetLibrary` 把状态中的素材分为图片和视频，每个素材只出现一次；生产记录（`created_by`）同时输出了视频的图片（例如渲染镜头的最后一帧）归入 `extracted`。状态已经带上每个素材在本项目中的导入名字和时间（`ProjectAsset`），因为素材库保存的是任意项目中相同字节第一次导入时的名字和时间。素材库在导入时没能读出宽高时，预览从加载的媒体读取宽高；预览渲染在 `document.body` 上，所以右侧栏不会盖住它的按钮；按 Escape 或点击外面关闭。传入 `onOpen` 属性时，点击缩略图调用它，而不是打开预览；画布把它传给 `dv.canvas.picker` 条目。这两个条目在画布声明插槽期间注册，随插件一起移除。
 
 | 文件 | 内容 |
 | --- | --- |
 | [`src/index.ts`](src/index.ts) | Host 半边，不注册任何东西 |
 | [`src/css-modules.d.ts`](src/css-modules.d.ts) | CSS Module 导入的类型 |
-| [`src/client/index.ts`](src/client/index.ts) | 标签类型和标签主体的注册 |
+| [`src/client/index.ts`](src/client/index.ts) | 标签类型、标签主体以及画布选择窗口和预览插槽条目的注册 |
 | [`src/client/definition.ts`](src/client/definition.ts) | 标签类型 |
 | [`src/client/AssetsPanel.tsx`](src/client/AssetsPanel.tsx) | 面板、拖放区、按组分的缩略图网格、预览和标签主体 |
 | [`src/client/AssetsPanel.module.css`](src/client/AssetsPanel.module.css) | 面板和预览的样式 |

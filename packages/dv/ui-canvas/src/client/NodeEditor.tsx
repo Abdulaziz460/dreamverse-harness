@@ -11,7 +11,8 @@
  * whose `based_on` is the take); a take whose operation the list does not name shows no params and no button.
  * While the render starts the button is disabled and reads 渲染中…, and a refused request shows its error under the
  * button. "添加素材" opens the asset picker; a reference chip opens the preview of its asset, or the editor of the node of
- * its versioned item (read through the registered version kinds) over this one. A plan switches
+ * its versioned item (read through the registered version kinds) over this one. The picker's asset pool and the preview
+ * are the `dv.canvas.picker` and `dv.canvas.preview` entries at key `assets`. A plan switches
  * between its versions (第 1 版,
  * 第 2 版, …) and shows the chosen version's approval status (from the approved versions that the registered chain
  * anchors report for the node), its reference assets, and one card per shot with exactly
@@ -40,8 +41,9 @@ import type { CanvasNode } from './graph.ts'
 import { kindColor, kindLabel, mono, nodeTitle, planTotalSec } from './NodeCard.tsx'
 import type { CanvasTranslate } from './NodeCard.tsx'
 
-/** Renders a `dv.canvas.editor` entry: the `renderSlot` of the slot entry that declares `dv.canvas.editor`. */
-export type RenderEditor = PropsRenderSlots<'dv.canvas.editor'>['renderSlot']
+/** Renders the slots of the canvas's editors (`dv.canvas.editor`, `dv.canvas.picker`, `dv.canvas.preview`): the
+ *  `renderSlot` of the slot entry that declares them. */
+export type RenderCanvasSlot = PropsRenderSlots<'dv.canvas.editor' | 'dv.canvas.picker' | 'dv.canvas.preview'>['renderSlot']
 
 /** Props of {@link NodeEditor}. */
 export interface NodeEditorProps {
@@ -74,8 +76,9 @@ export interface NodeEditorProps {
   onOpenNode: (nodeId: string) => void
   /** The zoom transition's ref for the panel, which grows out of the node and shrinks back into it. */
   zoomRef: (element: HTMLElement | null) => void
-  /** Renders the `dv.canvas.editor` entry of a seed; a seed shows only its header without it. */
-  renderEditor?: RenderEditor
+  /** Renders the `dv.canvas.editor` entry of a seed, and the asset pool in the picker and the preview; without it a seed
+   *  shows only its header, the picker offers only versioned items, and the preview shows nothing. */
+  renderSlot?: RenderCanvasSlot
 }
 
 /** The editor panel's position and size in px, relative to the canvas area's top-left corner. */
@@ -627,7 +630,7 @@ function AssetPanel(
  * @returns the element.
  */
 function TakeForm(
-  { node, state, operations, taskLabels, versionKinds, client, project, session, t, onRender, onOpenNode, title }:
+  { node, state, operations, taskLabels, versionKinds, client, project, session, t, onRender, onOpenNode, renderSlot, title }:
     NodeEditorProps & { title: string },
 ): ReactNode {
   const pick = useText()
@@ -722,12 +725,14 @@ function TakeForm(
           <AssetPicker
             state={state} client={client} project={project} session={session} t={t} kinds={versionKinds}
             chosen={references.map(input => input.ref)} onConfirm={addReferences} onCancel={() => { setPicking(false) }}
+            {...renderSlot === undefined ? {} : { renderSlot }}
           />
         )
         : null}
       <AssetPreview
         asset={previewed} onClose={() => { setPreviewed(null) }}
         openerOf={asset => chips.current?.querySelector(`[data-reference="${asset.id}"]`) ?? null}
+        {...renderSlot === undefined ? {} : { renderSlot }}
       />
       <div style={{ display: 'flex', flexWrap: 'wrap', columnGap: 12 }}>{fields.filter(param => param.key !== 'prompt').map(fieldOf)}</div>
       {declared === undefined ? null : <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 12, marginTop: 14 }}>
@@ -765,16 +770,20 @@ function SeedForm(props: NodeEditorProps & { node: Extract<CanvasNode, { kind: '
   }
   return (
     <>
-      {props.renderEditor?.('dv.canvas.editor', { node: node.seed, state, host }, { entryKey: node.nodeKind.id })}
+      {props.renderSlot?.('dv.canvas.editor', { node: node.seed, state, host }, { entryKey: node.nodeKind.id })}
       {picking === null
         ? null
         : (
           <AssetPicker
             state={state} client={client} project={project} session={session} t={t} kinds={[]} chosen={picking.chosen}
             onConfirm={(assets) => { setPicking(null); picking.onConfirm(assets) }} onCancel={() => { setPicking(null) }}
+            {...props.renderSlot === undefined ? {} : { renderSlot: props.renderSlot }}
           />
         )}
-      <AssetPreview asset={previewed} onClose={() => { setPreviewed(null) }} openerOf={() => opener.current} />
+      <AssetPreview
+        asset={previewed} onClose={() => { setPreviewed(null) }} openerOf={() => opener.current}
+        {...props.renderSlot === undefined ? {} : { renderSlot: props.renderSlot }}
+      />
     </>
   )
 }

@@ -9,8 +9,10 @@
  */
 import type {} from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
-import type { OperationRequest, ProjectRecord, WireState } from './types.ts'
+import type { DvClient } from './api.ts'
+import type { Asset, OperationRequest, ProjectRecord, WireState } from './types.ts'
 import type { DvWorkspaceEventMap } from './workspace-events.ts'
+import type { ZoomPresence } from './zoom.ts'
 
 /** A list of descriptors that plugins add and remove, with one owner per key. */
 export interface Registry<D> {
@@ -171,6 +173,9 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
     /** The editor body of the nodes of one `NodeKind`, keyed by its `id`; `@dv/ui-canvas` renders it in a node's editor. */
     'dv.canvas.editor': { kind: 'keyed'; scope: 'root'; owner: { node: NodeSeed; state: WireState; host: SeedEditorHost } }
+    /** The asset pool panel in the canvas's asset picker, and the preview of one asset; `@dv/ui-canvas` renders both at key 'assets'. */
+    'dv.canvas.picker': { kind: 'keyed'; scope: 'root'; owner: { projectId: string; session: string | null; client: DvClient; onOpen(asset: Asset): void } }
+    'dv.canvas.preview': { kind: 'keyed'; scope: 'root'; owner: { asset: Asset; onClose(): void; zoom: ZoomPresence<Asset> } }
     /** One view of the open project, such as the canvas; `@dv/ui-shell` shows the selected entry in the workspace center. */
     'dv.center.view': { kind: 'list'; scope: 'root'; owner: { projectId: string; session: string | null } }
   }

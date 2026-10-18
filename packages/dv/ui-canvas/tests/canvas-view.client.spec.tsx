@@ -2,7 +2,12 @@
 /** The canvas over a scripted API: nodes, drag persistence, the floating editor, and the `dv:compose` event. */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, createEvent, fireEvent, render, waitFor, within } from '@testing-library/react'
-import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
+import type { RenderResult } from '@testing-library/react'
+import type { ReactNode } from 'react'
+import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
+import { makeTranslate, SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
+import { SidebarRightTabRegistry } from '@deepseek-ai/dsh-client-ui-sidebar-right/src/client/tab-registry.ts'
+import { apply as assetPoolApply, inject as assetPoolInject } from '@dv/ui-asset-pool/src/client/index.ts'
 import { assetUrl, DvClient } from '@dv/ui-kit/api.ts'
 import { DV_COMPOSE_EVENT } from '@dv/ui-kit/compose.ts'
 import type { DvComposeDetail } from '@dv/ui-kit/compose.ts'
@@ -49,18 +54,13 @@ afterEach(() => {
 })
 
 /**
- * Mount the canvas over scripted `/api/dv` routes and a scripted layout route.
- * @param withTranslate - whether the host passes the Chinese translate.
+ * An API client over scripted `/api/dv` routes and a scripted layout route.
  * @param edit - changes to the fixture state, applied to every state the route serves.
  * @param holdOperations - whether `POST /api/dv/operation` stays unanswered, as a render does until it ends.
- * @param operations - the operation declarations the route serves; the fixture's by default.
- * @param canvas - the `dvCanvas` registries the view reads; the story bible's descriptors by default.
- * @returns the rendered view, the recorded writes, and a node lookup.
+ * @param operations - the operation declarations the route serves.
+ * @returns the client, the recorded writes, and the recorded layout writes.
  */
-function mount(
-  withTranslate = true, edit: (state: WireState) => void = () => undefined, holdOperations = false, operations = OPERATIONS,
-  canvas: DvCanvas = bibleCanvas().canvas,
-) {
+function scriptedClient(edit: (state: WireState) => void, holdOperations: boolean, operations: WireOperation[]) {
   const scripted = scriptedFetch({
     state: () => {
       const state = fixtureState()
@@ -82,15 +82,62 @@ function mount(
     }
     return scripted.fetch(input, init)
   }
-  const client = new DvClient(fetchWithLayout)
-  const t: CanvasTranslate = makeTranslate(zh)
-  const view = render(<CanvasView projectId="p1" client={client} session="s5" {...withTranslate ? { t } : {}} canvas={canvas} />)
-  const node = (id: string): HTMLElement => {
+  return { client: new DvClient(fetchWithLayout), writes: scripted.writes, layoutWrites }
+}
+
+/**
+ * @param view - a rendered canvas.
+ * @returns the lookup of a drawn node by its ID.
+ */
+function nodeLookup(view: RenderResult): (id: string) => HTMLElement {
+  return (id) => {
     const element = view.container.querySelector(`[data-node-id="${id}"]`)
     if (!(element instanceof HTMLElement)) throw new Error(`no node ${id}`)
     return element
   }
-  return { view, writes: scripted.writes, layoutWrites, node }
+}
+
+/**
+ * Mount the canvas over scripted `/api/dv` routes and a scripted layout route.
+ * @param withTranslate - whether the host passes the Chinese translate.
+ * @param edit - changes to the fixture state, applied to every state the route serves.
+ * @param holdOperations - whether `POST /api/dv/operation` stays unanswered, as a render does until it ends.
+ * @param operations - the operation declarations the route serves; the fixture's by default.
+ * @param canvas - the `dvCanvas` registries the view reads; the story bible's descriptors by default.
+ * @returns the rendered view, the recorded writes, and a node lookup.
+ */
+function mount(
+  withTranslate = true, edit: (state: WireState) => void = () => undefined, holdOperations = false, operations = OPERATIONS,
+  canvas: DvCanvas = bibleCanvas().canvas,
+) {
+  const { client, writes, layoutWrites } = scriptedClient(edit, holdOperations, operations)
+  const t: CanvasTranslate = makeTranslate(zh)
+  const view = render(<CanvasView projectId="p1" client={client} session="s5" {...withTranslate ? { t } : {}} canvas={canvas} />)
+  return { view, writes, layoutWrites, node: nodeLookup(view) }
+}
+
+/**
+ * Mount the canvas under the real slot runtime, in a frame that declares the slots of its editors as the canvas center
+ * view does, with the asset pool plugin filling the picker and the preview.
+ * @param edit - changes to the fixture state, applied to every state the route serves.
+ * @returns the runtime, the rendered view, the recorded writes, and a node lookup.
+ */
+async function mountWithAssetPool(edit: (state: WireState) => void) {
+  const { client, writes } = scriptedClient(edit, false, OPERATIONS)
+  const t: CanvasTranslate = makeTranslate(zh)
+  const canvas = bibleCanvas().canvas
+  const runtime = await SlotTestRuntime.create()
+  const Frame = ({ renderSlot }: PropsRenderSlots<'dv.canvas.editor' | 'dv.canvas.picker' | 'dv.canvas.preview'>): ReactNode =>
+    <CanvasView projectId="p1" client={client} session="s5" t={t} canvas={canvas} renderSlot={renderSlot} />
+  await runtime.root.declare({
+    'dv.canvas.editor': { kind: 'keyed', scope: 'root' },
+    'dv.canvas.picker': { kind: 'keyed', scope: 'root' },
+    'dv.canvas.preview': { kind: 'keyed', scope: 'root' },
+  }, Frame)
+  runtime.ctx.provide('sidebarRightTabs', new SidebarRightTabRegistry(runtime.ctx) as never)
+  await runtime.mount({ inject: [...assetPoolInject], apply: assetPoolApply })
+  const view = runtime.renderRoot()
+  return { runtime, view, writes, node: nodeLookup(view) }
 }
 
 describe('CanvasView', () => {
@@ -335,7 +382,7 @@ describe('CanvasView', () => {
   })
 
   it('添加素材 adds the characters, locations and assets picked in the picker as references of the take, and an asset chip opens its preview', async () => {
-    const { view, node, writes } = mount(true, (state) => {
+    const { runtime, view, node, writes } = await mountWithAssetPool((state) => {
       const bible = state.components.bible
       bible.characters['villain'] = [{ id: 'villain', version: 2, name: 'Villain', description: '', references: [], created_by: 'e1' }]
       bible.characters['ghost'] = []
@@ -354,7 +401,8 @@ describe('CanvasView', () => {
     expect(view.getByTestId('dv-canvas-node-editor')).toBeTruthy()
     fireEvent.click(view.getByText(zh['editor.addAsset']))
     const picker = await view.findByTestId('dv-canvas-asset-picker')
-    // The take already holds hero@1, so the picker offers the other characters and locations, then the asset pool.
+    // The take already holds hero@1, so the picker offers the other characters and locations, then the asset pool's
+    // `dv.canvas.picker` entry.
     fireEvent.keyDown(window, { key: 'a' })
     expect(picker.textContent).toContain(zh['picker.bible'])
     const villain = within(picker).getByRole('button', { name: 'Villain' })
@@ -384,6 +432,7 @@ describe('CanvasView', () => {
       operation: 'shot.render',
       inputs: [{ role: 'reference', ref: 'hero@1' }, { role: 'reference', ref: 'villain@2' }, { role: 'reference', ref: 'shot1.mp4' }],
     })
+    await runtime.dispose()
   })
 
   it('a character chip opens the character editor over the take editor, and closing it keeps the take editor\'s changes', async () => {
