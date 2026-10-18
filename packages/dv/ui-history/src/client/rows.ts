@@ -5,8 +5,8 @@
  *
  * @module @dv/ui-history/rows
  */
-import { DV_TOOL_LABELS } from '@dv/ui-kit/tool-labels.ts'
-import type { Asset, HistoryEntry, ProjectRecord } from '@dv/ui-kit/types.ts'
+import { operationLabel } from '@dv/ui-kit/tool-labels.ts'
+import type { Asset, HistoryEntry, ProjectRecord, WireOperation } from '@dv/ui-kit/types.ts'
 import type { DvWorkspaceEventMap } from '@dv/ui-kit/workspace-events.ts'
 
 /** One row of the panel: an operation entry and, for a plan approval, the entries of the records it scheduled. */
@@ -50,25 +50,6 @@ export function actionRows(entries: readonly HistoryEntry[]): ActionRow[] {
   return rows
 }
 
-/**
- * The agent tool name of an operation: `dv_` and the operation name with `.` replaced by `_`.
- * @param operation - the operation name, such as `timeline.clip_move`.
- * @returns the tool name, such as `dv_timeline_clip_move`.
- */
-function toolNameOf(operation: string): string {
-  return `dv_${operation.replaceAll('.', '_')}`
-}
-
-/**
- * The label a row shows for its operation: the tool label of `DV_TOOL_LABELS`, else the operation name.
- * @param operation - the operation name, or null when the record names none.
- * @returns the Chinese and English label.
- */
-export function operationLabel(operation: string | null): readonly [string, string] {
-  if (operation === null) return ['', '']
-  return DV_TOOL_LABELS[toolNameOf(operation)] ?? [operation, operation]
-}
-
 /** @returns the text of a record field, or null. */
 function field(fields: Record<string, unknown> | undefined, key: string): string | null {
   const value = fields?.[key]
@@ -77,14 +58,15 @@ function field(fields: Record<string, unknown> | undefined, key: string): string
 }
 
 /**
- * The label a row shows for its action: the tool label followed by its subject. Plans name their title or PlanId and
- * version (`report.plan`, `report.version`), a plan's shot render names its shot number (`params.shot`), and story bible
- * records name the character, location or style.
+ * The label a row shows for its action: the operation label (`operationLabel` of `@dv/ui-kit`) followed by its subject.
+ * Plans name their title or PlanId and version (`report.plan`, `report.version`), a plan's shot render names its shot
+ * number (`params.shot`), and story bible records name the character, location or style.
  * @param record - the operation record.
+ * @param operations - the operation declarations of `/api/dv/operations`.
  * @returns the Chinese and English label.
  */
-export function actionLabel(record: ProjectRecord): readonly [string, string] {
-  const [zh, en] = operationLabel(record.operation)
+export function actionLabel(record: ProjectRecord, operations: readonly WireOperation[]): readonly [string, string] {
+  const [zh, en] = operationLabel(record.operation, operations)
   // A PlanId (`p1`); a plan named by its record ID comes from a project made before plans had IDs and is not shown.
   const named = field(record.report, 'plan') ?? field(record.params, 'plan')
   const plan = named !== null && /^p\d+$/.test(named) ? named : null

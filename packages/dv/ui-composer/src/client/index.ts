@@ -5,7 +5,8 @@
  * - an invisible `conversation.input.left` entry that makes each session's composer a `dv:compose` target;
  * - thumbnail cards for the project's video and image assets in settled chat Markdown (`chat-media.ts`);
  * - the `dv_shot_render` tool card, which shows the model and generation task, the prompt, status, and rendered video;
- * - creator-facing names for the other `dv_*` tools in their chat rows and in the running group title;
+ * - creator-facing names for the other `dv_*` tools and for every operation of `/api/dv/operations` in their chat rows
+ *   and in the running group title;
  * - 在历史中查看 on every settled row whose tool is not read-only, including failed calls, which dispatches
  *   `dv:history-focus`;
  * - an empty `conversation.input.permission` entry that hides DSH's file-permission chip;
@@ -29,7 +30,7 @@ import { registerChatMedia } from './chat-media.ts'
 import { deliverCompose, mountComposer } from './compose.ts'
 import { MENTION_SOURCE, projectMentionSource } from './mention.ts'
 import { DV_TOOL_LABELS } from '@dv/ui-kit/tool-labels.ts'
-import { addToolNames } from './tool-labels.ts'
+import { registerOperationRows } from './tool-labels.ts'
 import { RenderCard, ToolLabelRow } from './views.tsx'
 // The DreamVerse look of the DSH composer card in the 对话 tab; the bundle injects the sheet when the plugin loads.
 import './composer.css'
@@ -134,15 +135,8 @@ export function apply(ctx: ClientContext): void {
     if (name === RENDER_TOOL) continue
     ctx.slots.inject('tool.call.toolview', () => ctx.slots.register({ name: 'tool.call.toolview', key: name }, LabelRow))
   }
-  ctx.effect(() => {
-    const locale: unknown = ctx.get('locale')
-    addToolNames(locale)
-    // Dictionaries registered later get the names when the runtime announces them.
-    const subscribe: unknown = locale === undefined ? undefined : Reflect.get(locale as object, 'subscribe')
-    if (typeof subscribe !== 'function') return () => {}
-    const unsubscribe: unknown = Reflect.apply(subscribe, locale, [() => { addToolNames(locale) }])
-    return typeof unsubscribe === 'function' ? () => { Reflect.apply(unsubscribe, undefined, []) } : () => {}
-  }, 'dv-composer: tool names in the chat')
+  // Every operation of /api/dv/operations gets its row and its name in the running group title.
+  registerOperationRows(ctx)
 
   ctx.effect(() => {
     const onCompose = (event: Event): void => {

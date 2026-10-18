@@ -19,7 +19,7 @@ import { DvClient, assetUrl } from '@dv/ui-kit/api.ts'
 import { useCurrentProject } from '@dv/ui-kit/current-project.ts'
 import { useText } from '@dv/ui-kit/locale.ts'
 import { isGenerationRecord } from '@dv/ui-kit/state.ts'
-import type { Actor, Asset, HistoryEntry, HistoryQuery, ProjectRecord, RecordStatus, WireHistory } from '@dv/ui-kit/types.ts'
+import type { Actor, Asset, HistoryEntry, HistoryQuery, ProjectRecord, RecordStatus, WireHistory, WireOperation } from '@dv/ui-kit/types.ts'
 import { useOperations, useProjectState } from '@dv/ui-kit/useProject.ts'
 import {
   DV_HISTORY_FOCUS_EVENT, DV_TRAJECTORY_FOCUS_EVENT, dispatchWorkspaceEvent, type DvWorkspaceEventMap,
@@ -255,6 +255,7 @@ export function HistoryPanel(props: HistoryPanelProps): ReactNode {
     const changes = loaded.entries.filter(entry => entry.record.operation !== 'proj.create')
     const shared = {
       assets: loaded.assets, records: recordsById, now, selected, onChoose: choose, rowRef, onJump: jump,
+      operations: operations.value ?? [],
       isGeneration: (record: ProjectRecord): boolean => isGenerationRecord(
         record, operations.value?.find(operation => operation.name === record.operation), id => loaded.assets.get(id)?.mime),
     }
@@ -415,6 +416,8 @@ interface RowContext {
   /** 回到这一步 on a row. */
   onJump: (record: string) => void
   isGeneration: (record: ProjectRecord) => boolean
+  /** The operation declarations of `/api/dv/operations`, which name the row labels. */
+  operations: readonly WireOperation[]
 }
 
 /**
@@ -431,7 +434,7 @@ function Row(props: RowContext & { row: ActionRow; expanded: boolean; onToggle: 
   const renders = children.filter(child => props.isGeneration(child.record))
   const doneRenders = renders.filter(child => child.record.status === 'done').length
   const foldText = renders.length === 0
-    ? t(...actionLabel(children[0]?.record ?? row.entry.record))
+    ? t(...actionLabel(children[0]?.record ?? row.entry.record, props.operations))
     : t(`渲染 ${String(renders.length)} 个镜头`, `Render ${String(renders.length)} shots`)
   return (
     <div className={css.group}>
@@ -494,7 +497,7 @@ function EntryRow(props: RowContext & { entry: HistoryEntry; nested: boolean }):
         <div style={{ minWidth: 0, opacity: dim }}>
           <div className={css.titleLine}>
             <span className={css.label}>
-              {t(...actionLabel(record))}
+              {t(...actionLabel(record, props.operations))}
             </span>
             <span
               data-testid="dv-history-time" title={new Date(record.created_at).toLocaleString()} className={css.time}

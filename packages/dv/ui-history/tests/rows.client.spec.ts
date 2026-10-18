@@ -3,10 +3,10 @@
  * and the focus a selected step gives the canvas or the timeline.
  */
 import { describe, expect, it } from 'vitest'
-import type { HistoryEntry, ProjectRecord } from '@dv/ui-kit/types.ts'
+import type { HistoryEntry, ProjectRecord, WireOperation } from '@dv/ui-kit/types.ts'
 import { asset, fixtureState, record } from '../../ui-kit/tests/fixture.client.tsx'
 import {
-  actionLabel, actionRows, centerFocus, clipTimelines, operationLabel, relativeTime, thumbnailOf,
+  actionLabel, actionRows, centerFocus, clipTimelines, relativeTime, thumbnailOf,
 } from '../src/client/rows.ts'
 
 /** An entry of a record, at or before the current position unless `place` says otherwise. */
@@ -33,20 +33,20 @@ describe('actionRows', () => {
 
 describe('labels, thumbnails and times', () => {
   it('names the subject of plan, shot render and story bible actions', () => {
-    expect(actionLabel(record({ id: 'a', operation: 'plan.create', params: { title: '猫' }, report: { plan: 'p1', version: 1 } })))
+    expect(actionLabel(record({ id: 'a', operation: 'plan.create', params: { title: '猫' }, report: { plan: 'p1', version: 1 } }), []))
       .toEqual(['新建分镜计划《猫》', 'Create plan “猫”'])
-    expect(actionLabel(record({ id: 'b', operation: 'plan.create', params: {}, report: { plan: 'p1', version: 1 } })))
+    expect(actionLabel(record({ id: 'b', operation: 'plan.create', params: {}, report: { plan: 'p1', version: 1 } }), []))
       .toEqual(['新建分镜计划 p1', 'Create plan p1'])
-    expect(actionLabel(record({ id: 'c', operation: 'plan.update', params: { plan: 'p1' }, report: { plan: 'p1', version: 2 } })))
+    expect(actionLabel(record({ id: 'c', operation: 'plan.update', params: { plan: 'p1' }, report: { plan: 'p1', version: 2 } }), []))
       .toEqual(['修改分镜计划 p1 → v2', 'Update plan p1 → v2'])
-    expect(actionLabel(record({ id: 'd', operation: 'plan.approve', params: { plan: 'p1' }, report: { plan: 'p1', version: 2 } })))
+    expect(actionLabel(record({ id: 'd', operation: 'plan.approve', params: { plan: 'p1' }, report: { plan: 'p1', version: 2 } }), []))
       .toEqual(['批准分镜计划 p1 v2', 'Approve plan p1 v2'])
-    expect(actionLabel(record({ id: 'e', operation: 'shot.render', params: { plan: 'p1', plan_version: 2, shot: 7 } })))
+    expect(actionLabel(record({ id: 'e', operation: 'shot.render', params: { plan: 'p1', plan_version: 2, shot: 7 } }), []))
       .toEqual(['渲染镜头 7', 'Render shot 7'])
-    expect(actionLabel(record({ id: 'f', operation: 'shot.render', params: { prompt: 'x' } }))).toEqual(['渲染镜头', 'Render shot'])
-    expect(actionLabel(record({ id: 'tc', operation: 'timeline.create', params: { timeline: 't2' } }))).toEqual(['新建时间线', 'Create timeline'])
-    expect(actionLabel(record({ id: 'tu', operation: 'timeline.update', params: { timeline: 't2' } }))).toEqual(['修改时间线', 'Update timeline'])
-    expect(actionLabel(record({ id: 'g', component: 'bible', operation: 'bible.character_create', params: { character: 'c1', name: '阿明' } })))
+    expect(actionLabel(record({ id: 'f', operation: 'shot.render', params: { prompt: 'x' } }), [])).toEqual(['渲染镜头', 'Render shot'])
+    expect(actionLabel(record({ id: 'tc', operation: 'timeline.create', params: { timeline: 't2' } }), [])).toEqual(['新建时间线', 'Create timeline'])
+    expect(actionLabel(record({ id: 'tu', operation: 'timeline.update', params: { timeline: 't2' } }), [])).toEqual(['修改时间线', 'Update timeline'])
+    expect(actionLabel(record({ id: 'g', component: 'bible', operation: 'bible.character_create', params: { character: 'c1', name: '阿明' } }), []))
       .toEqual(['新建角色「阿明」', 'Create character “阿明”'])
   })
 
@@ -76,9 +76,14 @@ describe('labels, thumbnails and times', () => {
 })
 
 describe('operation labels', () => {
-  it('labels an operation by its tool label, and an unknown one by its name', () => {
-    expect(operationLabel('timeline.clip_move')).toEqual(['移动片段', 'Move clip'])
-    expect(operationLabel('other.thing')).toEqual(['other.thing', 'other.thing'])
+  it('labels an action by the label of its operation on the wire, and an unknown one by its name', () => {
+    const approve: WireOperation = {
+      name: 'story.approve', version: '1', description: 'Approve a plan version.', label: { zh: '批准分镜计划', en: 'Approve plan' },
+      inputs: {}, params: {}, outputs: [], deterministic: false, resource: 'none', confirm: 'always',
+    }
+    expect(actionLabel(record({ id: 's', operation: 'story.approve', params: { plan: 'p1' } }), [approve])).toEqual(['批准分镜计划', 'Approve plan'])
+    expect(actionLabel(record({ id: 'm', operation: 'timeline.clip_move' }), [approve])).toEqual(['移动片段', 'Move clip'])
+    expect(actionLabel(record({ id: 'o', operation: 'other.thing' }), [approve])).toEqual(['other.thing', 'other.thing'])
   })
 })
 

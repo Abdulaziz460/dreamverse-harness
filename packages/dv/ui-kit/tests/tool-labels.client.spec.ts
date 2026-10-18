@@ -1,0 +1,29 @@
+/** The creator-facing name of an operation: its label on the wire, else its tool label, else its name. */
+import { describe, expect, it } from 'vitest'
+import { operationLabel, toolNameOf } from '../src/client/tool-labels.ts'
+import type { WireOperation } from '../src/client/types.ts'
+import { OPERATIONS } from './fixture.client.tsx'
+
+/** A workflow operation that declares its label and has no `DV_TOOL_LABELS` entry. */
+const APPROVE: WireOperation = {
+  name: 'story.approve', version: '1', description: 'Approve a plan version.', label: { zh: '批准分镜计划', en: 'Approve plan' },
+  inputs: {}, params: {}, outputs: [], deterministic: false, resource: 'none', confirm: 'always',
+}
+
+describe('operationLabel', () => {
+  it('names an operation by the label that its declaration on the wire carries', () => {
+    expect(operationLabel('story.approve', [...OPERATIONS, APPROVE])).toEqual(['批准分镜计划', 'Approve plan'])
+    const relabelled = { ...OPERATIONS[0]!, label: { zh: '生成镜头', en: 'Generate shot' } }
+    expect(operationLabel('shot.render', [relabelled])).toEqual(['生成镜头', 'Generate shot'])
+  })
+
+  it('falls back to the tool label, then to the operation name, and names nothing for a record without an operation', () => {
+    expect(operationLabel('timeline.clip_move', OPERATIONS)).toEqual(['移动片段', 'Move clip'])
+    expect(operationLabel('story.approve', OPERATIONS)).toEqual(['story.approve', 'story.approve'])
+    expect(operationLabel(null, OPERATIONS)).toEqual(['', ''])
+  })
+
+  it('derives the tool name of an operation as the kernel does', () => {
+    expect(toolNameOf('timeline.clip_move')).toBe('dv_timeline_clip_move')
+  })
+})
