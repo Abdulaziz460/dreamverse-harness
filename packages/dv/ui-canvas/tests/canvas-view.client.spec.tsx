@@ -400,30 +400,6 @@ describe('CanvasView', () => {
     expect((view.getByTestId('dv-canvas-node-editor').querySelector('textarea') as HTMLTextAreaElement).value).toBe('hero runs')
   })
 
-  it('the character editor appends picked assets to its references and removes one while more than one is left', async () => {
-    const { view, node, writes } = mount()
-    await waitFor(() => { node('bible:hero') })
-    fireEvent.pointerDown(node('bible:hero'), { button: 0, clientX: 5, clientY: 5, pointerId: 1 })
-    fireEvent.pointerUp(view.getByTestId('dv-canvas-view'), { pointerId: 1 })
-    await view.findByTestId('dv-canvas-node-editor')
-    // The only reference cannot be removed: an update without references keeps the current ones.
-    expect(view.getByRole('button', { name: '移除 ref.png' }).hasAttribute('disabled')).toBe(true)
-    fireEvent.click(view.getByText(zh['editor.addAsset']))
-    const picker = await view.findByTestId('dv-canvas-asset-picker')
-    const tile = await waitFor(() => {
-      const found = picker.querySelector('[data-asset-id="shot1.mp4"]')
-      if (!(found instanceof HTMLElement)) throw new Error('no shot1.mp4 tile')
-      return found
-    })
-    fireEvent.click(tile)
-    fireEvent.click(view.getByText('确认（1）'))
-    await waitFor(() => { expect(writes.some(write => write.path === '/api/dv/operation')).toBe(true) })
-    expect(writes.find(write => write.path === '/api/dv/operation')?.body).toMatchObject({
-      operation: 'bible.character_update', params: { character: 'hero' },
-      inputs: [{ role: 'reference', ref: 'ref.png' }, { role: 'reference', ref: 'shot1.mp4' }],
-    })
-  })
-
   it('offers 仍然保留 on a stale node, which accepts its record for the chat session beside the canvas', async () => {
     const { view, node, writes } = mount()
     await waitFor(() => { node('g2') })

@@ -1,5 +1,5 @@
 ---
-description: "Browser half of the DreamVerse story bible: the canvas node kind that draws each character, location and style at its newest version, the version kinds of the reference kinds character, location and style, and the records whose outputs the newest versions use as references."
+description: "Browser half of the DreamVerse story bible: the canvas node kind that draws each character, location and style at its newest version, the version kinds of the reference kinds character, location and style, the records whose outputs the newest versions use as references, and the editor body of a story bible node."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to show the story bible (`@dv/story-bible`) on the canvas of `@dv/ui-canvas`. It registers into `dvCanvas` one node kind, which draws each character, location and style at its newest version as a node `bible:<id>`, one version kind for each of the reference kinds `character`, `location` and `style`, and one `TakesInUse`, which keeps the takes that the newest versions use as references on the canvas. The canvas reads versioned items only through the registered version kinds: the edge from an item to a take that reads one of its versions, the reference chips of the take editor, the items that the asset picker offers, and the reference lists of the plan editor.
+Use this package to show the story bible (`@dv/story-bible`) on the canvas of `@dv/ui-canvas`. It registers into `dvCanvas` one node kind, which draws each character, location and style at its newest version as a node `bible:<id>`, one version kind for each of the reference kinds `character`, `location` and `style`, and one `TakesInUse`, which keeps the takes that the newest versions use as references on the canvas. It registers the editor body of a story bible node as its `dv.canvas.editor` entry. The canvas reads versioned items only through the registered version kinds: the edge from an item to a take that reads one of its versions, the reference chips of the take editor, the items that the asset picker offers, and the reference lists of the plan editor.
 
 ## Table of Contents
 
@@ -36,8 +36,9 @@ Mount the plugin in a profile that stacks `dsh-web-app`, `@dv/api`, `@dv/story-b
 | `bibleNodeKind` | `dvCanvas.nodeKinds` | `id: '@dv/ui-story-bible'`, `kind: 'bible'`, column 0, the character color; one seed per item with a version, characters first, then locations, then styles: ID `bible:<id>`, the label 角色 / Character, 场景 / Location or 风格 / Style in the interface language, the newest version's name (else the item ID) as title and its references as media, the record that wrote it, and the records of the earlier versions |
 | `bibleVersionKinds` | `dvCanvas.versionKinds` | one entry per kind `character`, `location`, `style`: `node(id)` is `bible:<id>`; `latest` lists every item at its newest version; `name` and `assets` give the name and the references of one version, or null and `[]` for an unknown version |
 | `bibleReferencesInUse` | `dvCanvas.takesInUse` | `id: '@dv/ui-story-bible'`; `uses` gives the record that created each reference of each newest version |
+| `BibleEditor` | slot `dv.canvas.editor`, key `@dv/ui-story-bible` | the editor body of the item that the seed draws: each reference of the newest version (an image, or the first frame of a video), which opens the canvas's preview (`host.preview`) and can be removed while more than one is left, because `bible.<kind>_update` without references keeps the current ones; the version's description; and "Add asset", which opens the canvas's picker of assets only (`host.pickAssets`) and appends the picked assets. Each change runs `bible.<kind>_update` with every reference of the next version as input role `reference` through `host.run` |
 
-The Host half registers nothing. The browser half registers the five descriptors inside `ctx.inject(['dvCanvas'], …)`, so it loads without the service, and each descriptor leaves with the service or with the plugin.
+The Host half registers nothing. The browser half registers the five descriptors inside `ctx.inject(['dvCanvas'], …)` and the editor entry inside `ctx.inject(['slots'], …)`, so it loads without either service, and each registration leaves with its service or with the plugin.
 
 -----
 
@@ -49,7 +50,9 @@ Every descriptor reads the `bible` slice and the `proj` records of the wire stat
 | File | Content |
 | --- | --- |
 | [`src/index.ts`](src/index.ts) | The inert Host Loader entry |
-| [`src/client/index.ts`](src/client/index.ts) | `bibleNodeKind`, `bibleVersionKinds`, `bibleReferencesInUse`, and their registrations |
+| [`src/client/index.ts`](src/client/index.ts) | `bibleNodeKind`, `bibleVersionKinds`, `bibleReferencesInUse`, and the registrations |
+| [`src/client/kinds.ts`](src/client/kinds.ts) | The reference kinds with their slice fields and labels, and the node ID `bible:<id>` |
+| [`src/client/BibleEditor.tsx`](src/client/BibleEditor.tsx) | `BibleEditor`, the `dv.canvas.editor` entry |
 
 -----
 
@@ -75,5 +78,5 @@ None; the package sends nothing to a model.
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- **Editor in the canvas** — `@dv/ui-canvas` draws the editor of a `bible` node: it reads the item through the version kinds, edits its references with `bible.<kind>_update`, and shows no description, because neither a seed nor a version kind carries one.
+- **Editor only in the center canvas** — only the `dv.center.view` entry of `@dv/ui-canvas` declares `dv.canvas.editor`. The canvas tab body of the right Sidebar renders no entry, so its story bible editor shows only its header.
 - **Copied slice type** — the package reads the `bible` slice through the client copy `StoryBibleState` of `@dv/ui-kit/types.ts`, not through a client type of `@dv/story-bible`.

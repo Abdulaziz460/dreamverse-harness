@@ -1,29 +1,18 @@
 /**
  * Browser half of the story bible: the canvas node kind that draws each character, location and style at its newest
- * version, one version kind per reference kind (`character`, `location`, `style`), and the records whose outputs the
- * newest versions use as references. Each reads only the `bible` slice and the `proj` records.
+ * version, one version kind per reference kind (`character`, `location`, `style`), the records whose outputs the
+ * newest versions use as references, and the editor body of a story bible node (the `dv.canvas.editor` entry). Each
+ * reads only the `bible` slice and the `proj` records.
  *
  * @module @dv/ui-story-bible/client
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import { pickText } from '@dv/ui-kit/locale.ts'
 import type { NodeKind, NodeSeed, TakesInUse, VersionKind } from '@dv/ui-kit/registries.ts'
 import type { Character, StoryBibleState, WireState } from '@dv/ui-kit/types.ts'
-
-/** Each reference kind of `@dv/story-bible` in canvas order: its key, the slice field of its items, and its card label. */
-const KINDS: ReadonlyArray<{ kind: string; field: keyof StoryBibleState; label: () => string }> = [
-  { kind: 'character', field: 'characters', label: () => pickText('角色', 'Character') },
-  { kind: 'location', field: 'locations', label: () => pickText('场景', 'Location') },
-  { kind: 'style', field: 'styles', label: () => pickText('风格', 'Style') },
-]
-
-/**
- * @param id - a character, location or style ID.
- * @returns the canvas node ID of the item, `bible:<id>`.
- */
-function bibleNode(id: string): string {
-  return `bible:${id}`
-}
+import { BibleEditor } from './BibleEditor.tsx'
+import { bibleNode, KINDS } from './kinds.ts'
 
 /**
  * @param state - a project state.
@@ -84,7 +73,8 @@ export const bibleReferencesInUse: TakesInUse = {
 
 /**
  * Client plugin body: while `dvCanvas` is present, register the node kind, the references in use and the three version
- * kinds. Each registration leaves with the service or with the plugin.
+ * kinds; while the slot registry is present, register the editor body of the node kind as its `dv.canvas.editor`
+ * entry. Each registration leaves with its service or with the plugin.
  * @param ctx - client root context.
  */
 export function apply(ctx: ClientContext): void {
@@ -94,5 +84,10 @@ export function apply(ctx: ClientContext): void {
     for (const kind of bibleVersionKinds) {
       scope.effect(() => scope.dvCanvas.versionKinds.register(kind), `ui-story-bible: version kind ${kind.kind}`)
     }
+  })
+  ctx.inject(['slots'], (scope) => {
+    scope.effect(() => scope.slots.inject('dv.canvas.editor', () => scope.slots.register(
+      { name: 'dv.canvas.editor', key: bibleNodeKind.id }, BibleEditor,
+    )), 'ui-story-bible: editor')
   })
 }

@@ -9,7 +9,7 @@
  */
 import type {} from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
-import type { ProjectRecord, WireState } from './types.ts'
+import type { OperationRequest, ProjectRecord, WireState } from './types.ts'
 import type { DvWorkspaceEventMap } from './workspace-events.ts'
 
 /** A list of descriptors that plugins add and remove, with one owner per key. */
@@ -150,6 +150,16 @@ export interface VersionKind {
   assets(state: WireState, id: string, version: number): string[]
 }
 
+/** What the canvas lends the `dv.canvas.editor` entry of a seed: its writes, its asset picker and its asset preview. */
+export interface SeedEditorHost {
+  /** Run an operation as a canvas write, with the canvas's project and chat session; the canvas shows a failure. */
+  run(request: Omit<OperationRequest, 'project' | 'surface' | 'session'>): void
+  /** Open the canvas's asset picker of assets only; `onConfirm` receives the picked asset IDs in pick order. */
+  pickAssets(chosen: readonly string[], onConfirm: (assets: string[]) => void): void
+  /** Open the canvas's preview of an asset, growing out of `opener` and shrinking back into it. */
+  preview(asset: string, opener: Element | null): void
+}
+
 declare module '@deepseek-ai/cordis' {
   interface Context {
     dvCanvas: DvCanvas
@@ -160,7 +170,7 @@ declare module '@deepseek-ai/cordis' {
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
     /** The editor body of the nodes of one `NodeKind`, keyed by its `id`; `@dv/ui-canvas` renders it in a node's editor. */
-    'dv.canvas.editor': { kind: 'keyed'; scope: 'root'; owner: { node: NodeSeed; state: WireState } }
+    'dv.canvas.editor': { kind: 'keyed'; scope: 'root'; owner: { node: NodeSeed; state: WireState; host: SeedEditorHost } }
     /** One view of the open project, such as the canvas; `@dv/ui-shell` shows the selected entry in the workspace center. */
     'dv.center.view': { kind: 'list'; scope: 'root'; owner: { projectId: string; session: string | null } }
   }

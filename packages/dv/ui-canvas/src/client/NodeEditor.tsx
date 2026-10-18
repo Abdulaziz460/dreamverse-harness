@@ -11,15 +11,15 @@
  * whose `based_on` is the take); a take whose operation the list does not name shows no params and no button.
  * While the render starts the button is disabled and reads 渲染中…, and a refused request shows its error under the
  * button. "添加素材" opens the asset picker; a reference chip opens the preview of its asset, or the editor of the node of
- * its versioned item (read through the registered version kinds) over this one. A seed of the `bible` node kind shows
- * its references, adds assets from the picker, and removes one reference while it has more than one. A plan switches
+ * its versioned item (read through the registered version kinds) over this one. A plan switches
  * between its versions (第 1 版,
  * 第 2 版, …) and shows the chosen version's approval status (from the approved versions that the registered chain
  * anchors report for the node), its reference assets, and one card per shot with exactly
  * what the plan holds: duration, model and task, reference assets, whether the shot continues the previous shot, and the
- * full prompt with each `Picture N` drawn as its image. Any other seed (a node that a registered `NodeKind` drew) shows the
- * `dv.canvas.editor` entry keyed by its `NodeKind.id`, and only the header when no entry is registered or the host
- * renders no entries. A stale node offers "仍然保留", which keeps its record as it is (`proj.stale_accept`).
+ * full prompt with each `Picture N` drawn as its image. A seed (a node that a registered `NodeKind` drew) shows the
+ * `dv.canvas.editor` entry keyed by its `NodeKind.id`, which the canvas lends its writes, its asset picker of assets only
+ * and its asset preview; it shows only the header when no entry is registered or the host renders no entries. A stale
+ * node offers "仍然保留", which keeps its record as it is (`proj.stale_accept`).
  */
 import { memo, useLayoutEffect, useRef, useState } from 'react'
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
@@ -30,7 +30,7 @@ import { dispatchCompose, type DvComposeRef } from '@dv/ui-kit/compose.ts'
 import { fieldsOf, paramsOf, type FormField } from '@dv/ui-kit/form.ts'
 import { useText } from '@dv/ui-kit/locale.ts'
 import { formatInputRef, isPicture, pictureParts, referenceAssets, shotReferences } from '@dv/ui-kit/references.ts'
-import type { ChainAnchor, VersionKind } from '@dv/ui-kit/registries.ts'
+import type { ChainAnchor, SeedEditorHost, VersionKind } from '@dv/ui-kit/registries.ts'
 import { readStored, writeStored } from '@dv/ui-kit/storage.ts'
 import { clockText } from '@dv/ui-kit/timeline.ts'
 import { taskLabel, type WireTaskLabels } from '@dv/ui-kit/tool-labels.ts'
@@ -272,7 +272,6 @@ const secondaryButton: CSSProperties = { ...button, border: '1px solid var(--dv-
 const chip: CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 6px 2px 2px', borderRadius: 14, background: 'var(--dv-surface-3)', fontSize: 13, lineHeight: '20px' }
 /** The part of a reference chip that opens the reference: its thumbnail and its name. */
 const chipOpen: CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 4, padding: 0, border: 'none', background: 'transparent', color: 'inherit', font: 'inherit', cursor: 'pointer' }
-const referenceImage: CSSProperties = { height: 220, borderRadius: 'var(--dv-radius-md)', background: 'var(--dv-surface-3)' }
 /** A small rounded tag in the plan editor: the duration and model-and-task chips of a shot. */
 const tag: CSSProperties = { height: 22, padding: '0 8px', display: 'inline-flex', alignItems: 'center', fontSize: 12, lineHeight: '16px', background: 'var(--dv-surface-3)' }
 /** The height a shot prompt is collapsed to until the reader expands it. */
@@ -502,11 +501,7 @@ export function NodeEditor(props: NodeEditorProps): ReactNode {
     case 'take': body = <TakeForm {...props} title={title} />; break
     case 'plan': body = plan === undefined ? null : <PlanShots plan={plan} state={props.state} kinds={props.versionKinds} t={t} taskLabels={props.taskLabels} />; break
     case 'asset': body = <AssetPanel node={node} t={t} onRemoveFromCanvas={props.onRemoveFromCanvas} />; break
-    case 'seed':
-      body = node.nodeKind.kind === 'bible'
-        ? <BibleForm {...props} item={item} />
-        : props.renderEditor?.('dv.canvas.editor', { node: node.seed, state: props.state }, { entryKey: node.nodeKind.id })
-      break
+    case 'seed': body = <SeedForm {...props} node={node} />; break
   }
   const { panelRef, rect, begin, follow, finish, reset, resizeBy } = placement
   const gestureHandlers = { onPointerMove: follow, onPointerUp: finish, onPointerCancel: finish }
@@ -749,77 +744,38 @@ function TakeForm(
 }
 
 /**
- * A character, location or style: the references of its newest version, each opening its preview and removable while
- * more than one is left, and "添加素材", which appends the assets picked from the asset pool.
- * @param props - editor props and the versioned item that the seed stands for.
+ * The body of a seed: the `dv.canvas.editor` entry keyed by its `NodeKind.id`, lent the canvas's writes (with the
+ * canvas's project, chat session and surface), the asset picker of assets only, and the asset preview.
+ * @param props - editor props of a seed node.
  * @returns the element.
  */
-function BibleForm({ state, client, project, session, t, run, item }: NodeEditorProps & { item: VersionedItem | null }): ReactNode {
-  const bibleId = item?.id ?? ''
-  const kind = item?.kind.kind ?? 'character'
-  const references = item === null ? [] : item.kind.assets(state, item.id, item.version)
-  const name = (item === null ? null : item.kind.name(state, item.id, item.version)) || bibleId
-  const [picking, setPicking] = useState(false)
+function SeedForm(props: NodeEditorProps & { node: Extract<CanvasNode, { kind: 'seed' }> }): ReactNode {
+  const { node, state, client, project, session, t, run } = props
+  const [picking, setPicking] = useState<{ chosen: readonly string[]; onConfirm: (assets: string[]) => void } | null>(null)
   const [previewed, setPreviewed] = useState<ProjectAsset | null>(null)
-  const list = useRef<HTMLDivElement | null>(null)
-  const assets = new Map(state.assets.map(asset => [asset.id, asset]))
-  const sessionField = session === null ? {} : { session }
-  // `bible.<kind>_update` writes the next version with exactly these references.
-  const update = (next: readonly string[], intent: string): void => {
-    if (item === null) return
-    void run(() => client.runOperation({
-      project, operation: `bible.${kind}_update`, params: { [kind]: bibleId }, inputs: next.map(ref => ({ role: 'reference', ref })), surface: 'canvas',
-      intent, ...sessionField,
-    }))
-  }
-  const addReferences = (refs: readonly string[]): void => {
-    setPicking(false)
-    const added = refs.filter(ref => !references.includes(ref))
-    if (added.length > 0) update([...references, ...added], t('intent.addReferences', { name }))
+  // The element that the preview grows out of and shrinks back into.
+  const opener = useRef<Element | null>(null)
+  const host: SeedEditorHost = {
+    run: (request) => { void run(() => client.runOperation({ ...request, project, surface: 'canvas', ...session === null ? {} : { session } })) },
+    pickAssets: (chosen, onConfirm) => { setPicking({ chosen, onConfirm }) },
+    preview: (assetId, element) => {
+      opener.current = element
+      setPreviewed(state.assets.find(asset => asset.id === assetId) ?? null)
+    },
   }
   return (
-    <div>
-      <div ref={list} style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        {references.map((reference) => {
-          const asset = assets.get(reference)
-          const assetName = asset?.name ?? reference
-          return (
-            <div key={reference} style={{ position: 'relative' }}>
-              <button
-                type="button" data-reference={reference} aria-label={t('editor.openReference', { name: assetName })}
-                style={{ padding: 0, border: 'none', background: 'transparent', cursor: 'pointer', display: 'block' }}
-                onClick={() => { if (asset !== undefined) setPreviewed(asset) }}
-              >
-                <AssetMedia asset={asset} style={referenceImage} />
-              </button>
-              {/* An update without references keeps the current ones, so the last reference cannot be removed. */}
-              <button
-                type="button" className="dv-canvas-btn" aria-label={t('editor.removeReference', { name: assetName })} disabled={references.length < 2}
-                style={{ ...secondaryButton, position: 'absolute', top: 6, right: 6, width: 28, height: 28, padding: 0, background: 'var(--dv-surface-1)', opacity: references.length < 2 ? 0.5 : 1 }}
-                onClick={() => { update(references.filter(other => other !== reference), t('intent.removeReference', { name })) }}
-              >
-                ×
-              </button>
-            </div>
-          )
-        })}
-      </div>
-      <div style={{ marginTop: 12 }}>
-        <button type="button" className="dv-canvas-btn" style={secondaryButton} onClick={() => { setPicking(true) }}>{t('editor.addAsset')}</button>
-      </div>
-      {picking
-        ? (
+    <>
+      {props.renderEditor?.('dv.canvas.editor', { node: node.seed, state, host }, { entryKey: node.nodeKind.id })}
+      {picking === null
+        ? null
+        : (
           <AssetPicker
-            state={state} client={client} project={project} session={session} t={t} kinds={[]}
-            chosen={references} onConfirm={addReferences} onCancel={() => { setPicking(false) }}
+            state={state} client={client} project={project} session={session} t={t} kinds={[]} chosen={picking.chosen}
+            onConfirm={(assets) => { setPicking(null); picking.onConfirm(assets) }} onCancel={() => { setPicking(null) }}
           />
-        )
-        : null}
-      <AssetPreview
-        asset={previewed} onClose={() => { setPreviewed(null) }}
-        openerOf={asset => list.current?.querySelector(`[data-reference="${asset.id}"]`) ?? null}
-      />
-    </div>
+        )}
+      <AssetPreview asset={previewed} onClose={() => { setPreviewed(null) }} openerOf={() => opener.current} />
+    </>
   )
 }
 

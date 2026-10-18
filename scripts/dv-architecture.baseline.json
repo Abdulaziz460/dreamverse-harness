@@ -31,8 +31,6 @@
   "packages/dv/ui-canvas/src/client/graph.ts R5c plan": 3,
   "packages/dv/ui-canvas/src/client/NodeCard.tsx R5c plan": 4,
   "packages/dv/ui-canvas/src/client/NodeEditor.tsx R5b components.plan": 1,
-  "packages/dv/ui-canvas/src/client/NodeEditor.tsx R5c bible": 1,
-  "packages/dv/ui-canvas/src/client/NodeEditor.tsx R5c character": 1,
   "packages/dv/ui-canvas/src/client/NodeEditor.tsx R5c plan": 4,
   "packages/dv/ui-composer/src/client/index.ts R5f dv_shot_render": 1,
   "packages/dv/ui-composer/src/client/mention.ts R5b components.bible": 1,
