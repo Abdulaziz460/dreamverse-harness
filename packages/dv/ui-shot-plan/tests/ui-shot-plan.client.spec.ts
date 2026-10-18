@@ -1,12 +1,15 @@
 // @vitest-environment jsdom
-/** The canvas node kind of plans and the takes that plans use, and their registration and removal with the plugin. */
+/**
+ * The canvas node kind of plans, the takes that plans use and the History row of plan records, and their registration
+ * and removal with the plugin.
+ */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { createRegistry } from '@dv/ui-kit/registries.ts'
-import type { ChainAnchor, DvCanvas, NodeKind, TakesInUse, VersionKind } from '@dv/ui-kit/registries.ts'
+import type { ChainAnchor, DvCanvas, DvHistory, HistoryRow, NodeKind, TakesInUse, VersionKind } from '@dv/ui-kit/registries.ts'
 import type { WireState } from '@dv/ui-kit/types.ts'
 import { fixtureState, record } from '../../ui-kit/tests/fixture.client.tsx'
-import { apply, planNodeKind, planReferencesInUse } from '../src/client/index.ts'
+import { apply, planHistoryRow, planNodeKind, planReferencesInUse } from '../src/client/index.ts'
 import { apply as hostApply } from '../src/index.ts'
 
 afterEach(() => { document.documentElement.lang = '' })
@@ -63,6 +66,20 @@ describe('planReferencesInUse', () => {
   })
 })
 
+describe('planHistoryRow', () => {
+  it('names the title or the PlanId of a created plan, and the PlanId and version of an updated one', () => {
+    const subject = (fields: Parameters<typeof record>[0]) => planHistoryRow.subject(record(fields))
+    expect(planHistoryRow.match).toBe('plan.')
+    expect(subject({ id: 'a', operation: 'plan.create', params: { title: '猫' }, report: { plan: 'p1', version: 1 } })).toEqual(['《猫》', ' “猫”'])
+    expect(subject({ id: 'b', operation: 'plan.create', params: {}, report: { plan: 'p1', version: 1 } })).toEqual([' p1', ' p1'])
+    expect(subject({ id: 'c', operation: 'plan.update', params: { plan: 'p1' }, report: { plan: 'p1', version: 2 } })).toEqual([' p1 → v2', ' p1 → v2'])
+    expect(subject({ id: 'd', operation: 'plan.update', params: { plan: 'p1' } })).toEqual([' p1', ' p1'])
+    // A plan named by its record ID (a project made before plans had IDs) and an old plan.approve record get no subject.
+    expect(subject({ id: 'e', operation: 'plan.update', params: { plan: 'rec_9' }, report: { plan: 'rec_9', version: 2 } })).toBeNull()
+    expect(subject({ id: 'f', operation: 'plan.approve', params: { plan: 'p1' }, report: { plan: 'p1', version: 2 } })).toBeNull()
+  })
+})
+
 describe('ui-shot-plan apply', () => {
   it('keeps the host Loader entry inert', () => {
     expect(hostApply).not.toThrow()
@@ -80,5 +97,16 @@ describe('ui-shot-plan apply', () => {
     await fiber.dispose()
     expect(canvas.nodeKinds.list()).toEqual([])
     expect(canvas.takesInUse.list()).toEqual([])
+  })
+
+  it('registers the History row once dvHistory is present, and the plugin disposal removes it', async () => {
+    const ctx = new Context()
+    const history: DvHistory = { rows: createRegistry<HistoryRow>(row => [row.match]) }
+    const fiber = ctx.plugin({ apply })
+    await fiber.await()
+    ctx.provide('dvHistory', history)
+    await vi.waitFor(() => { expect(history.rows.list()).toEqual([planHistoryRow]) })
+    await fiber.dispose()
+    expect(history.rows.list()).toEqual([])
   })
 })

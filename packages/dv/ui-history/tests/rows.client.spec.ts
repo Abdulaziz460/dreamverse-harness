@@ -41,20 +41,19 @@ describe('actionRows', () => {
 })
 
 describe('labels, thumbnails and times', () => {
-  it('names the subject of plan and story bible actions', () => {
+  it('names no subject of plan and story bible actions without a registered row', () => {
+    // The UI halves of the shot plan and the story bible register the rows that name these subjects.
     expect(actionLabel(record({ id: 'a', operation: 'plan.create', params: { title: '猫' }, report: { plan: 'p1', version: 1 } }), labels()))
-      .toEqual(['新建分镜计划《猫》', 'Create plan “猫”'])
-    expect(actionLabel(record({ id: 'b', operation: 'plan.create', params: {}, report: { plan: 'p1', version: 1 } }), labels()))
-      .toEqual(['新建分镜计划 p1', 'Create plan p1'])
+      .toEqual(['新建分镜计划', 'Create plan'])
     expect(actionLabel(record({ id: 'c', operation: 'plan.update', params: { plan: 'p1' }, report: { plan: 'p1', version: 2 } }), labels()))
-      .toEqual(['修改分镜计划 p1 → v2', 'Update plan p1 → v2'])
+      .toEqual(['修改分镜计划', 'Update plan'])
     // A workflow's registered row names the subject of its approval; a plan.approve record of an old log has none.
     expect(actionLabel(record({ id: 'd', operation: 'plan.approve', params: { plan: 'p1' }, report: { plan: 'p1', version: 2 } }), labels()))
       .toEqual(['批准分镜计划', 'Approve plan'])
     expect(actionLabel(record({ id: 'tc', operation: 'timeline.create', params: { timeline: 't2' } }), labels())).toEqual(['新建时间线', 'Create timeline'])
     expect(actionLabel(record({ id: 'tu', operation: 'timeline.update', params: { timeline: 't2' } }), labels())).toEqual(['修改时间线', 'Update timeline'])
     expect(actionLabel(record({ id: 'g', component: 'bible', operation: 'bible.character_create', params: { character: 'c1', name: '阿明' } }), labels()))
-      .toEqual(['新建角色「阿明」', 'Create character “阿明”'])
+      .toEqual(['新建角色', 'Create character'])
   })
 
   it('names the chain slot and lane of a started record and of its retakes, and nothing for a free record', () => {

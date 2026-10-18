@@ -1,8 +1,9 @@
 /**
- * Browser half of the shot plan: the canvas node kind of plans and the takes that plans use. The canvas core draws each
- * plan as one node `plan:<PlanId>` at its latest version with the default card and a frame grid of one slot per shot,
- * and keeps the records that produced the reference assets of the latest version on the canvas. The node's editor
- * shows the plan editor, the `dv.canvas.editor` entry of the node kind.
+ * Browser half of the shot plan: the canvas node kind of plans, the takes that plans use, and the History row of plan
+ * records. The canvas core draws each plan as one node `plan:<PlanId>` at its latest version with the default card and
+ * a frame grid of one slot per shot, and keeps the records that produced the reference assets of the latest version on
+ * the canvas. The node's editor shows the plan editor, the `dv.canvas.editor` entry of the node kind. The History row
+ * names the plan of a `plan.create` or `plan.update` record.
  *
  * @module @dv/ui-shot-plan/client
  */
@@ -11,7 +12,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
 import { DvClient } from '@dv/ui-kit/api.ts'
 import { pickText } from '@dv/ui-kit/locale.ts'
-import type { NodeKind, NodeSeed, TakesInUse } from '@dv/ui-kit/registries.ts'
+import type { HistoryRow, NodeKind, NodeSeed, TakesInUse } from '@dv/ui-kit/registries.ts'
 import { clockText } from '@dv/ui-kit/timeline.ts'
 import type { PlanVersion, WireState } from '@dv/ui-kit/types.ts'
 import { PlanEditor, totalSec } from './PlanEditor.tsx'
@@ -72,10 +73,46 @@ export const planReferencesInUse: TakesInUse = {
   },
 }
 
+/** @returns the text of a record field (a number as its digits), or null for an absent or empty one. */
+function field(fields: Record<string, unknown> | undefined, key: string): string | null {
+  const value = fields?.[key]
+  if (typeof value === 'number') return String(value)
+  return typeof value === 'string' && value !== '' ? value : null
+}
+
+/**
+ * The History row of every `plan.*` operation. `plan.create` names its title (`《猫》` / ` “猫”`), else its PlanId
+ * (` p1`); `plan.update` names its PlanId and the version it wrote (` p1 → v2`), else its PlanId. The PlanId and the
+ * version come from the report, else from the params; a plan named by its record ID comes from a project made before
+ * plans had IDs and is not shown. Any other plan operation, such as a `plan.approve` record of an old log, has no
+ * subject.
+ */
+export const planHistoryRow: HistoryRow = {
+  match: 'plan.',
+  subject(record) {
+    const named = field(record.report, 'plan') ?? field(record.params, 'plan')
+    const plan = named !== null && /^p\d+$/.test(named) ? ` ${named}` : null
+    switch (record.operation) {
+      case 'plan.create': {
+        const title = field(record.params, 'title')
+        if (title !== null) return [`《${title}》`, ` “${title}”`]
+        return plan === null ? null : [plan, plan]
+      }
+      case 'plan.update': {
+        if (plan === null) return null
+        const version = field(record.report, 'version') ?? field(record.params, 'version')
+        return version === null ? [plan, plan] : [`${plan} → v${version}`, `${plan} → v${version}`]
+      }
+      default:
+        return null
+    }
+  },
+}
+
 /**
  * Client plugin body: while `dvCanvas` is present, register the node kind of plans and the takes that plans use, and
- * with the slot registry the plan editor once a host declares `dv.canvas.editor`. Each registration leaves with the
- * service or with the plugin.
+ * with the slot registry the plan editor once a host declares `dv.canvas.editor`; while `dvHistory` is present,
+ * register the History row of plan records. Each registration leaves with the service or with the plugin.
  * @param ctx - client root context.
  */
 export function apply(ctx: ClientContext): void {
@@ -88,5 +125,8 @@ export function apply(ctx: ClientContext): void {
     scope.effect(() => scope.slots.inject('dv.canvas.editor', () => scope.slots.register(
       { name: 'dv.canvas.editor', key: ID, inject: () => injected }, PlanEditor,
     )), 'ui-shot-plan: plan editor')
+  })
+  ctx.inject(['dvHistory'], (scope) => {
+    scope.effect(() => scope.dvHistory.rows.register(planHistoryRow), 'ui-shot-plan: history row')
   })
 }

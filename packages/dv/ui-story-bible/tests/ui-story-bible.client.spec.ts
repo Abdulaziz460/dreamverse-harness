@@ -1,16 +1,20 @@
 // @vitest-environment jsdom
 /**
- * The story bible's canvas node kind, version kinds, references in use and `@` menu kinds, and their registration and
- * removal.
+ * The story bible's canvas node kind, version kinds, references in use, `@` menu kinds and History row, and their
+ * registration and removal.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { projectItems } from '@dv/ui-composer/src/client/mention.ts'
 import { createRegistry } from '@dv/ui-kit/registries.ts'
-import type { ChainAnchor, DvCanvas, DvMentions, MentionKind, NodeKind, TakesInUse, VersionKind } from '@dv/ui-kit/registries.ts'
+import type {
+  ChainAnchor, DvCanvas, DvHistory, DvMentions, HistoryRow, MentionKind, NodeKind, TakesInUse, VersionKind,
+} from '@dv/ui-kit/registries.ts'
 import type { WireState } from '@dv/ui-kit/types.ts'
 import { fixtureState, record } from '../../ui-kit/tests/fixture.client.tsx'
-import { apply, bibleMentionKinds, bibleNodeKind, bibleReferencesInUse, bibleVersionKinds } from '../src/client/index.ts'
+import {
+  apply, bibleHistoryRow, bibleMentionKinds, bibleNodeKind, bibleReferencesInUse, bibleVersionKinds,
+} from '../src/client/index.ts'
 import { apply as hostApply } from '../src/index.ts'
 
 afterEach(() => { document.documentElement.lang = '' })
@@ -104,6 +108,18 @@ describe('bibleMentionKinds', () => {
   })
 })
 
+describe('bibleHistoryRow', () => {
+  it('names the item of a story bible record by its name, else by the ID of its kind param', () => {
+    const subject = (params: Record<string, unknown>) =>
+      bibleHistoryRow.subject(record({ id: 'b', component: 'bible', operation: 'bible.character_create', params }))
+    expect(bibleHistoryRow.match).toBe('bible.')
+    expect(subject({ character: 'c1', name: '阿明' })).toEqual(['「阿明」', ' “阿明”'])
+    expect(subject({ location: 'l1', name: '' })).toEqual(['「l1」', ' “l1”'])
+    expect(subject({ style: 's1' })).toEqual(['「s1」', ' “s1”'])
+    expect(subject({})).toBeNull()
+  })
+})
+
 describe('ui-story-bible apply', () => {
   it('keeps the host Loader entry inert', () => {
     expect(hostApply).not.toThrow()
@@ -132,5 +148,16 @@ describe('ui-story-bible apply', () => {
     await vi.waitFor(() => { expect(mentions.kinds.list()).toEqual(bibleMentionKinds) })
     await fiber.dispose()
     expect(mentions.kinds.list()).toEqual([])
+  })
+
+  it('registers its History row once dvHistory is present, and the plugin disposal removes it', async () => {
+    const ctx = new Context()
+    const history: DvHistory = { rows: createRegistry<HistoryRow>(row => [row.match]) }
+    const fiber = ctx.plugin({ apply })
+    await fiber.await()
+    ctx.provide('dvHistory', history)
+    await vi.waitFor(() => { expect(history.rows.list()).toEqual([bibleHistoryRow]) })
+    await fiber.dispose()
+    expect(history.rows.list()).toEqual([])
   })
 })

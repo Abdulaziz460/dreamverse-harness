@@ -35,13 +35,6 @@ export function actionRows(entries: readonly HistoryEntry[]): ActionRow[] {
   return [...rows.values()].reverse()
 }
 
-/** @returns the text of a record field, or null. */
-function field(fields: Record<string, unknown> | undefined, key: string): string | null {
-  const value = fields?.[key]
-  if (typeof value === 'number') return String(value)
-  return typeof value === 'string' && value !== '' ? value : null
-}
-
 /** @returns the registered row that matches the record's operation: an exact name first, then `'<key>.'`. */
 function matchingRow(record: ProjectRecord, rows: readonly HistoryRow[]): HistoryRow | undefined {
   const operation = record.operation ?? ''
@@ -62,8 +55,7 @@ export interface LabelContext {
 /**
  * The label a row shows for its action: the operation label (`operationLabel` of `@dv/ui-kit`) followed by its subject.
  * The subject comes from the registered row that matches the operation (an exact name first, then `'<key>.'`). Else
- * plans name their title or PlanId and version (`report.plan`, `report.version`), story bible records name the
- * character, location or style, and a record with a chain slot (`chainOf`) names the slot and its lane.
+ * a record with a chain slot (`chainOf`) names the slot and its lane.
  * @param record - the operation record.
  * @param context - the operations, the registered rows and the loaded records.
  * @returns the Chinese and English label.
@@ -74,26 +66,6 @@ export function actionLabel(record: ProjectRecord, context: LabelContext): reado
   if (row !== undefined) {
     const subject = row.subject(record)
     return subject === null ? [zh, en] : [`${zh}${subject[0]}`, `${en}${subject[1]}`]
-  }
-  // A PlanId (`p1`); a plan named by its record ID comes from a project made before plans had IDs and is not shown.
-  const named = field(record.report, 'plan') ?? field(record.params, 'plan')
-  const plan = named !== null && /^p\d+$/.test(named) ? named : null
-  const version = field(record.report, 'version') ?? field(record.params, 'version')
-  switch (record.operation) {
-    case 'plan.create': {
-      const title = field(record.params, 'title')
-      if (title !== null) return [`${zh}《${title}》`, `${en} “${title}”`]
-      return plan === null ? [zh, en] : [`${zh} ${plan}`, `${en} ${plan}`]
-    }
-    case 'plan.update': {
-      if (plan === null) return [zh, en]
-      return version === null ? [`${zh} ${plan}`, `${en} ${plan}`] : [`${zh} ${plan} → v${version}`, `${en} ${plan} → v${version}`]
-    }
-  }
-  if (record.component === 'bible') {
-    const name = field(record.params, 'name') ?? field(record.params, 'character') ?? field(record.params, 'location')
-      ?? field(record.params, 'style')
-    if (name !== null) return [`${zh}「${name}」`, `${en} “${name}”`]
   }
   const chain = chainOf(record, context.records)
   if (chain === null || chain.slot === null) return [zh, en]

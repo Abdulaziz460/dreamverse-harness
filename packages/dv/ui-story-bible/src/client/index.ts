@@ -1,15 +1,16 @@
 /**
  * Browser half of the story bible: the canvas node kind that draws each character, location and style at its newest
  * version, one version kind per reference kind (`character`, `location`, `style`), the records whose outputs the
- * newest versions use as references, the editor body of a story bible node (the `dv.canvas.editor` entry), and one
- * mention kind per reference kind for the composer's `@` menu. Each reads only the `bible` slice and the `proj` records.
+ * newest versions use as references, the editor body of a story bible node (the `dv.canvas.editor` entry), one mention
+ * kind per reference kind for the composer's `@` menu, and the History row that names the item of a story bible record.
+ * Each reads only the `bible` slice and the `proj` records, and the History row only its record's params.
  *
  * @module @dv/ui-story-bible/client
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import { pickText } from '@dv/ui-kit/locale.ts'
-import type { MentionKind, NodeKind, NodeSeed, TakesInUse, VersionKind } from '@dv/ui-kit/registries.ts'
+import type { HistoryRow, MentionKind, NodeKind, NodeSeed, TakesInUse, VersionKind } from '@dv/ui-kit/registries.ts'
 import type { Character, StoryBibleState, WireState } from '@dv/ui-kit/types.ts'
 import { BibleEditor } from './BibleEditor.tsx'
 import { bibleNode, KINDS } from './kinds.ts'
@@ -96,11 +97,30 @@ export const bibleMentionKinds: readonly MentionKind[] = KINDS.map(({ kind, fiel
   }),
 }))
 
+/** The params that name a story bible item, in the order that the History row reads them: the name, then the ID. */
+const NAME_PARAMS = ['name', ...KINDS.map(({ kind }) => kind)]
+
+/**
+ * The History row of every `bible.*` operation: the name that the record gives its character, location or style
+ * (`「阿明」` / ` “阿明”`), else the item ID of its kind param, else no subject.
+ */
+export const bibleHistoryRow: HistoryRow = {
+  match: 'bible.',
+  subject(record) {
+    for (const key of NAME_PARAMS) {
+      const value = record.params[key]
+      const name = typeof value === 'number' ? String(value) : value
+      if (typeof name === 'string' && name !== '') return [`「${name}」`, ` “${name}”`]
+    }
+    return null
+  },
+}
+
 /**
  * Client plugin body: while `dvCanvas` is present, register the node kind, the references in use and the three version
  * kinds; while the slot registry is present, register the editor body of the node kind as its `dv.canvas.editor`
- * entry; while `dvMentions` is present, register the three mention kinds. Each registration leaves with its service or
- * with the plugin.
+ * entry; while `dvMentions` is present, register the three mention kinds; while `dvHistory` is present, register the
+ * History row. Each registration leaves with its service or with the plugin.
  * @param ctx - client root context.
  */
 export function apply(ctx: ClientContext): void {
@@ -120,5 +140,8 @@ export function apply(ctx: ClientContext): void {
     for (const kind of bibleMentionKinds) {
       scope.effect(() => scope.dvMentions.kinds.register(kind), `ui-story-bible: mention kind ${kind.kind}`)
     }
+  })
+  ctx.inject(['dvHistory'], (scope) => {
+    scope.effect(() => scope.dvHistory.rows.register(bibleHistoryRow), 'ui-story-bible: history row')
   })
 }
