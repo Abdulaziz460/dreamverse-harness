@@ -358,7 +358,8 @@ export default class DvShotPlan extends Service {
    * `continue_previous` names its predecessor's last still (output 1) as its `first_frame` input; each render waits for
    * the render scheduled before it. The timeline call runs at once:
    * its `clip` inputs name each shot's render output or kept take (`{record, output: 0}`), and a clip whose render is
-   * not done is a placeholder until it is.
+   * not done is a placeholder until it is. Each record it writes carries `started_by` with the approving record: a render
+   * with its shot position as `slot`, the timeline record with `slot: null`.
    * @param context - the running `plan.approve` call.
    * @returns the approved version, and the records it wrote: the scheduled shot renders in shot order, then the timeline.
    * @throws Error when the param names no known plan or version, or a reference names an unknown character, location
@@ -388,6 +389,7 @@ export default class DvShotPlan extends Service {
       const run = await project.run({
         ...origin, project: context.project, operation: RENDER_OPERATION, params: shot.params, inputs: shot.inputs,
         intent: `shot ${String(shot.params['shot'])} of plan ${plan} v${version.version}`, after: previous === undefined ? [] : [previous],
+        started_by: { record: approve.id, slot: Number(shot.params['shot']) },
       })
       /* v8 ignore next -- a scheduled run always returns its pending record. */
       if (run.record === null) throw new Error('A scheduled shot render returned no record.')
@@ -399,7 +401,7 @@ export default class DvShotPlan extends Service {
     const timeline = await project.run({
       ...origin, project: context.project, operation: layout.operation, params: { timeline: layout.timeline, plan },
       inputs: takes.map(id => ({ role: 'clip', ref: { record: id, output: 0 } })),
-      intent: `${verb} timeline ${layout.timeline} of plan ${plan}`,
+      intent: `${verb} timeline ${layout.timeline} of plan ${plan}`, started_by: { record: approve.id, slot: null },
     })
     return { version: version.version, scheduled: timeline.record === null ? scheduled : [...scheduled, timeline.record.id] }
   }

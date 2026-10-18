@@ -349,6 +349,9 @@ describe('dvShotPlan', () => {
     expect(shots[2]?.inputs).toEqual([])
     const timeline = state.components.proj.records.find(record => record.operation === 'timeline.create')
     expect(timeline).toMatchObject({ actor: 'system', status: 'done', params: { timeline: 't1', plan: 'p1' } })
+    // Each render names the approval and its shot position; the timeline record names the approval with no slot.
+    expect(shots.map(shot => shot.started_by)).toEqual([1, 2, 3].map(slot => ({ record: approved.record, slot })))
+    expect(timeline?.started_by).toEqual({ record: approved.record, slot: null })
     expect(timeline?.inputs.map(input => input.resolved_asset)).toEqual(shots.map(shot => shot.outputs[0]))
     expect(approved.scheduled).toEqual([...shots.map(shot => shot.id), timeline?.id])
     expect(approved.report).toEqual({ plan: 'p1', version: 1, scheduled: approved.scheduled })
@@ -429,7 +432,7 @@ describe('dvShotPlan', () => {
     const one = ref('one', { duration_sec: 1 })
     const two = ref('two', { duration_sec: 1, continue_previous: true })
     await fixture.record('plan.create', { references: [picture], shots: [one, two] })
-    await fixture.record('plan.approve', { plan: 'p1' })
+    const approval = await fixture.record('plan.approve', { plan: 'p1' })
     await fixture.ctx.dvProject.wait(fixture.project)
     const [first, second] = fixture.recordsOf('shot.render')
     // Version 2 appends shot 3: shots 1 and 2 keep their takes, and shot 3 starts from shot 2's last still.
@@ -441,6 +444,11 @@ describe('dvShotPlan', () => {
     expect(renders).toHaveLength(3)
     expect(renders[2]?.params).toEqual({ ...REF, prompt: 'three', plan: 'p1', plan_version: 2, shot: 3 })
     expect(renders[2]?.inputs.map(input => input.ref)).toEqual([{ asset: picture }, { record: second?.id, output: 1 }])
+    // A render of a later approval names that approval; kept takes keep the approval that rendered them.
+    expect(renders.map(render => render.started_by)).toEqual([
+      { record: approval.id, slot: 1 }, { record: approval.id, slot: 2 }, { record: extended.id, slot: 3 },
+    ])
+    expect(fixture.recordsOf('timeline.update')[0]?.started_by).toEqual({ record: extended.id, slot: null })
     expect(extended.report).toEqual({ plan: 'p1', version: 2, scheduled: [renders[2]?.id, fixture.recordsOf('timeline.update')[0]?.id] })
     let state = fixture.ctx.dvProject.getState(fixture.project)
     expect(state.components.timeline.timelines.map(timeline => [timeline.id, timeline.clips.map(clip => clip.asset)]))
