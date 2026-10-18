@@ -10,6 +10,7 @@
 import type {} from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
 import type { ProjectRecord, WireState } from './types.ts'
+import type { DvWorkspaceEventMap } from './workspace-events.ts'
 
 /** A list of descriptors that plugins add and remove, with one owner per key. */
 export interface Registry<D> {
@@ -63,7 +64,15 @@ export interface HistoryRow {
   /** The subject after the label, with its own separator, such as [' p1 v1', ' p1 v1'] or ['「红伞」', ' “Red umbrella”'];
    *  null for none. */
   subject(record: ProjectRecord): readonly [zh: string, en: string] | null
+  /** Where selecting the record moves the center, given the records of the current state (oldest first); absent means
+   *  the record's canvas node. */
+  focus?(record: ProjectRecord, records: readonly ProjectRecord[]): CenterFocus | null
 }
+
+/** Where selecting a history record moves the center: the workspace event to dispatch and its detail. */
+export type CenterFocus =
+  | { event: 'dv:canvas-focus'; detail: DvWorkspaceEventMap['dv:canvas-focus'] }
+  | { event: 'dv:timeline-focus'; detail: DvWorkspaceEventMap['dv:timeline-focus'] }
 
 /** The registries of the canvas, provided by `@dv/ui-canvas` as `ctx.dvCanvas`. */
 export interface DvCanvas {

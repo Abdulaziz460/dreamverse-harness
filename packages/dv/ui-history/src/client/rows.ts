@@ -6,10 +6,9 @@
  * @module @dv/ui-history/rows
  */
 import { chainOf } from '@dv/ui-kit/chain.ts'
-import type { HistoryRow } from '@dv/ui-kit/registries.ts'
+import type { CenterFocus, HistoryRow } from '@dv/ui-kit/registries.ts'
 import { operationLabel } from '@dv/ui-kit/tool-labels.ts'
 import type { Asset, HistoryEntry, ProjectRecord, WireOperation } from '@dv/ui-kit/types.ts'
-import type { DvWorkspaceEventMap } from '@dv/ui-kit/workspace-events.ts'
 
 /** One row of the panel: an operation entry and the entries of the loaded records it started. */
 export interface ActionRow {
@@ -43,6 +42,13 @@ function field(fields: Record<string, unknown> | undefined, key: string): string
   return typeof value === 'string' && value !== '' ? value : null
 }
 
+/** @returns the registered row that matches the record's operation: an exact name first, then `'<key>.'`. */
+function matchingRow(record: ProjectRecord, rows: readonly HistoryRow[]): HistoryRow | undefined {
+  const operation = record.operation ?? ''
+  return rows.find(item => item.match === operation)
+    ?? rows.find(item => item.match.endsWith('.') && operation.startsWith(item.match))
+}
+
 /** What an action label reads besides its record. */
 export interface LabelContext {
   /** The operation declarations of `/api/dv/operations`. */
@@ -64,9 +70,7 @@ export interface LabelContext {
  */
 export function actionLabel(record: ProjectRecord, context: LabelContext): readonly [string, string] {
   const [zh, en] = operationLabel(record.operation, context.operations)
-  const operation = record.operation ?? ''
-  const row = context.rows.find(item => item.match === operation)
-    ?? context.rows.find(item => item.match.endsWith('.') && operation.startsWith(item.match))
+  const row = matchingRow(record, context.rows)
   if (row !== undefined) {
     const subject = row.subject(record)
     return subject === null ? [zh, en] : [`${zh}${subject[0]}`, `${en}${subject[1]}`]
@@ -155,76 +159,24 @@ export function relativeTime(iso: string, now: number): readonly [string, string
   return [date, date]
 }
 
-/** @returns the text value of a param, or null. */
-function text(value: unknown): string | null {
-  return typeof value === 'string' && value !== '' ? value : null
-}
-
-/** @returns the clip IDs a finished record assigned (`report.clips`). */
-function reportedClips(record: ProjectRecord): string[] {
-  const clips = record.report?.['clips']
-  return Array.isArray(clips) ? clips.filter((clip): clip is string => typeof clip === 'string') : []
-}
-
-/**
- * The timeline each clip belongs to: the timeline of the record that assigned the clip (`timeline.create`, `update`,
- * `clip_insert` name it by `params.timeline`, a create without one makes `t1`; `clip_split` adds to the timeline of the
- * split clip).
- * @param records - the records of the current state, oldest first.
- * @returns clip ID → timeline ID.
- */
-export function clipTimelines(records: readonly ProjectRecord[]): Map<string, string> {
-  const owner = new Map<string, string>()
-  for (const record of records) {
-    const clips = reportedClips(record)
-    if (clips.length === 0) continue
-    const timeline = record.operation === 'timeline.clip_split'
-      ? owner.get(text(record.params['clip']) ?? '') ?? null
-      : text(record.params['timeline']) ?? (record.operation === 'timeline.create' ? 't1' : null)
-    if (timeline === null) continue
-    for (const clip of clips) owner.set(clip, timeline)
-  }
-  return owner
-}
-
-/**
- * The timeline a record works on: its `timeline` param, else the timeline of its `clip` param, else `t1` for a
- * `timeline.create` without a param.
- * @param record - the record.
- * @param owner - clip ID → timeline ID, from {@link clipTimelines}.
- * @returns the timeline ID, or null when the record names none.
- */
-function timelineOf(record: ProjectRecord, owner: ReadonlyMap<string, string>): string | null {
-  const named = text(record.params['timeline'])
-  if (named !== null) return named
-  const clip = text(record.params['clip'])
-  if (clip !== null) return owner.get(clip) ?? null
-  return record.operation === 'timeline.create' ? 't1' : null
-}
-
-/** Where selecting a record moves the center: a canvas node, a timeline clip, or nowhere. */
-export type CenterFocus =
-  | { event: 'dv:canvas-focus'; detail: DvWorkspaceEventMap['dv:canvas-focus'] }
-  | { event: 'dv:timeline-focus'; detail: DvWorkspaceEventMap['dv:timeline-focus'] }
-  | null
-
 /**
  * The center focus of a selected entry. Only steps at or before the current position are what the canvas and the
- * timeline show. Timeline records and timeline exports focus their timeline and clip; `proj.*` records focus nothing;
- * every other record focuses its node.
+ * timeline show. The registered row that matches the operation decides when it has a `focus`; else `proj.*` records
+ * focus nothing, and every other record focuses its node.
  * @param entry - the selected entry.
- * @param owner - clip ID → timeline ID of the current state, from {@link clipTimelines}.
+ * @param rows - the registered rows of `dvHistory.rows`.
+ * @param records - the records of the current state, oldest first.
  * @returns the focus, or null.
  */
-export function centerFocus(entry: HistoryEntry, owner: ReadonlyMap<string, string>): CenterFocus {
+export function centerFocus(
+  entry: HistoryEntry,
+  rows: readonly HistoryRow[],
+  records: readonly ProjectRecord[],
+): CenterFocus | null {
   const { record } = entry
   if (entry.place === 'after') return null
+  const row = matchingRow(record, rows)
+  if (row?.focus !== undefined) return row.focus(record, records)
   if (record.component === 'proj') return null
-  if (record.component === 'timeline') {
-    const timelineId = timelineOf(record, owner)
-    if (timelineId === null) return null
-    const clipId = text(record.params['clip']) ?? reportedClips(record)[0] ?? null
-    return { event: 'dv:timeline-focus', detail: { timelineId, clipId } }
-  }
   return { event: 'dv:canvas-focus', detail: { recordId: record.id } }
 }

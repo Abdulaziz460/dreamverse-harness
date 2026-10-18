@@ -1,7 +1,8 @@
 /**
  * Browser half: register `dv-timeline` as a right-Sidebar tab type, its dictionaries, and its body; register the timeline
  * editor (`TimelineView`) as the 时间线 view of the workspace center (`dv.center.view`); while `dvCanvas` is present,
- * register the takes that the timelines use.
+ * register the takes that the timelines use; while `dvHistory` is present, register the History row of timeline
+ * records.
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
@@ -9,6 +10,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import { DvClient } from '@dv/ui-kit/api.ts'
 import { TIMELINE_ID, timelineDefinition } from './definition.ts'
+import { timelineHistoryRow } from './history-row.ts'
 import { en, NS, zh } from './locales.ts'
 import { timelineTakesInUse } from './takes-in-use.ts'
 import { TimelineBody } from './TimelineBody.tsx'
@@ -26,8 +28,9 @@ export const inject = ['slots', 'locale', 'sidebarRightTabs']
 /**
  * Client plugin body: register the type, its dictionaries, and its body under the type's id, and the center view
  * `timeline`, which edits the project and writes for the chat session that the workspace center passes; while `dvCanvas`
- * is present, register the timeline's `TakesInUse` under the same id. Each registration leaves with its service or with
- * the plugin.
+ * is present, register the timeline's `TakesInUse` under the same id; while `dvHistory` is present, register the
+ * History row `timeline.`, whose focus opens a record's timeline and clip. Each registration leaves with its service or
+ * with the plugin.
  * @param ctx - client root context.
  */
 export function apply(ctx: ClientContext): void {
@@ -44,5 +47,8 @@ export function apply(ctx: ClientContext): void {
   )), 'ui-timeline: center view')
   ctx.inject(['dvCanvas'], (scope) => {
     scope.effect(() => scope.dvCanvas.takesInUse.register(timelineTakesInUse(t)), 'ui-timeline: takes in use')
+  })
+  ctx.inject(['dvHistory'], (scope) => {
+    scope.effect(() => scope.dvHistory.rows.register(timelineHistoryRow), 'ui-timeline: history row')
   })
 }

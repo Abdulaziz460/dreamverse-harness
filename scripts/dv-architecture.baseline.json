@@ -50,8 +50,6 @@
   "packages/dv/ui-composer/src/client/mention.ts R5c style": 2,
   "packages/dv/ui-history/src/client/rows.ts R5a plan.create": 1,
   "packages/dv/ui-history/src/client/rows.ts R5a plan.update": 1,
-  "packages/dv/ui-history/src/client/rows.ts R5a timeline.clip_split": 1,
-  "packages/dv/ui-history/src/client/rows.ts R5a timeline.create": 2,
   "packages/dv/ui-history/src/client/rows.ts R5c bible": 1,
   "packages/dv/ui-history/src/client/rows.ts R5c character": 1,
   "packages/dv/ui-history/src/client/rows.ts R5c location": 1,

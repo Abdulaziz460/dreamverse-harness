@@ -151,9 +151,17 @@ describe('HistoryPanel', () => {
     await waitFor(() => { expect(queries.at(0)).toEqual({ project: 'p1', limit: 50 }) })
   })
 
-  it('selecting a render row plays its output and focuses its node, a clip row focuses the timeline clip, and a step after the current one focuses nothing', async () => {
+  it('selecting a render row plays its output and focuses its node, a clip row moves the center where its registered row says, and a step after the current one focuses nothing', async () => {
     const later = ENTRIES.map(entry => entry.record.id === 'p1' ? { ...entry, place: 'after' as const } : entry)
-    const { row } = mount(later)
+    // A test-local timeline row: its focus finds the clip move among the records of the current state.
+    const rows = createRegistry<HistoryRow>(item => [item.match])
+    rows.register({
+      match: 'timeline.', subject: () => null,
+      focus: (record, records) => records.some(item => item.id === record.id)
+        ? { event: 'dv:timeline-focus', detail: { timelineId: 't1', clipId: String(record.params['clip']) } }
+        : null,
+    })
+    const { row } = mount(later, () => {}, rows)
     await waitFor(() => { row('g1') })
     const focused: unknown[] = []
     const onFocus = (event: Event): void => { focused.push((event as CustomEvent).detail) }

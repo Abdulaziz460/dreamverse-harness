@@ -1,13 +1,13 @@
 /**
  * The History panel's pure readings: action rows and the folds of started records, labels with subjects, thumbnails,
- * relative times, and the focus a selected step gives the canvas or the timeline.
+ * relative times, and the focus a selected step gives the center through its registered row or its canvas node.
  */
 import { describe, expect, it } from 'vitest'
 import type { HistoryRow } from '@dv/ui-kit/registries.ts'
 import type { HistoryEntry, ProjectRecord, WireOperation } from '@dv/ui-kit/types.ts'
 import { asset, fixtureState, record } from '../../ui-kit/tests/fixture.client.tsx'
 import {
-  actionLabel, actionRows, centerFocus, clipTimelines, relativeTime, thumbnailOf, type LabelContext,
+  actionLabel, actionRows, centerFocus, relativeTime, thumbnailOf, type LabelContext,
 } from '../src/client/rows.ts'
 
 /** An entry of a record, at or before the current position unless `place` says otherwise. */
@@ -121,29 +121,31 @@ describe('operation labels', () => {
   })
 })
 
-describe('timelines and focus', () => {
-  const records = [
-    record({ id: 'c', operation: 'timeline.create', params: { assets: ['a.mp4', 'b.mp4'] }, report: { clips: ['cl1', 'cl2'] } }),
-    record({ id: 'c2', operation: 'timeline.create', params: { timeline: 't2', assets: ['z.mp4'] }, report: { clips: ['cl3'] } }),
-    record({ id: 's', operation: 'timeline.clip_split', params: { clip: 'cl2', at_sec: 1 }, report: { clips: ['cl4'] } }),
-    record({ id: 'm', operation: 'timeline.clip_move', params: { clip: 'cl4', to: 1 } }),
-    record({ id: 'm2', operation: 'timeline.clip_move', params: { clip: 'cl3', to: 1 } }),
-    record({ id: 'e', operation: 'timeline.export', params: { timeline: 't1' }, outputs: ['out.mp4'] }),
-  ]
+describe('focus', () => {
+  const render = fixtureState().components.proj.records.find(item => item.id === 'g1') as ProjectRecord
+  const move = record({ id: 'm', operation: 'timeline.clip_move', params: { clip: 'cl4', to: 1 } })
+  const create = record({ id: 'c', operation: 'timeline.create', params: { timeline: 't2' } })
 
-  it('assigns each clip to the timeline of the record that added it, a split to the split clip\'s timeline', () => {
-    expect(Object.fromEntries(clipTimelines(records))).toEqual({ cl1: 't1', cl2: 't1', cl3: 't2', cl4: 't1' })
+  it('asks the focus of the registered row that matches the operation, an exact name first, with the current records', () => {
+    const seen: Array<readonly ProjectRecord[]> = []
+    const rows: HistoryRow[] = [
+      {
+        match: 'timeline.', subject: () => null,
+        focus: (item, records) => { seen.push(records); return { event: 'dv:timeline-focus', detail: { timelineId: 't1', clipId: item.id } } },
+      },
+      { match: 'timeline.create', subject: () => null, focus: () => null },
+    ]
+    expect(centerFocus({ record: move, place: 'current' }, rows, [create, move]))
+      .toEqual({ event: 'dv:timeline-focus', detail: { timelineId: 't1', clipId: 'm' } })
+    expect(seen).toEqual([[create, move]])
+    expect(centerFocus({ record: create, place: 'before' }, rows, [create])).toBeNull()
   })
 
-  it('focuses a clip record on the timeline, a render on the canvas, and nothing for proj records or steps after the current position', () => {
-    const owner = clipTimelines(records)
-    const render = fixtureState().components.proj.records.find(item => item.id === 'g1') as ProjectRecord
-    expect(centerFocus({ record: records[3] as ProjectRecord, place: 'before' }, owner))
-      .toEqual({ event: 'dv:timeline-focus', detail: { timelineId: 't1', clipId: 'cl4' } })
-    expect(centerFocus({ record: records[0] as ProjectRecord, place: 'current' }, owner))
-      .toEqual({ event: 'dv:timeline-focus', detail: { timelineId: 't1', clipId: 'cl1' } })
-    expect(centerFocus({ record: render, place: 'before' }, owner)).toEqual({ event: 'dv:canvas-focus', detail: { recordId: 'g1' } })
-    expect(centerFocus({ record: render, place: 'after' }, owner)).toBeNull()
-    expect(centerFocus(entry({ id: 's', operation: 'proj.stale_accept' }), owner)).toBeNull()
+  it('focuses the node of a record whose row has no focus, nothing for proj records, and nothing for steps after the current position', () => {
+    const rows: HistoryRow[] = [{ match: 'timeline.', subject: () => null }]
+    expect(centerFocus({ record: render, place: 'before' }, rows, [])).toEqual({ event: 'dv:canvas-focus', detail: { recordId: 'g1' } })
+    expect(centerFocus({ record: move, place: 'before' }, rows, [])).toEqual({ event: 'dv:canvas-focus', detail: { recordId: 'm' } })
+    expect(centerFocus({ record: render, place: 'after' }, rows, [])).toBeNull()
+    expect(centerFocus(entry({ id: 's', operation: 'proj.stale_accept' }), [], [])).toBeNull()
   })
 })

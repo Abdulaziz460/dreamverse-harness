@@ -5,8 +5,9 @@
  * agent action the intent the agent gave for the call. The records that a record started (`started_by`) fold under its
  * row. The step at the current position carries 当前; the steps after it, which redo brings back, are greyed. Every other
  * row's ⋮ menu offers 回到这一步, which moves the current position to that step. Selecting a row plays its output under
- * the row and, for a step at or before the current position, focuses it on the canvas or its clip on the timeline. The
- * header holds undo and redo; moves write no record, and a new step after a move discards the greyed steps.
+ * the row and, for a step at or before the current position, moves the center where the registered history row's
+ * `focus` says, else to the record's canvas node. The header holds undo and redo; moves write no record, and a new step
+ * after a move discards the greyed steps.
  *
  * @module @dv/ui-history/HistoryPanel
  */
@@ -26,7 +27,7 @@ import {
   DV_HISTORY_FOCUS_EVENT, DV_TRAJECTORY_FOCUS_EVENT, dispatchWorkspaceEvent, type DvWorkspaceEventMap,
 } from '@dv/ui-kit/workspace-events.ts'
 import {
-  actionLabel, actionRows, centerFocus, clipTimelines, relativeTime, thumbnailOf, type ActionRow, type LabelContext, type Thumbnail,
+  actionLabel, actionRows, centerFocus, relativeTime, thumbnailOf, type ActionRow, type LabelContext, type Thumbnail,
 } from './rows.ts'
 import css from './HistoryPanel.module.css'
 
@@ -196,7 +197,6 @@ export function HistoryPanel(props: HistoryPanelProps): ReactNode {
 
   // The records of the current state: what the canvas and the timeline show.
   const records = current.value?.components.proj.records
-  const owner = useMemo(() => clipTimelines(records ?? []), [records])
   // The steps of the history list, newest first.
   const query = useMemo((): HistoryQuery => ({ project: projectId }), [projectId])
   const { loaded, error, loadMore } = useHistory(client, query)
@@ -237,7 +237,7 @@ export function HistoryPanel(props: HistoryPanelProps): ReactNode {
 
   const choose = (entry: HistoryEntry): void => {
     setSelected(entry.record.id)
-    const target = centerFocus(entry, owner)
+    const target = centerFocus(entry, registered, records ?? [])
     // The focus names its own event and detail, so it is dispatched as is.
     if (target !== null) window.dispatchEvent(new CustomEvent(target.event, { detail: target.detail }))
   }

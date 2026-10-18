@@ -33,13 +33,13 @@ The panel asks for the steps of the project's history list, newest first. Each r
   name: '@dv/ui-history'
 ```
 
-The Host half registers nothing. The browser half provides the client service `dvHistory` (`DvHistory` of `@dv/ui-kit/registries.ts`), registers the `dv-history` tab type (a page the Sidebar's guide offers as "History") and the tab body under its own id `@dv/ui-history`, and opens the tab when a `dv:history-focus` window event arrives. A plugin's UI half names the records of its operations inside `ctx.inject(['dvHistory'], …)` with `ctx.dvHistory.rows.register({ match, subject })`, whose disposer it keeps; `match` is an operation name or `'<key>.'`, and a second row with the same `match` throws.
+The Host half registers nothing. The browser half provides the client service `dvHistory` (`DvHistory` of `@dv/ui-kit/registries.ts`), registers the `dv-history` tab type (a page the Sidebar's guide offers as "History") and the tab body under its own id `@dv/ui-history`, and opens the tab when a `dv:history-focus` window event arrives. A plugin's UI half names the records of its operations inside `ctx.inject(['dvHistory'], …)` with `ctx.dvHistory.rows.register({ match, subject, focus })`, whose disposer it keeps; `match` is an operation name or `'<key>.'`, the optional `focus(record, records)` gets the records of the current state and returns where selecting the record moves the center (`CenterFocus`) or null, and a second row with the same `match` throws.
 
 | Gesture | Request or event |
 | --- | --- |
 | Open the panel, page with "Load more" | `POST /api/dv/history`; 50 entries per page, `before` for the next page |
-| Select a render, story bible, plan, or asset row of the current state | `dv:canvas-focus` `{recordId}`; the shell shows the canvas and the canvas opens the record's node |
-| Select a Timeline row or a timeline export of the current state | `dv:timeline-focus` `{timelineId, clipId}`; the shell shows the timeline and the editor selects the clip |
+| Select a row of the current state whose matching `HistoryRow` has a `focus`, such as a Timeline row or a timeline export (the `timeline.` row of `@dv/ui-timeline`) | The event that `focus` returns, such as `dv:timeline-focus` `{timelineId, clipId}`; the shell shows the timeline and the editor selects the clip |
+| Select any other row of the current state except a `proj` row, such as a render, story bible, plan, or asset row | `dv:canvas-focus` `{recordId}`; the shell shows the canvas and the canvas opens the record's node |
 | "Show in trajectory" in a selected agent row | `dv:trajectory-focus` `{session, toolCall}`; the shell opens 轨迹 on that chat session |
 | Undo in the header (tooltip 撤销（Ctrl+Z / ⌘Z）) | `POST /api/dv/undo`; a refusal shows the server's message |
 | Redo in the header (tooltip 重做（Shift+Ctrl+Z / ⇧⌘Z）), disabled while the current position is the last step | `POST /api/dv/redo` |
@@ -55,7 +55,7 @@ A `dv:history-focus` event `{session, toolCall}` finds the record that tool call
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-`HistoryPanel` reads the project's current state with `useProjectState` for the timelines and the records of the current state, and lists the history through `POST /api/dv/history`. `actionRows` folds each started record under the row of its starter, `actionLabel` names each record, and `centerFocus` decides what a selected row focuses (nothing for a greyed step). Each entry's `place` sets the 当前 mark, the grey rows, and the rows that offer 回到这一步. On `/dv/events`, an `update` event replaces the record in the loaded rows, and a `record` or `line` event refetches the loaded window, debounced by 200 ms.
+`HistoryPanel` reads the project's current state with `useProjectState` for the records of the current state, and lists the history through `POST /api/dv/history`. `actionRows` folds each started record under the row of its starter, `actionLabel` names each record, and `centerFocus` decides what a selected row focuses: nothing for a greyed step, else the `focus` of the matching registered row, else nothing for a `proj` record, else the record's canvas node. Each entry's `place` sets the 当前 mark, the grey rows, and the rows that offer 回到这一步. On `/dv/events`, an `update` event replaces the record in the loaded rows, and a `record` or `line` event refetches the loaded window, debounced by 200 ms.
 
 | File | Content |
 | --- | --- |
