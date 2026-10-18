@@ -15,7 +15,7 @@
  * @module @dv/ui-kit/references
  */
 import type { VersionKind } from './registries.ts'
-import type { PlanVersion, ProjectAsset, Shot, WireInputRef, WireState } from './types.ts'
+import type { ProjectAsset, WireInputRef, WireState } from './types.ts'
 
 /** One run of a prompt: plain text, or a `Picture N` or `<Picture N>` token that names the N-th (1-based) reference image. */
 export type PicturePart = { text: string } | { picture: number; text: string }
@@ -40,17 +40,6 @@ export function formatInputRef(ref: WireInputRef): string {
   if (!('version' in ref)) return 'asset' in ref ? ref.asset : `${ref.record}#${String(ref.output)}`
   const named = versionRefOf(ref)
   return named === null ? JSON.stringify(ref) : `${named.id}@${String(named.version)}`
-}
-
-/**
- * The reference texts a plan shot renders from, as `plan.approve` passes them to `shot.render`: in task `ref2v`,
- * the shot's own references, else the plan version's. A shot in task `t2v` has none.
- * @param version - the plan version.
- * @param shot - one shot of the version.
- * @returns the reference texts (`<asset>`, `<record>#<output>`, or `<id>@<version>`).
- */
-export function shotReferences(version: Pick<PlanVersion, 'references'>, shot: Pick<Shot, 'references' | 'task'>): string[] {
-  return shot.task === 'ref2v' ? shot.references ?? version.references ?? [] : []
 }
 
 /**

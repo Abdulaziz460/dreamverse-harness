@@ -9,7 +9,6 @@
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-locale/client'
 import { assetUrl } from '@dv/ui-kit/api.ts'
-import type { Shot } from '@dv/ui-kit/types.ts'
 import { NODE_WIDTH } from './graph.ts'
 import type { CanvasNode, CanvasNodeKind, SlotFrame } from './graph.ts'
 import type {} from './locales.ts'
@@ -105,15 +104,6 @@ const MAX_TEXT_SCALE = 2.6
 const media: CSSProperties = { width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none', display: 'block' }
 export const ellipsis: CSSProperties = { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }
 export const mono: CSSProperties = { fontFamily: 'var(--dv-font-mono)', fontVariantNumeric: 'tabular-nums' }
-
-/**
- * @param shots - a plan version's shots.
- * @returns their total duration in seconds, or null when the version has no shots or a shot has no duration.
- */
-export function planTotalSec(shots: readonly Shot[]): number | null {
-  const durations = shots.flatMap(shot => shot.duration_sec === undefined ? [] : [shot.duration_sec])
-  return durations.length > 0 && durations.length === shots.length ? durations.reduce((sum, duration) => sum + duration, 0) : null
-}
 
 /**
  * The image or video of an asset, filling its box.

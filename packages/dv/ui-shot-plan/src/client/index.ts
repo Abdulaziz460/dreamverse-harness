@@ -1,17 +1,23 @@
 /**
  * Browser half of the shot plan: the canvas node kind of plans and the takes that plans use. The canvas core draws each
  * plan as one node `plan:<PlanId>` at its latest version with the default card and a frame grid of one slot per shot,
- * and keeps the records that produced the reference assets of the latest version on the canvas.
+ * and keeps the records that produced the reference assets of the latest version on the canvas. The node's editor
+ * shows the plan editor, the `dv.canvas.editor` entry of the node kind.
  *
  * @module @dv/ui-shot-plan/client
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
+import type {} from '@deepseek-ai/dsh-client-ui-slots'
+import { DvClient } from '@dv/ui-kit/api.ts'
 import { pickText } from '@dv/ui-kit/locale.ts'
 import type { NodeKind, NodeSeed, TakesInUse } from '@dv/ui-kit/registries.ts'
 import { clockText } from '@dv/ui-kit/timeline.ts'
 import type { PlanVersion, WireState } from '@dv/ui-kit/types.ts'
+import { PlanEditor, totalSec } from './PlanEditor.tsx'
+import type { PlanEditorInjected } from './PlanEditor.tsx'
 
-/** The package name: the key of the node kind and of the takes in use. */
+/** The package name: the key of the node kind, of the takes in use, and of the editor entry. */
 const ID = '@dv/ui-shot-plan'
 
 /**
@@ -24,15 +30,6 @@ function latestPlans(state: WireState): Array<{ id: string; versions: PlanVersio
     const latest = versions.at(-1)
     return latest === undefined ? [] : [{ id, versions, latest }]
   })
-}
-
-/**
- * @param version - a plan version.
- * @returns the total duration of its shots in seconds, or null when it has no shots or a shot has no duration.
- */
-function totalSec(version: PlanVersion): number | null {
-  const durations = version.shots.flatMap(shot => shot.duration_sec === undefined ? [] : [shot.duration_sec])
-  return durations.length > 0 && durations.length === version.shots.length ? durations.reduce((sum, duration) => sum + duration, 0) : null
 }
 
 /**
@@ -76,13 +73,20 @@ export const planReferencesInUse: TakesInUse = {
 }
 
 /**
- * Client plugin body: while `dvCanvas` is present, register the node kind of plans and the takes that plans use. Each
- * registration leaves with the service or with the plugin.
+ * Client plugin body: while `dvCanvas` is present, register the node kind of plans and the takes that plans use, and
+ * with the slot registry the plan editor once a host declares `dv.canvas.editor`. Each registration leaves with the
+ * service or with the plugin.
  * @param ctx - client root context.
  */
 export function apply(ctx: ClientContext): void {
   ctx.inject(['dvCanvas'], (scope) => {
     scope.effect(() => scope.dvCanvas.nodeKinds.register(planNodeKind), 'ui-shot-plan: node kind')
     scope.effect(() => scope.dvCanvas.takesInUse.register(planReferencesInUse), 'ui-shot-plan: takes in use')
+  })
+  ctx.inject(['dvCanvas', 'slots'], (scope) => {
+    const injected: PlanEditorInjected = { canvas: scope.dvCanvas, client: new DvClient() }
+    scope.effect(() => scope.slots.inject('dv.canvas.editor', () => scope.slots.register(
+      { name: 'dv.canvas.editor', key: ID, inject: () => injected }, PlanEditor,
+    )), 'ui-shot-plan: plan editor')
   })
 }

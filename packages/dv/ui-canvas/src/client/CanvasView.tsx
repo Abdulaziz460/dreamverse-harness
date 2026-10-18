@@ -806,7 +806,6 @@ export function CanvasView(
               state={graph.state}
               operations={operations.value ?? []}
               taskLabels={taskLabels.value ?? NO_TASK_LABELS}
-              anchors={anchors}
               versionKinds={versionKinds}
               client={client}
               project={projectId}
@@ -834,7 +833,6 @@ export function CanvasView(
               state={graph.state}
               operations={operations.value ?? []}
               taskLabels={taskLabels.value ?? NO_TASK_LABELS}
-              anchors={anchors}
               versionKinds={versionKinds}
               client={client}
               project={projectId}

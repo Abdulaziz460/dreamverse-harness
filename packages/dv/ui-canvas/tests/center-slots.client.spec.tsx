@@ -14,6 +14,7 @@ import { apply as assetPoolApply, inject as assetPoolInject } from '@dv/ui-asset
 import type { NodeKind } from '@dv/ui-kit/registries.ts'
 import { apply as storyBibleApply } from '@dv/ui-story-bible/src/client/index.ts'
 import { scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
+import { apply as shotPlanApply } from '../../ui-shot-plan/src/client/index.ts'
 import { apply, inject } from '../src/client/index.ts'
 import { EDITOR_RECT_KEY } from '../src/client/NodeEditor.tsx'
 import { zh } from '../src/client/locales.ts'
@@ -109,6 +110,19 @@ describe('canvas slots in the workspace center', () => {
     expect(within(editor).getByRole('button', { name: '查看 ref.png' })).toBeTruthy()
     expect(within(editor).getByText('A tired detective.')).toBeTruthy()
     expect(within(editor).getByText('＋ 添加素材')).toBeTruthy()
+    await runtime.dispose()
+  })
+
+  it('shows the plan editor body in the center canvas', async () => {
+    document.documentElement.lang = 'zh-CN'
+    const { runtime, view: { container } } = await centerCanvas()
+    await runtime.mount({ apply: shotPlanApply })
+
+    const editor = await openEditor(container, 'plan:p1')
+    // The body of the ui-shot-plan entry: the version row with its status, and one card per shot.
+    expect(within(editor).getByRole('group', { name: '分镜计划版次' })).toBeTruthy()
+    expect(within(editor).getByTestId('dv-canvas-plan-status').textContent).toBe('待批准')
+    expect(editor.querySelectorAll('li[data-shot]')).toHaveLength(2)
     await runtime.dispose()
   })
 

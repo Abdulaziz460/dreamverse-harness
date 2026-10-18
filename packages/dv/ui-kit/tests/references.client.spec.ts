@@ -3,7 +3,7 @@
  * Picture N, and the split of a prompt at its Picture N tokens.
  */
 import { describe, expect, it } from 'vitest'
-import { formatInputRef, isPicture, pictureParts, referenceAssets, shotReferences, versionRefOf } from '../src/client/references.ts'
+import { formatInputRef, isPicture, pictureParts, referenceAssets, versionRefOf } from '../src/client/references.ts'
 import type { VersionKind } from '../src/client/registries.ts'
 import type { WireInputRef } from '../src/client/types.ts'
 import { asset, fixtureState } from './fixture.client.tsx'
@@ -63,16 +63,6 @@ describe('isPicture', () => {
   it('numbers images only', () => {
     expect([asset('a.png', 'image/png', null), asset('b.mp4', 'video/mp4', null), asset('c.wav', 'audio/wav', null)].map(isPicture))
       .toEqual([true, false, false])
-  })
-})
-
-describe('shotReferences', () => {
-  it('uses the shot\'s own references, else the plan version\'s, as plan.approve does; a shot in task t2v has none', () => {
-    expect(shotReferences({ references: ['hero@1'] }, { task: 'ref2v', references: ['a.png'] })).toEqual(['a.png'])
-    expect(shotReferences({ references: ['hero@1'] }, { task: 'ref2v' })).toEqual(['hero@1'])
-    expect(shotReferences({ references: ['hero@1'] }, { task: 'ref2v', references: [] })).toEqual([])
-    expect(shotReferences({}, { task: 'ref2v' })).toEqual([])
-    expect(shotReferences({ references: ['hero@1'] }, { task: 't2v' })).toEqual([])
   })
 })
 

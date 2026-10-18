@@ -12,17 +12,12 @@
  * While the render starts the button is disabled and reads 渲染中…, and a refused request shows its error under the
  * button. "添加素材" opens the asset picker; a reference chip opens the preview of its asset, or the editor of the node of
  * its versioned item (read through the registered version kinds) over this one. The picker's asset pool and the preview
- * are the `dv.canvas.picker` and `dv.canvas.preview` entries at key `assets`. A plan (a seed of the node kind `plan`,
- * whose ID is `plan:<PlanId>`) switches between its versions (第 1 版,
- * 第 2 版, …) and shows the chosen version's approval status (from the approved versions that the registered chain
- * anchors report for the node), its reference assets, and one card per shot with exactly
- * what the plan holds: duration, model and task, reference assets, whether the shot continues the previous shot, and the
- * full prompt with each `Picture N` drawn as its image. Any other seed (a node that a registered `NodeKind` drew) shows
- * the `dv.canvas.editor` entry keyed by its `NodeKind.id`, which the canvas lends its writes, its asset picker of assets
- * only and its asset preview; it shows only the header when no entry is registered or the host renders no entries. A
- * stale node offers "仍然保留", which keeps its record as it is (`proj.stale_accept`).
+ * are the `dv.canvas.picker` and `dv.canvas.preview` entries at key `assets`. A seed (a node that a registered `NodeKind`
+ * drew) shows the `dv.canvas.editor` entry keyed by its `NodeKind.id`, which the canvas lends its writes, its asset
+ * picker of assets only and its asset preview; it shows only the header when no entry is registered or the host renders
+ * no entries. A stale node offers "仍然保留", which keeps its record as it is (`proj.stale_accept`).
  */
-import { memo, useLayoutEffect, useRef, useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import { assetUrl } from '@dv/ui-kit/api.ts'
@@ -30,15 +25,14 @@ import type { DvClient } from '@dv/ui-kit/api.ts'
 import { dispatchCompose, type DvComposeRef } from '@dv/ui-kit/compose.ts'
 import { fieldsOf, paramsOf, type FormField } from '@dv/ui-kit/form.ts'
 import { useText } from '@dv/ui-kit/locale.ts'
-import { formatInputRef, isPicture, pictureParts, referenceAssets, shotReferences } from '@dv/ui-kit/references.ts'
-import type { ChainAnchor, SeedEditorHost, VersionKind } from '@dv/ui-kit/registries.ts'
+import { formatInputRef } from '@dv/ui-kit/references.ts'
+import type { SeedEditorHost, VersionKind } from '@dv/ui-kit/registries.ts'
 import { readStored, writeStored } from '@dv/ui-kit/storage.ts'
-import { clockText } from '@dv/ui-kit/timeline.ts'
 import { taskLabel, type WireTaskLabels } from '@dv/ui-kit/tool-labels.ts'
-import type { OperationRequest, PlanVersion, ProjectAsset, Shot, WireOperation, WireState } from '@dv/ui-kit/types.ts'
+import type { OperationRequest, ProjectAsset, WireOperation, WireState } from '@dv/ui-kit/types.ts'
 import { AssetMedia, AssetPicker, AssetPreview } from './AssetPicker.tsx'
 import type { CanvasNode } from './graph.ts'
-import { kindColor, kindLabel, mono, nodeTitle, planTotalSec } from './NodeCard.tsx'
+import { kindColor, kindLabel, nodeTitle } from './NodeCard.tsx'
 import type { CanvasTranslate } from './NodeCard.tsx'
 
 /** Renders the slots of the canvas's editors (`dv.canvas.editor`, `dv.canvas.picker`, `dv.canvas.preview`): the
@@ -51,11 +45,9 @@ export interface NodeEditorProps {
   state: WireState
   /** The operation declarations of `GET /api/dv/operations`; a take's editor shows the params of its operation. */
   operations: readonly WireOperation[]
-  /** The task labels of `GET /api/dv/tasks`; a take and a shot show their task by its label, else by its name. */
+  /** The task labels of `GET /api/dv/tasks`; a take shows its task by its label, else by its name. */
   taskLabels: WireTaskLabels
-  /** The registered chain anchors; a plan version is approved when one of them lists it for the plan's node. */
-  anchors: readonly ChainAnchor[]
-  /** The registered version kinds; reference chips, the picker and reference lists read versioned items through them. */
+  /** The registered version kinds; reference chips and the picker read versioned items through them. */
   versionKinds: readonly VersionKind[]
   client: DvClient
   project: string
@@ -259,9 +251,6 @@ const panel: CSSProperties = {
   boxShadow: '0 0 0 1px var(--dv-line-strong), var(--dv-shadow-2)', zIndex: 10, fontSize: 13, lineHeight: '20px',
 }
 const label: CSSProperties = { display: 'block', fontSize: 12, lineHeight: '16px', fontWeight: 500, color: 'var(--dv-text-2)', margin: '12px 0 4px' }
-/** A reference image in a reference chip, and one that stands in a shot prompt for its Picture N token. */
-const chipThumb: CSSProperties = { width: 24, height: 24, objectFit: 'cover', borderRadius: 'var(--dv-radius-sm)', flex: 'none' }
-const promptThumb: CSSProperties = { height: '1.4em', width: 'auto', verticalAlign: 'middle', borderRadius: 3, margin: '0 2px' }
 const field: CSSProperties = {
   width: '100%', boxSizing: 'border-box', background: 'var(--dv-surface-2)', color: 'var(--dv-text)',
   border: '1px solid var(--dv-line-strong)', borderRadius: 'var(--dv-radius-md)', padding: '6px 8px', fontFamily: 'inherit', fontSize: 13, lineHeight: '20px',
@@ -275,10 +264,6 @@ const secondaryButton: CSSProperties = { ...button, border: '1px solid var(--dv-
 const chip: CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 6px 2px 2px', borderRadius: 14, background: 'var(--dv-surface-3)', fontSize: 13, lineHeight: '20px' }
 /** The part of a reference chip that opens the reference: its thumbnail and its name. */
 const chipOpen: CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 4, padding: 0, border: 'none', background: 'transparent', color: 'inherit', font: 'inherit', cursor: 'pointer' }
-/** A small rounded tag in the plan editor: the duration and model-and-task chips of a shot. */
-const tag: CSSProperties = { height: 22, padding: '0 8px', display: 'inline-flex', alignItems: 'center', fontSize: 12, lineHeight: '16px', background: 'var(--dv-surface-3)' }
-/** The height a shot prompt is collapsed to until the reader expands it. */
-const PROMPT_COLLAPSED_HEIGHT = 140
 /** The model key params: the model-and-task line shows them, and a new take keeps them. */
 const MODEL_KEY = new Set(['modality', 'task', 'provider', 'model'])
 /** The params whose fields keep their element ID and localized label; any other param shows its key. */
@@ -468,7 +453,7 @@ const RESIZE_KEYS: Readonly<Record<string, readonly [number, number]>> = {
 }
 
 /**
- * The editor: a header with the kind, the title, "问 agent" and close (and, for a plan, its version row), above the body
+ * The editor: a header with the kind, the title, "问 agent" and close, above the body
  * of the node's kind. The title row moves the panel and a double click on it resets the panel; the handles on the right
  * edge, the bottom edge, and the bottom-right corner resize it.
  * @param props - the node, the state it came from, and the write callbacks.
@@ -480,16 +465,6 @@ export function NodeEditor(props: NodeEditorProps): ReactNode {
   // A node without its own title is titled by its kind, so the label beside the kind dot would repeat the title.
   const kind = kindLabel(node, t)
   const staleRecord = node.flags.stale ? node.record : null
-  // The plan version on show; the editor holds the choice so the header row and the shot list read the same version.
-  // A plan seed's ID is `plan:<PlanId>`.
-  const planVersions = node.kind === 'seed' && node.nodeKind.kind === 'plan'
-    ? props.state.components.plan.plans[node.id.slice(node.id.indexOf(':') + 1)] ?? []
-    : []
-  const [chosen, setChosen] = useState<number | null>(null)
-  const plan = planVersions.find(version => version.version === chosen) ?? planVersions.at(-1)
-  // The approved versions of the node are the union of what every chain anchor reports for it.
-  const approved = plan !== undefined
-    && props.anchors.some(anchor => anchor.approvedVersions?.(props.state, node.id).includes(plan.version) === true)
   const placement = useEditorPlacement()
   // The versioned item that a seed stands for: the item whose version kind names the seed's node.
   const item = node.kind === 'seed' ? findItem(props.state, props.versionKinds, (kind, id) => kind.node(id) === node.id) : null
@@ -507,9 +482,7 @@ export function NodeEditor(props: NodeEditorProps): ReactNode {
     case 'take': body = <TakeForm {...props} title={title} />; break
     case 'asset': body = <AssetPanel node={node} t={t} onRemoveFromCanvas={props.onRemoveFromCanvas} />; break
     case 'seed':
-      body = plan !== undefined
-        ? <PlanShots plan={plan} state={props.state} kinds={props.versionKinds} t={t} taskLabels={props.taskLabels} />
-        : <SeedForm {...props} node={node} />
+      body = <SeedForm {...props} node={node} />
       break
   }
   const { panelRef, rect, begin, follow, finish, reset, resizeBy } = placement
@@ -542,16 +515,8 @@ export function NodeEditor(props: NodeEditorProps): ReactNode {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
           </button>
         </div>
-        {plan !== undefined
-          ? (
-            <PlanHeader
-              versions={planVersions} plan={plan} approved={approved} state={props.state} kinds={props.versionKinds} t={t}
-              onChoose={setChosen}
-            />
-          )
-          : null}
       </header>
-      <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: plan !== undefined ? 12 : 16 }}>
+      <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: 16 }}>
         {staleRecord !== null
           ? (
             <p style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 0 8px', color: 'var(--dv-danger)' }}>
@@ -790,251 +755,6 @@ function SeedForm(props: NodeEditorProps & { node: Extract<CanvasNode, { kind: '
         asset={previewed} onClose={() => { setPreviewed(null) }} openerOf={() => opener.current}
         {...props.renderSlot === undefined ? {} : { renderSlot: props.renderSlot }}
       />
-    </>
-  )
-}
-
-/** One reference asset of a plan or a shot, with the name of what it shows and its `Picture N` number. */
-interface NamedReference {
-  asset: ProjectAsset
-  name: string
-  /** The 1-based `Picture N` number of an image; null for an asset that is not an image. */
-  picture: number | null
-}
-
-/**
- * The reference assets that reference texts stand for, of any media type, in input order (see `referenceAssets`), each
- * with the name of the item version it belongs to, else the asset's name, and the images numbered in `Picture N` order.
- * @param state - the branch state.
- * @param kinds - the registered version kinds.
- * @param references - the reference texts, in input order.
- * @returns the reference assets.
- */
-function namedReferences(state: WireState, kinds: readonly VersionKind[], references: readonly string[]): NamedReference[] {
-  let pictures = 0
-  return references.flatMap((ref) => {
-    const named = /^(.+)@(\d+)$/.exec(ref)
-    const itemName = named === null ? undefined : kinds.map(kind => kind.name(state, named[1] ?? '', Number(named[2]))).find(entry => entry !== null)
-    return referenceAssets(state, [ref], kinds)
-      .map(asset => ({ asset, name: itemName || asset.name, picture: isPicture(asset) ? ++pictures : null }))
-  })
-}
-
-/**
- * The label of one reference: "Picture N · name" for an image, else its name.
- * @param reference - the reference.
- * @param t - the canvas translate.
- * @returns the label.
- */
-function referenceLabel(reference: NamedReference, t: CanvasTranslate): string {
-  return reference.picture === null ? reference.name : t('editor.picture', { number: reference.picture, name: reference.name })
-}
-
-/**
- * One reference asset as a chip: its media and its label.
- * @param props - the reference and the canvas translate.
- * @returns the element.
- */
-function ReferenceChip({ reference, t }: { reference: NamedReference; t: CanvasTranslate }): ReactNode {
-  return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, height: 32, padding: '0 10px 0 4px', borderRadius: 'var(--dv-radius-md)', background: 'var(--dv-surface-3)', maxWidth: '100%' }}>
-      <AssetMedia asset={reference.asset} style={chipThumb} />
-      <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{referenceLabel(reference, t)}</span>
-    </span>
-  )
-}
-
-/**
- * The plan's second header row: the version switch, the chosen version's approval status, its shot count, total
- * duration and aspect ratio, and the plan's reference assets. The status is approved, awaiting approval (the latest
- * version only), or replaced by the next version.
- * @param props - every version, the chosen one, whether a chain anchor approved it, the branch state, the version
- * kinds, the canvas translate, and the version choice callback.
- * @returns the element.
- */
-function PlanHeader(
-  { versions, plan, approved, state, kinds, t, onChoose }: {
-    versions: PlanVersion[]
-    plan: PlanVersion
-    approved: boolean
-    state: WireState
-    kinds: readonly VersionKind[]
-    t: CanvasTranslate
-    onChoose: (version: number) => void
-  },
-): ReactNode {
-  // A version that a later version replaced before anyone approved it never waits for approval again.
-  const replaced = !approved && plan !== versions.at(-1)
-  let status = t('editor.planPending')
-  let tone = 'var(--dv-warn)'
-  if (approved) { status = t('editor.planApproved'); tone = 'var(--dv-ok)' }
-  else if (replaced) { status = t('editor.planReplaced', { version: plan.version + 1 }); tone = 'var(--dv-text-2)' }
-  const total = planTotalSec(plan.shots)
-  const summary = [t('node.planShots', { count: plan.shots.length }), ...total === null ? [] : [clockText(total)], ...plan.aspect_ratio === undefined ? [] : [plan.aspect_ratio]]
-  const references = namedReferences(state, kinds, plan.references ?? [])
-  return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
-      <div role="group" aria-label={t('editor.planVersions')} style={{ display: 'inline-flex', padding: 3, borderRadius: 'var(--dv-radius-md)', background: 'var(--dv-surface-3)' }}>
-        {versions.map((version) => {
-          const pressed = version === plan
-          return (
-            <button
-              key={version.version} type="button" aria-pressed={pressed} onClick={() => { onChoose(version.version) }}
-              className={pressed ? undefined : 'dv-canvas-btn'}
-              style={{
-                height: 24, padding: '0 10px', border: 'none', borderRadius: 'var(--dv-radius-sm)', fontFamily: 'inherit', fontSize: 12, lineHeight: '16px', cursor: 'pointer',
-                ...pressed ? { background: 'var(--dv-surface-1)', color: 'var(--dv-text)', fontWeight: 500, boxShadow: '0 0 0 1px var(--dv-line-strong)' } : { color: 'var(--dv-text-2)' },
-              }}
-            >
-              {t('node.planVersion', { version: version.version })}
-            </button>
-          )
-        })}
-      </div>
-      <span
-        data-testid="dv-canvas-plan-status"
-        style={{ height: 22, padding: '0 8px', display: 'inline-flex', alignItems: 'center', gap: 5, borderRadius: 9999, background: approved ? 'var(--dv-ok-soft)' : 'var(--dv-surface-3)', color: tone, fontSize: 12, lineHeight: '16px' }}
-      >
-        <span style={{ width: 6, height: 6, borderRadius: 9999, background: tone }} />{status}
-      </span>
-      <span style={{ fontSize: 12, lineHeight: '16px', color: 'var(--dv-text-2)' }}>{summary.join(' · ')}</span>
-      <span style={{ flex: 1 }} />
-      {references.length === 0
-        ? null
-        : (
-          <span style={{ display: 'inline-flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, fontSize: 12, lineHeight: '16px', color: 'var(--dv-text-2)' }}>
-            {t('editor.planReferences')}
-            {references.map((reference, index) => (
-              <span key={index} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                <AssetMedia asset={reference.asset} style={{ ...chipThumb, boxShadow: '0 0 0 1px var(--dv-line-strong)' }} />
-                <span style={{ color: 'var(--dv-text)' }}>{referenceLabel(reference, t)}</span>
-              </span>
-            ))}
-          </span>
-        )}
-    </div>
-  )
-}
-
-/**
- * The shots of one plan version as cards. Memoized, because a move or resize of the editor panel re-renders the editor
- * on every pointer move and the shot cards look up their reference assets.
- * @param props - the version, the branch state, the version kinds, the canvas translate, and the task labels.
- * @returns the element.
- */
-const PlanShots = memo(function PlanShots(
-  { plan, state, kinds, t, taskLabels }: {
-    plan: PlanVersion
-    state: WireState
-    kinds: readonly VersionKind[]
-    t: CanvasTranslate
-    taskLabels: WireTaskLabels
-  },
-): ReactNode {
-  return (
-    <ol aria-label={t('editor.shots')} style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 10 }}>
-      {plan.shots.map((shot, index) => (
-        <ShotCard
-          key={index} number={index + 1} shot={shot} references={namedReferences(state, kinds, shotReferences(plan, shot))}
-          t={t} taskLabels={taskLabels}
-        />
-      ))}
-    </ol>
-  )
-})
-
-const term: CSSProperties = { fontSize: 12, lineHeight: '16px', color: 'var(--dv-text-2)' }
-
-/**
- * One shot of a plan version as a card with exactly what the plan holds: number, duration, model and task, reference
- * assets, whether it continues the previous shot, and the prompt.
- * @param props - the 1-based shot number, the shot, its reference assets in input order, the canvas translate, and the
- * task labels.
- * @returns the element.
- */
-function ShotCard(
-  { number, shot, references, t, taskLabels }: {
-    number: number
-    shot: Shot
-    references: NamedReference[]
-    t: CanvasTranslate
-    taskLabels: WireTaskLabels
-  },
-): ReactNode {
-  const pick = useText()
-  let chips: ReactNode
-  if (shot.task === 't2v') chips = <span style={{ color: 'var(--dv-text-2)' }}>{t('editor.textOnlyReferences')}</span>
-  else if (references.length === 0) chips = <span style={{ color: 'var(--dv-text-2)' }}>{t('editor.none')}</span>
-  else chips = <span style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>{references.map((reference, index) => <ReferenceChip key={index} reference={reference} t={t} />)}</span>
-  return (
-    <li data-shot={number} style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 12, borderRadius: 'var(--dv-radius-lg)', background: 'var(--dv-surface-2)', boxShadow: '0 0 0 1px var(--dv-line)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span style={{ fontSize: 16, lineHeight: '24px', fontWeight: 500 }}>{t('node.shot', { shot: number })}</span>
-        {shot.duration_sec === undefined
-          ? null
-          : <span style={{ ...tag, ...mono, borderRadius: 'var(--dv-radius-sm)', color: 'var(--dv-text-2)' }}>{t('editor.seconds', { seconds: shot.duration_sec })}</span>}
-        <span data-testid="dv-canvas-shot-mode" style={{ ...tag, borderRadius: 9999, color: 'var(--dv-text)' }}>{t('editor.modelTaskValue', { model: shot.model, task: pick(...taskLabel(shot.task, taskLabels)) })}</span>
-      </div>
-      <dl style={{ margin: 0, display: 'grid', gridTemplateColumns: '72px minmax(0, 1fr)', gap: '8px 12px', alignItems: 'center' }}>
-        <dt style={term}>{t('editor.references')}</dt>
-        <dd style={{ margin: 0, minWidth: 0 }}>{chips}</dd>
-        <dt style={term}>{t('editor.firstFrame')}</dt>
-        <dd style={{ margin: 0, color: 'var(--dv-text-2)' }}>{shot.continue_previous === true ? t('editor.continuePrevious') : t('editor.firstFrameNone')}</dd>
-        <dt style={{ ...term, alignSelf: 'start', paddingTop: 10 }}>{t('editor.prompt')}</dt>
-        <dd style={{ margin: 0, minWidth: 0 }}><PromptBox prompt={shot.prompt} references={references} t={t} /></dd>
-      </dl>
-    </li>
-  )
-}
-
-/**
- * A shot prompt in full, with each `Picture N` token drawn as that reference image. A prompt taller than
- * {@link PROMPT_COLLAPSED_HEIGHT} starts collapsed under a fade, with a toggle that shows all of it.
- * @param props - the prompt, the shot's reference assets with their `Picture N` numbers, and the canvas translate.
- * @returns the element.
- */
-function PromptBox({ prompt, references, t }: { prompt: string; references: NamedReference[]; t: CanvasTranslate }): ReactNode {
-  const [expanded, setExpanded] = useState(false)
-  const [overflows, setOverflows] = useState(false)
-  const box = useRef<HTMLDivElement | null>(null)
-  // Measure after layout: only a prompt taller than the collapsed height gets the fade and the toggle.
-  useLayoutEffect(() => {
-    if (box.current !== null) setOverflows(box.current.scrollHeight > PROMPT_COLLAPSED_HEIGHT)
-  }, [prompt])
-  const collapsed = overflows && !expanded
-  return (
-    <>
-      <div
-        ref={box}
-        style={{
-          position: 'relative', maxHeight: expanded ? 'none' : PROMPT_COLLAPSED_HEIGHT, overflow: 'hidden', boxSizing: 'border-box', padding: '10px 12px',
-          borderRadius: 'var(--dv-radius-md)', background: 'var(--dv-surface-1)', boxShadow: 'inset 0 0 0 1px var(--dv-line)',
-        }}
-      >
-        <p style={{ margin: 0, fontSize: 13, lineHeight: '20px', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
-          {pictureParts(prompt).map((part, position) => {
-            const image = 'picture' in part ? references.find(reference => reference.picture === part.picture) : undefined
-            return image === undefined
-              ? <span key={position}>{part.text}</span>
-              : (
-                <img
-                  key={position} src={assetUrl(image.asset.id)} alt={part.text} title={part.text} style={promptThumb} draggable={false}
-                />
-              )
-          })}
-        </p>
-        {collapsed ? <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 40, background: 'linear-gradient(to bottom, transparent, var(--dv-surface-1))' }} /> : null}
-      </div>
-      {overflows
-        ? (
-          <button
-            type="button" aria-expanded={expanded} onClick={() => { setExpanded(!expanded) }}
-            style={{ marginTop: 6, padding: 0, border: 'none', background: 'transparent', color: 'var(--dv-accent-text)', fontFamily: 'inherit', fontSize: 12, lineHeight: '16px', cursor: 'pointer' }}
-          >
-            {expanded ? t('editor.collapsePrompt') : t('editor.expandPrompt')}
-          </button>
-        )
-        : null}
     </>
   )
 }
