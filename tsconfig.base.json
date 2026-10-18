@@ -354,6 +354,7 @@
       "@dv/ui-mcp-presets": ["./packages/dv/ui-mcp-presets/src/index.ts"],
       "@dv/ui-shell": ["./packages/dv/ui-shell/src/index.ts"],
       "@dv/ui-timeline": ["./packages/dv/ui-timeline/src/index.ts"],
+      "@dv/workflow-kit": ["./packages/dv/workflow-kit/src/index.ts"],
       // BEGIN generated package aliases — pnpm run gen-tsconfig-paths
       "@deepseek-ai/dsh-acp": ["./packages/acp/acp/src"],
       "@deepseek-ai/dsh-acp-app": ["./packages/bundle/acp-app/src"],

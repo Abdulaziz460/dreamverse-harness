@@ -7937,6 +7937,28 @@ importers:
         specifier: ^18.2.0
         version: 18.3.1(react@18.3.1)
 
+  packages/dv/workflow-kit:
+    dependencies:
+      '@dv/generation':
+        specifier: workspace:*
+        version: link:../generation
+      '@dv/models':
+        specifier: workspace:*
+        version: link:../models
+      '@dv/project':
+        specifier: workspace:*
+        version: link:../project
+      '@dv/shot-plan':
+        specifier: workspace:*
+        version: link:../shot-plan
+      '@dv/timeline':
+        specifier: workspace:*
+        version: link:../timeline
+    devDependencies:
+      '@types/node':
+        specifier: ^22.20.0
+        version: 22.20.0
+
   packages/experimental/agent-team:
     dependencies:
       '@deepseek-ai/dsh-brand':
