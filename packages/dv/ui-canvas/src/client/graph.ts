@@ -43,7 +43,7 @@ export interface CanvasNode {
   bibleId?: string
   /** For plan nodes, the `PlanId` (`p1`). */
   planId?: string
-  /** For a take whose operation `/api/dv/operations` lists, the operation label; shown when `title` is empty. */
+  /** For a take, its operation's label in `/api/dv/operations`, else the operation name; shown when `title` is empty. */
   label?: string
   title: string
   subtitle: string
@@ -295,7 +295,7 @@ export function buildCanvasGraph(
     })
   }
   for (const record of proj.records) {
-    const label = labels.get(record.operation ?? '')
+    const label = labels.get(record.operation ?? '') ?? record.operation ?? undefined
     if (record.operation === 'asset.import') {
       // An import off the canvas stays in the asset pool only.
       const imported = record.outputs.find(id => isImage(id) || isVideo(id))
