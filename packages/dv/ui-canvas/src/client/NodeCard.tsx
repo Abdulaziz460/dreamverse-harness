@@ -167,12 +167,13 @@ export function NodeCard(
   else if (flags.failed) marker = take ? t('node.renderFailed') : t('node.failed')
   const dot = <span style={{ flex: 'none', width: size(6), height: size(6), borderRadius: 9999, background: kindColor(node) }} />
   const stale = flags.stale ? <span style={{ ...text(12), flex: 'none', color: 'var(--dv-danger)' }}>{t('node.stale')}</span> : null
-  // Deterministic-edit badges, such as 已裁剪: over the frame's bottom-left corner, or a row under a card without a frame.
+  // The badges of the registered `TakesInUse` descriptors, such as 已裁剪: over the frame's bottom-left corner, or a row
+  // under a card without a frame.
   const badges = (overFrame: boolean): ReactNode => node.badges.length === 0
     ? null
     : (
       <span style={overFrame ? { position: 'absolute', left: 6, bottom: 6, display: 'flex', gap: 4 } : { display: 'flex', gap: 4, padding: '0 10px 10px' }}>
-        {node.badges.map(badge => <span key={badge} style={{ ...text(12), padding: '0 6px', borderRadius: 'var(--dv-radius-sm)', background: 'var(--dv-surface-3)', color: 'var(--dv-text-2)' }}>{badge === 'trim' ? t('badge.trim') : badge}</span>)}
+        {node.badges.map(badge => <span key={badge} style={{ ...text(12), padding: '0 6px', borderRadius: 'var(--dv-radius-sm)', background: 'var(--dv-surface-3)', color: 'var(--dv-text-2)' }}>{badge}</span>)}
       </span>
     )
   // The kind label beside the dot, followed by a seed's subtitle or a plan's version.

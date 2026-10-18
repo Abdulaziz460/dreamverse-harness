@@ -4,14 +4,14 @@
  * on the project's canvas list (see {@link buildCanvasGraph}), a plan at its latest version, each node that a registered
  * `NodeKind` draws from its own slice, and the generation records that make up the current state: the takes of the
  * newest chain on each anchor node, every take without an anchored chain, and every take whose outputs are in use.
- * Deterministic edits (still grabs, timeline records) do not become nodes; a timeline trim shows as a badge on the take
- * it shortened.
+ * Deterministic edits (still grabs, timeline records) do not become nodes; a badge that a `TakesInUse` reports for an
+ * asset, such as the trim of a timeline clip, shows on the node of that asset.
  */
 import { chainOf } from '@dv/ui-kit/chain.ts'
 import type { DvLanguage } from '@dv/ui-kit/locale.ts'
 import type { ChainAnchor, NodeKind, NodeSeed, TakesInUse } from '@dv/ui-kit/registries.ts'
 import type {
-  Character, Clip, Location, NodePosition, PlanVersion, ProjectRecord, RecordInput, StoryBibleState, Style, WireState,
+  Character, Location, NodePosition, PlanVersion, ProjectRecord, RecordInput, StoryBibleState, Style, WireState,
   WireOperation,
 } from '@dv/ui-kit/types.ts'
 import { versionRefOf } from '@dv/ui-kit/references.ts'
@@ -59,7 +59,7 @@ interface CanvasNodeFields {
   /** The record behind the node; for story bible, plan and seed nodes, the record that wrote the shown version. */
   record: ProjectRecord | null
   flags: CanvasNodeFlags
-  /** Short labels of deterministic edits applied to the node's asset, such as `trim`. */
+  /** The labels that the registered `TakesInUse` descriptors report for the node's assets, such as 已裁剪. */
   badges: string[]
   /** For a take in a group of several takes (see {@link numberTakes}), this take's 1-based number; null otherwise. */
   take: number | null
@@ -162,24 +162,19 @@ function anchorChains(records: ReadonlyMap<string, ProjectRecord>, anchors: read
 }
 
 /**
- * The records whose outputs the core's own reads of the story bible, plan and timeline slices find in use: the
- * producers of the references of each current story bible and plan version, and the record of each timeline clip.
+ * The records whose outputs the core's own reads of the story bible and plan slices find in use: the producers of the
+ * references of each current story bible and plan version.
  * @param state - a project state.
  * @param plans - the latest version of each plan.
  * @returns the record IDs.
  */
 function coreUses(state: WireState, plans: readonly PlanVersion[]): string[] {
   const proj = state.components.proj
-  const clipRecord = (clip: Clip): string | undefined =>
-    clip.source?.record ?? (clip.asset === null ? undefined : proj.created_by[clip.asset])
   const references = [
     ...bibleItems(state).flatMap(({ versions }) => versions.at(-1)?.references ?? []),
     ...plans.flatMap(latest => [...latest.references ?? [], ...latest.shots.flatMap(shot => shot.references ?? [])]),
   ]
-  return [
-    ...state.components.timeline.timelines.flatMap(timeline => timeline.clips.map(clipRecord)),
-    ...references.map(reference => proj.created_by[reference]),
-  ].filter(id => id !== undefined)
+  return references.map(reference => proj.created_by[reference]).filter(id => id !== undefined)
 }
 
 /**
@@ -194,7 +189,7 @@ function coreUses(state: WireState, plans: readonly PlanVersion[]): string[] {
  * @param state - a project state.
  * @param isRender - whether a record generated media ({@link isGenerationRecord}); its outputs are takes the creator judges.
  * @param chains - the anchored chains of the records.
- * @param used - the records whose outputs are in use: timeline clips, references, and the `uses` of each `TakesInUse`.
+ * @param used - the records whose outputs are in use: references, and the `uses` of each `TakesInUse`, such as timeline clips.
  * @returns the record IDs.
  */
 function drawnTakes(
@@ -280,7 +275,8 @@ export function bibleVersions(state: WireState, id: string): Character[] | Locat
  * @param operations - the operation declarations; none by default, so each record's own facts decide whether it is a take.
  * @param language - the language of the operation labels.
  * @param anchors - the registered chain anchors; none by default, so every take is a free take.
- * @param inUse - the registered `TakesInUse` descriptors, whose records are drawn.
+ * @param inUse - the registered `TakesInUse` descriptors, whose records are drawn and whose badges label the nodes of their
+ *   assets.
  * @param nodeKinds - the registered node kinds, whose seeds are drawn.
  * @returns the nodes and edges.
  */
@@ -431,7 +427,7 @@ export function buildCanvasGraph(
     if (node.chain !== undefined) addEdge(node.chain.anchor, node.id, 'chain')
     if (record.based_on !== null) addEdge(record.based_on, node.id, 'take')
   }
-  addBadges(state, nodes, nodeOfAsset)
+  addBadges(state, inUse, nodes, nodeOfAsset)
   numberTakes(nodes, edges)
   layout(inTakeOrder(nodes), edges)
   const assetNodes: Record<string, string> = {}
@@ -493,21 +489,20 @@ function inTakeOrder(nodes: readonly CanvasNode[]): CanvasNode[] {
 }
 
 /**
- * Mark takes that a timeline trims: a timeline clip with an in or out point.
+ * Put the badges that the registered `TakesInUse` descriptors report, such as the trim of a timeline clip, on the node of
+ * each badge's asset, once per label.
  * @param state - the project state.
+ * @param inUse - the registered `TakesInUse` descriptors.
  * @param nodes - the drawn nodes, badged in place.
  * @param nodeOfAsset - resolves an asset to its node.
  */
-function addBadges(state: WireState, nodes: CanvasNode[], nodeOfAsset: (assetId: string | null) => string | null): void {
+function addBadges(
+  state: WireState, inUse: readonly TakesInUse[], nodes: CanvasNode[], nodeOfAsset: (assetId: string | null) => string | null,
+): void {
   const byId = new Map(nodes.map(node => [node.id, node]))
-  const badge = (id: string | null, label: string): void => {
-    const node = id === null ? undefined : byId.get(id)
+  for (const { asset, label } of inUse.flatMap(descriptor => descriptor.badges?.(state) ?? [])) {
+    const node = byId.get(nodeOfAsset(asset) ?? '')
     if (node !== undefined && !node.badges.includes(label)) node.badges.push(label)
-  }
-  for (const timeline of state.components.timeline.timelines) {
-    for (const clip of timeline.clips) {
-      if (clip.in_sec !== null || clip.out_sec !== null) badge(nodeOfAsset(clip.asset), 'trim')
-    }
   }
 }
 

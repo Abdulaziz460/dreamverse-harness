@@ -1,0 +1,68 @@
+/** The takes that the timelines use, as the canvas reads them, and their registration in `dvCanvas`. */
+import { describe, expect, it, vi } from 'vitest'
+import { Context } from '@deepseek-ai/cordis'
+import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
+import { createRegistry } from '@dv/ui-kit/registries.ts'
+import type { ChainAnchor, DvCanvas, NodeKind, TakesInUse, VersionKind } from '@dv/ui-kit/registries.ts'
+import { fixtureState } from '../../ui-kit/tests/fixture.client.tsx'
+import { TIMELINE_ID } from '../src/client/definition.ts'
+import { apply } from '../src/client/index.ts'
+import { zh } from '../src/client/locales.ts'
+import { timelineTakesInUse } from '../src/client/takes-in-use.ts'
+
+/** Translate with the Chinese dictionary. */
+const t = makeTranslate(zh)
+
+describe('timelineTakesInUse', () => {
+  it('uses the record behind each clip: the render a placeholder clip waits for, else the producer of the clip asset', () => {
+    const state = fixtureState()
+    state.components.timeline.timelines.push({
+      id: 't2', name: '', clips: [
+        { id: 'cl3', asset: null, source: { record: 'g3', output: 0 }, in_sec: null, out_sec: null },
+        { id: 'cl4', asset: 'unknown.mp4', source: null, in_sec: null, out_sec: null },
+      ],
+    })
+    const descriptor = timelineTakesInUse(t)
+    expect(descriptor.id).toBe(TIMELINE_ID)
+    expect(descriptor.uses(state)).toEqual(['g1', 'g2', 'g3'])
+  })
+
+  it('puts the trim label on the asset of each clip with an in or out point', () => {
+    const state = fixtureState()
+    state.components.timeline.timelines.push({
+      id: 't2', name: '', clips: [
+        { id: 'cl3', asset: 'shot1.mp4', source: null, in_sec: null, out_sec: 2 },
+        { id: 'cl4', asset: null, source: { record: 'g3', output: 0 }, in_sec: 1, out_sec: null },
+      ],
+    })
+    expect(timelineTakesInUse(t).badges?.(state)).toEqual([
+      { asset: 'shot2.mp4', label: '已裁剪' }, { asset: 'shot1.mp4', label: '已裁剪' },
+    ])
+  })
+})
+
+describe('ui-timeline takes in use', () => {
+  it('registers once dvCanvas is present, and the plugin disposal removes it', async () => {
+    const ctx = new Context()
+    const canvas: DvCanvas = {
+      nodeKinds: createRegistry<NodeKind>(kind => [kind.id]),
+      chainAnchors: createRegistry<ChainAnchor>(anchor => [anchor.starter]),
+      takesInUse: createRegistry<TakesInUse>(uses => [uses.id]),
+      versionKinds: createRegistry<VersionKind>(kind => [kind.kind]),
+    }
+    const locale = { bind: vi.fn(() => t), register: vi.fn(() => () => undefined) }
+    const slots = { inject: vi.fn(() => () => undefined) }
+    const tabs = { register: vi.fn(() => () => undefined) }
+    ctx.provide('locale', locale as never)
+    ctx.provide('slots', slots as never)
+    ctx.provide('sidebarRightTabs', tabs as never)
+    const fiber = ctx.plugin({ apply })
+    await fiber.await()
+    expect(canvas.takesInUse.list()).toEqual([])
+    ctx.provide('dvCanvas', canvas)
+    await vi.waitFor(() => { expect(canvas.takesInUse.list().map(entry => entry.id)).toEqual([TIMELINE_ID]) })
+    expect(canvas.takesInUse.list()[0]?.uses(fixtureState())).toEqual(['g1', 'g2'])
+    await fiber.dispose()
+    expect(canvas.takesInUse.list()).toEqual([])
+  })
+})

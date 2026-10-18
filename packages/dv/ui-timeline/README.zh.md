@@ -33,7 +33,7 @@ kind: "package-reference"
   name: '@dv/ui-timeline'
 ```
 
-Host 半边不注册任何东西。浏览器半边注册 `dv-timeline` 标签类型（侧栏指南页以"时间线"提供）、中英文的 `dvTimeline` locale 命名空间，以及以自身 id `@dv/ui-timeline` 为键的标签主体。带 `{timelineId, clipId}` 的 `dv:timeline-focus` 窗口事件让编辑器选中该时间线的那个片段，并把播放头移到片段开头。
+Host 半边不注册任何东西。浏览器半边注册 `dv-timeline` 标签类型（侧栏指南页以"时间线"提供）、中英文的 `dvTimeline` locale 命名空间，以及以自身 id `@dv/ui-timeline` 为键的标签主体。只要 `@dv/ui-canvas` 的画布服务 `dvCanvas` 存在，它还以同一 id 注册一个 `TakesInUse`：对每条时间线的每个片段，它使用该片段等待的渲染（`source.record`），否则使用片段素材的生成记录，于是画布画出时间线播放的版本；它还在每个有入点或出点的片段的素材上加 已裁剪 / Trimmed 标记。带 `{timelineId, clipId}` 的 `dv:timeline-focus` 窗口事件让编辑器选中该时间线的那个片段，并把播放头移到片段开头。
 
 | 手势 | 记录 |
 | --- | --- |
@@ -68,6 +68,7 @@ DOM 带测试 ID `dv-timeline-body`、`dv-timeline-editor`、`dv-timeline-viewer
 | [`src/client/TimelineView.tsx`](src/client/TimelineView.tsx) | 中央视图：状态和写入 |
 | [`src/client/TimelineEditor.tsx`](src/client/TimelineEditor.tsx) | 编辑器：标签、预览、工具栏、标尺、轨道、手势 |
 | [`src/client/timelines.ts`](src/client/timelines.ts) | 片段摆放、放下位置、时间码 |
+| [`src/client/takes-in-use.ts`](src/client/takes-in-use.ts) | 画布的 `TakesInUse`：片段记录和裁剪标记 |
 | [`src/client/first-frame.ts`](src/client/first-frame.ts) | 视频的首帧，每个页面只读一次；没有静帧图的轨道片段把它沿整个宽度重复铺满 |
 | [`src/client/player.ts`](src/client/player.ts) | 跨片段连续播放 |
 | [`src/client/waveform.ts`](src/client/waveform.ts) | 原声轨道的音频解码、峰值包络和波形条 |

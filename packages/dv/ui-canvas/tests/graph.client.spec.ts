@@ -10,6 +10,18 @@ import { buildCanvasGraph, freePositions, NODE_WIDTH, ROW, slotFrames } from '..
 const anchorOf = (starter: string): ChainAnchor => ({ starter, anchor: approval => `plan:${String(approval.params['plan'])}` })
 const APPROVAL = anchorOf('plan.approve')
 
+/**
+ * A `TakesInUse` of the timeline clips, as a timeline UI half reports them: the producer of each clip's asset, and the label
+ * `trim` on the asset of each clip with an in point.
+ */
+const CLIPS: TakesInUse = {
+  id: 'clips',
+  uses: state => state.components.timeline.timelines.flatMap(timeline => timeline.clips)
+    .flatMap(clip => state.components.proj.created_by[clip.asset ?? ''] ?? []),
+  badges: state => state.components.timeline.timelines.flatMap(timeline => timeline.clips)
+    .filter(clip => clip.in_sec !== null).map(clip => ({ asset: clip.asset ?? '', label: 'trim' })),
+}
+
 /** Six shot prompts of plan p1 version 1; versions 2 and 3 change shot 3 and add shot 7, version 4 returns to these. */
 const PROMPTS = ['rain', 'alley', 'door', 'stairs', 'roof', 'dawn']
 
@@ -94,12 +106,12 @@ function byRecordOrder(a: string | string[], b: string | string[]): number {
  * @returns the pairs, in node order.
  */
 function drawn(state: WireState): string[][] {
-  return buildCanvasGraph(state, undefined, [], 'zh', [APPROVAL]).nodes.map(node => [node.id, node.kind])
+  return buildCanvasGraph(state, undefined, [], 'zh', [APPROVAL], [CLIPS]).nodes.map(node => [node.id, node.kind])
 }
 
 describe('buildCanvasGraph', () => {
   it('draws characters, locations, styles, plans, and takes, and hides reference imports, exports, still grabs, and timeline records', () => {
-    const graph = buildCanvasGraph(fixtureState(), undefined, OPERATIONS)
+    const graph = buildCanvasGraph(fixtureState(), undefined, OPERATIONS, 'zh', [], [CLIPS])
     expect(graph.nodes.map(node => [node.id, node.kind])).toEqual([
       ['bible:hero', 'bible'], ['plan:p1', 'plan'], ['g1', 'take'], ['g2', 'take'], ['g3', 'take'],
     ])
@@ -108,6 +120,8 @@ describe('buildCanvasGraph', () => {
     expect(byId.get('g1')).toMatchObject({ thumb: 'shot1-last.png', video: 'shot1.mp4', durationSec: 4 })
     expect(byId.get('g2')?.flags.stale).toBe(true)
     expect(byId.get('g2')?.badges).toEqual(['trim'])
+    // The core puts no badge of its own: without a TakesInUse that reports the trim, the trimmed take has none.
+    expect(buildCanvasGraph(fixtureState(), undefined, OPERATIONS).nodes.find(node => node.id === 'g2')?.badges).toEqual([])
     expect(byId.get('g3')?.flags).toMatchObject({ rendering: true })
     expect(graph.edges).toEqual([
       { from: 'bible:hero', to: 'g1', kind: 'reference' },
@@ -197,7 +211,7 @@ describe('buildCanvasGraph', () => {
   })
 
   it('shows the latest plan version and the current take of each of its shots, not every take ever rendered', () => {
-    const graph = buildCanvasGraph(rollbackProject(), undefined, [], 'zh', [APPROVAL])
+    const graph = buildCanvasGraph(rollbackProject(), undefined, [], 'zh', [APPROVAL], [CLIPS])
     // v4 has 6 shots and its approval reused every v1 take: no shot 7, no v2 or v3 take, no retake of the removed shot.
     expect(graph.nodes.map(node => [node.id, node.kind])).toEqual([
       ['bible:hero', 'bible'], ['plan:p1', 'plan'], ...['r1', 'r2', 'r3', 'r4', 'r5', 'r6'].map(id => [id, 'take']),

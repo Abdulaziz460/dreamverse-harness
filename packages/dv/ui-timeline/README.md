@@ -33,7 +33,7 @@ The editor also has a toolbar and a ruler, and each clip carries its producer's 
   name: '@dv/ui-timeline'
 ```
 
-The Host half registers nothing. The browser half registers the `dv-timeline` tab type (offered by the Sidebar's guide page as "Timeline"), the `dvTimeline` locale namespace in Chinese and English, and the tab body under its own id `@dv/ui-timeline`. A `dv:timeline-focus` window event with `{timelineId, clipId}` makes the editor select that clip of the timeline and move the playhead to its start.
+The Host half registers nothing. The browser half registers the `dv-timeline` tab type (offered by the Sidebar's guide page as "Timeline"), the `dvTimeline` locale namespace in Chinese and English, and the tab body under its own id `@dv/ui-timeline`. While the canvas service `dvCanvas` of `@dv/ui-canvas` is present, it also registers a `TakesInUse` under the same id: it uses, for each clip of every timeline, the render the clip waits for (`source.record`), else the producer of the clip's asset, so the canvas draws the takes that the timelines play; and it puts the badge 已裁剪 / Trimmed on the asset of each clip with an in or out point. A `dv:timeline-focus` window event with `{timelineId, clipId}` makes the editor select that clip of the timeline and move the playhead to its start.
 
 | Gesture | Record |
 | --- | --- |
@@ -68,6 +68,7 @@ The DOM carries test IDs `dv-timeline-body`, `dv-timeline-editor`, `dv-timeline-
 | [`src/client/TimelineView.tsx`](src/client/TimelineView.tsx) | The center view: state and writes |
 | [`src/client/TimelineEditor.tsx`](src/client/TimelineEditor.tsx) | The editor: tabs, viewer, toolbar, ruler, tracks, gestures |
 | [`src/client/timelines.ts`](src/client/timelines.ts) | Clip placement, drop position, timecode |
+| [`src/client/takes-in-use.ts`](src/client/takes-in-use.ts) | The `TakesInUse` of the canvas: clip records and trim badges |
 | [`src/client/first-frame.ts`](src/client/first-frame.ts) | The first frame of a video, read once per page; a track clip without a still image repeats it across its width |
 | [`src/client/player.ts`](src/client/player.ts) | Continuous playback across clips |
 | [`src/client/waveform.ts`](src/client/waveform.ts) | Audio decoding, peak envelopes, and waveform bars of the 原声 track |

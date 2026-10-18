@@ -79,11 +79,14 @@ function mount(
 
 describe('CanvasView', () => {
   it('draws the project\'s current state with nodes at stored positions, stores the others\' spots, and stores a dragged position', async () => {
-    const { view, node, layoutWrites } = mount()
+    const canvas = createDvCanvas()
+    canvas.takesInUse.register({ id: 'clips', uses: () => [], badges: () => [{ asset: 'shot2.mp4', label: '已裁剪' }] })
+    const { view, node, layoutWrites } = mount(true, undefined, false, OPERATIONS, canvas)
     await waitFor(() => { node('g3') })
     expect(node('g1').style.left).toBe('10px')
     expect(node('g2').getAttribute('data-node-stale')).toBe('true')
-    expect(view.getByText(zh['badge.trim'])).toBeTruthy()
+    // A badge that a TakesInUse reports for an asset shows on that asset's take as given.
+    expect(within(node('g2')).getByText('已裁剪')).toBeTruthy()
     // Every node without a stored position gets its spot stored once, without the viewport.
     await waitFor(() => { expect(layoutWrites).toHaveLength(1) })
     expect(layoutWrites[0]).toEqual({ project: 'p1', positions: expect.objectContaining({ g2: { x: 720, y: 0 } }) })

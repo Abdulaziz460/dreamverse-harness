@@ -29,7 +29,6 @@
   "packages/dv/ui-canvas/src/client/CanvasView.tsx R5b components.plan": 2,
   "packages/dv/ui-canvas/src/client/graph.ts R5b components.bible": 2,
   "packages/dv/ui-canvas/src/client/graph.ts R5b components.plan": 1,
-  "packages/dv/ui-canvas/src/client/graph.ts R5b components.timeline": 2,
   "packages/dv/ui-canvas/src/client/graph.ts R5c bible": 3,
   "packages/dv/ui-canvas/src/client/graph.ts R5c character": 1,
   "packages/dv/ui-canvas/src/client/graph.ts R5c location": 1,
