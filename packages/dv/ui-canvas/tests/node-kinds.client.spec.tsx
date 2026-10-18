@@ -156,7 +156,7 @@ describe('node kinds', () => {
     // 添加素材 opens the canvas's picker of assets only; the write carries the canvas's project, session and surface.
     fireEvent.click(within(editor).getByText('＋ 添加素材'))
     const picker = await view.findByTestId('dv-canvas-asset-picker')
-    expect(picker.textContent).not.toContain(zh['picker.bible'])
+    expect(picker.textContent).not.toContain('角色')
     const tile = await waitFor(() => {
       const found = picker.querySelector('[data-asset-id="shot1.mp4"]')
       if (!(found instanceof HTMLElement)) throw new Error('no shot1.mp4 tile')

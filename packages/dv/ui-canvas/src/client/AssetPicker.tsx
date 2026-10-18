@@ -1,10 +1,10 @@
 /**
- * The asset pool as the canvas editors use it: the picker that adds references (the items of the registered version
- * kinds, then the `dv.canvas.picker` entry at key `assets`, which `@dv/ui-asset-pool` fills with its asset pool panel and
- * import drop zone), the preview of one asset (the `dv.canvas.preview` entry at key `assets`, the asset pool's preview),
- * and the thumbnail of an image or a video asset. Without a slot renderer the picker offers only the items and the
- * preview shows nothing. The picker and the preview render on `document.body` and close on Escape before the canvas sees
- * the key, so the editor beneath them stays open.
+ * The asset pool as the canvas editors use it: the picker that adds references (the items of each registered version
+ * kind under the kind's label, then the `dv.canvas.picker` entry at key `assets`, which `@dv/ui-asset-pool` fills
+ * with its asset pool panel and import drop zone), the preview of one asset (the `dv.canvas.preview` entry at key
+ * `assets`, the asset pool's preview), and the thumbnail of an image or a video asset. Without a slot renderer the
+ * picker offers only the items and the preview shows nothing. The picker and the preview render on `document.body`
+ * and close on Escape before the canvas sees the key, so the editor beneath them stays open.
  *
  * @module @dv/ui-canvas/AssetPicker
  */
@@ -77,7 +77,8 @@ export interface AssetPickerProps {
   /** The chat session the canvas sits beside, recorded as the `session` of the picker's imports. */
   session: string | null
   t: CanvasTranslate
-  /** The version kinds whose items the picker offers at their newest version; none for a picker of assets only. */
+  /** The version kinds whose items the picker offers at their newest version, one section per kind; none for a picker of
+   *  assets only. */
   kinds: readonly VersionKind[]
   /** The references the editor already holds; an item version among them is not offered again. */
   chosen: readonly string[]
@@ -89,8 +90,8 @@ export interface AssetPickerProps {
 }
 
 /**
- * The picker: the newest version of each item of `kinds`, then the asset pool panel of the `dv.canvas.picker` entry,
- * whose clicks pick assets.
+ * The picker: for each kind of `kinds` that offers an item, a section titled with the kind's label that holds the newest
+ * version of each of its items, then the asset pool panel of the `dv.canvas.picker` entry, whose clicks pick assets.
  * A click toggles an item; the confirm button hands over every picked reference.
  * @param props - the project, the offered kinds, and the callbacks.
  * @returns the dialog.
@@ -103,11 +104,14 @@ export function AssetPicker(props: AssetPickerProps): ReactNode {
     setPicked(current => current.includes(ref) ? current.filter(other => other !== ref) : [...current, ref])
   }
   const assets = new Map(props.state.assets.map(asset => [asset.id, asset]))
-  const bible = props.kinds.flatMap(kind => kind.latest(props.state).flatMap(({ id, version }) => {
-    const ref = `${id}@${String(version)}`
-    if (props.chosen.includes(ref)) return []
-    return [{ ref, name: kind.name(props.state, id, version) || id, cover: assets.get(kind.assets(props.state, id, version)[0] ?? '') }]
-  }))
+  // One section per kind that offers an item, titled with the kind's label.
+  const sections = props.kinds.map(kind => ({
+    kind: kind.kind, title: kind.label(), items: kind.latest(props.state).flatMap(({ id, version }) => {
+      const ref = `${id}@${String(version)}`
+      if (props.chosen.includes(ref)) return []
+      return [{ ref, name: kind.name(props.state, id, version) || id, cover: assets.get(kind.assets(props.state, id, version)[0] ?? '') }]
+    }),
+  })).filter(section => section.items.length > 0)
   const pickedSet = new Set(picked)
   // The asset pool panel marks each tile with `data-asset-id`; the picker rings the picked ones.
   const pickedRing = picked.length === 0
@@ -117,24 +121,22 @@ export function AssetPicker(props: AssetPickerProps): ReactNode {
     <div role="dialog" aria-modal="true" aria-label={t('picker.title')} data-testid="dv-canvas-asset-picker" style={overlay} onClick={onCancel}>
       <div style={dialog} onClick={(event) => { event.stopPropagation() }}>
         <h2 style={{ margin: 0, padding: '16px 16px 0', fontSize: 16, lineHeight: '24px', fontWeight: 600 }}>{t('picker.title')}</h2>
-        {bible.length === 0
-          ? null
-          : (
-            <section style={{ padding: '12px 16px 0' }}>
-              <h3 style={sectionTitle}>{t('picker.bible')}</h3>
-              <div style={grid}>
-                {bible.map(item => (
-                  <button
-                    key={item.ref} type="button" aria-pressed={pickedSet.has(item.ref)} onClick={() => { toggle(item.ref) }}
-                    style={{ ...tile, boxShadow: pickedSet.has(item.ref) ? '0 0 0 2px var(--dv-accent)' : '0 0 0 1px var(--dv-line)' }}
-                  >
-                    <AssetMedia asset={item.cover} style={tileMedia} />
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</span>
-                  </button>
-                ))}
-              </div>
-            </section>
-          )}
+        {sections.map(section => (
+          <section key={section.kind} style={{ padding: '12px 16px 0' }}>
+            <h3 style={sectionTitle}>{section.title}</h3>
+            <div style={grid}>
+              {section.items.map(item => (
+                <button
+                  key={item.ref} type="button" aria-pressed={pickedSet.has(item.ref)} onClick={() => { toggle(item.ref) }}
+                  style={{ ...tile, boxShadow: pickedSet.has(item.ref) ? '0 0 0 2px var(--dv-accent)' : '0 0 0 1px var(--dv-line)' }}
+                >
+                  <AssetMedia asset={item.cover} style={tileMedia} />
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</span>
+                </button>
+              ))}
+            </div>
+          </section>
+        ))}
         <div style={{ flex: 1, minHeight: 0 }}>
           {pickedRing === null ? null : <style>{pickedRing}</style>}
           {props.renderSlot?.('dv.canvas.picker', {

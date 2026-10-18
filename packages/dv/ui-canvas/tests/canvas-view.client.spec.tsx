@@ -393,6 +393,7 @@ describe('CanvasView', () => {
   })
 
   it('添加素材 adds the characters, locations and assets picked in the picker as references of the take, and an asset chip opens its preview', async () => {
+    document.documentElement.lang = 'zh-CN'
     const { runtime, view, node, writes } = await mountWithAssetPool((state) => {
       const bible = state.components.bible
       bible.characters['villain'] = [{ id: 'villain', version: 2, name: 'Villain', description: '', references: [], created_by: 'e1' }]
@@ -415,8 +416,10 @@ describe('CanvasView', () => {
     // The take already holds hero@1, so the picker offers the other characters and locations, then the asset pool's
     // `dv.canvas.picker` entry.
     fireEvent.keyDown(window, { key: 'a' })
-    expect(picker.textContent).toContain(zh['picker.bible'])
     const villain = within(picker).getByRole('button', { name: 'Villain' })
+    // Each item sits in the section of its version kind, titled with the kind's label.
+    expect(villain.closest('section')?.querySelector('h3')?.textContent).toBe('角色')
+    expect(within(picker).getByRole('button', { name: 'studio' }).closest('section')?.querySelector('h3')?.textContent).toBe('场景')
     fireEvent.click(within(picker).getByRole('button', { name: 'studio' }))
     fireEvent.click(within(picker).getByRole('button', { name: 'studio' }))
     expect(within(picker).getByRole('button', { name: 'studio' }).getAttribute('aria-pressed')).toBe('false')

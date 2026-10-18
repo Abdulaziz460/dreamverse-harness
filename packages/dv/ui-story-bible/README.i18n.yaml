@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/dv/ui-story-bible/README.md
-README.md: 559f84fd43944ae2822dc1ed80bc045de8c3e11c
-README.zh.md: 1c8e358823589015edd25c2db171783a69768dab
+README.md: 29f5c0dbbe188064dbf870d96b2e20a40a74d1c0
+README.zh.md: e9b7d1feefb444068ef77e13d5e06c9967ea5e62

@@ -25,9 +25,13 @@ function versionOf(state: WireState, field: keyof StoryBibleState, id: string, v
   return state.components.bible[field][id]?.find(entry => entry.version === version)
 }
 
-/** The version kinds of `character`, `location` and `style`: node `bible:<id>`, the version's name and references. */
-export const bibleVersionKinds: readonly VersionKind[] = KINDS.map(({ kind, field }) => ({
+/**
+ * The version kinds of `character`, `location` and `style`: the kind's card label, node `bible:<id>`, the version's name
+ * and references.
+ */
+export const bibleVersionKinds: readonly VersionKind[] = KINDS.map(({ kind, field, label }) => ({
   kind,
+  label,
   node: bibleNode,
   latest: state => Object.entries(state.components.bible[field]).flatMap(([id, versions]) => {
     const latest = versions.at(-1)

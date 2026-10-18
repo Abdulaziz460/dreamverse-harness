@@ -143,6 +143,8 @@ export interface TakesInUse {
 export interface VersionKind {
   /** A reference kind of the kernel, such as 'character'. */
   kind: string
+  /** The section title of the kind's items in the asset picker, such as 角色. */
+  label(): string
   /** The canvas node ID of an item, such as 'bible:c1'. */
   node(id: string): string
   /** Every item at its newest version. */

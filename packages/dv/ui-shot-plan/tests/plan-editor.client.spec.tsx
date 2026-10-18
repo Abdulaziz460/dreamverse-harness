@@ -25,6 +25,7 @@ const APPROVAL: ChainAnchor = {
 /** The characters of the fixture's story bible as a version kind, as a story bible UI half registers it. */
 const CHARACTERS: VersionKind = {
   kind: 'character',
+  label: () => '角色',
   node: id => `bible:${id}`,
   latest: () => [],
   name: (state, id, version) => state.components.bible.characters[id]?.find(entry => entry.version === version)?.name ?? null,

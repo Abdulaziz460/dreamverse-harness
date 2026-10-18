@@ -34,7 +34,7 @@ kind: "package-reference"
 | 描述符 | 注册表 | 值 |
 | --- | --- | --- |
 | `bibleNodeKind` | `dvCanvas.nodeKinds` | `id: '@dv/ui-story-bible'`，`kind: 'bible'`，第 0 列，角色颜色；每个有版本的条目一个 seed，先角色，再场景，再风格：ID 为 `bible:<id>`，标签为界面语言的 角色 / Character、场景 / Location 或 风格 / Style，最新版本的名称（否则为条目 ID）作标题、它的引用作媒体，写出它的记录，以及更早版本的记录 |
-| `bibleVersionKinds` | `dvCanvas.versionKinds` | 种类 `character`、`location`、`style` 各一项：`node(id)` 为 `bible:<id>`；`latest` 列出每个条目的最新版本；`name` 和 `assets` 给出某个版本的名称和引用，未知版本给出 null 和 `[]` |
+| `bibleVersionKinds` | `dvCanvas.versionKinds` | 种类 `character`、`location`、`style` 各一项：`label()` 为该种类的卡片标签（`角色` / `Character`、`场景` / `Location`、`风格` / `Style`），作为该种类在素材选择窗口中的分区标题；`node(id)` 为 `bible:<id>`；`latest` 列出每个条目的最新版本；`name` 和 `assets` 给出某个版本的名称和引用，未知版本给出 null 和 `[]` |
 | `bibleReferencesInUse` | `dvCanvas.takesInUse` | `id: '@dv/ui-story-bible'`；`uses` 给出创建每个最新版本的每个引用的记录 |
 | `BibleEditor` | 插槽 `dv.canvas.editor`，键 `@dv/ui-story-bible` | seed 所画条目的编辑器主体：最新版本的每个参考（图片，或视频的第一帧），点击打开画布的预览（`host.preview`），参考多于一个时可以移除一个，因为不带参考的 `bible.<kind>_update` 会保留当前的参考；该版本的描述；以及"添加素材"，它打开画布只含素材的选择窗口（`host.pickAssets`）并追加选中的素材。每次修改都通过 `host.run` 运行 `bible.<kind>_update`，下一版本的全部参考作为输入角色 `reference` |
 | `bibleMentionKinds` | `dvMentions.kinds` | 每个种类一项，顺序 1 为 `character`（分组 角色），2 为 `location`，3 为 `style`（同一个分组 场景和风格）；`id` 为 `@dv/ui-story-bible:<kind>`；每个有版本的条目一项：地址 `dv:<kind>/<id>`，最新版本的名字（没有时用条目 ID）作为标签，其描述的前 40 个字符，以及第一个参考作为 `thumb` |

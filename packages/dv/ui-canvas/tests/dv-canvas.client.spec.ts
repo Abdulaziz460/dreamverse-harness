@@ -15,7 +15,7 @@ describe('createDvCanvas', () => {
     expect(() => canvas.chainAnchors.register({ starter: 'story.approve', anchor: () => 'plan:p2' })).toThrow('registry key "story.approve"')
     canvas.takesInUse.register({ id: '@dv/ui-prop', uses: () => [] })
     expect(() => canvas.takesInUse.register({ id: '@dv/ui-prop', uses: () => ['r1'] })).toThrow('registry key "@dv/ui-prop"')
-    const props = { kind: 'prop', node: (id: string) => `prop:${id}`, latest: () => [], name: () => null, assets: () => [] }
+    const props = { kind: 'prop', label: () => '道具', node: (id: string) => `prop:${id}`, latest: () => [], name: () => null, assets: () => [] }
     canvas.versionKinds.register(props)
     expect(() => canvas.versionKinds.register({ ...props })).toThrow('registry key "prop"')
   })
