@@ -17,6 +17,7 @@ import { DvClient } from '@dv/ui-kit/api.ts'
 import type { NodeKind } from '@dv/ui-kit/registries.ts'
 import { apply as storyBibleApply, bibleNodeKind } from '@dv/ui-story-bible/src/client/index.ts'
 import { asset, fixtureState, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
+import { planNodeKind } from '../../ui-shot-plan/src/client/index.ts'
 import { CanvasView } from '../src/client/CanvasView.tsx'
 import { createDvCanvas } from '../src/client/dv-canvas.ts'
 import { EDITOR_RECT_KEY } from '../src/client/NodeEditor.tsx'
@@ -64,6 +65,7 @@ describe('node kinds', () => {
     const canvas = createDvCanvas()
     // The story bible's seeds hold column 0, as in the bundle, so the plan stays in the column it had before the kind came.
     canvas.nodeKinds.register(bibleNodeKind)
+    canvas.nodeKinds.register(planNodeKind)
     runtime.ctx.provide('dvCanvas', canvas)
     const state = fixtureState()
     state.assets.push(asset('umbrella.png', 'image/png', null), asset('umbrella-back.png', 'image/png', null))
@@ -99,7 +101,7 @@ describe('node kinds', () => {
     expect(media?.innerHTML).toContain('background: rgb(1, 2, 3)')
     // A seed with slots reads like a plan card: its label above its title, with no grid while no slot has a frame.
     expect(card('prop:p2')?.textContent).toBe('分镜板2 格')
-    // The kind's column 1 is the plan column, so the seeds sit under the plan node.
+    // The kind's column 1 is also the column of the plan kind, so the seeds sit under the plan node.
     expect(card('prop:p1')?.style.left).toBe(card('plan:p1')?.style.left)
     // The seed's media belong to its node, so the placed umbrella image has no asset node of its own.
     expect(card('asset:umbrella.png')).toBeNull()
@@ -115,7 +117,7 @@ describe('node kinds', () => {
     expect(within(editor).getByRole('heading').textContent).toBe('红伞')
 
     await kinds.dispose()
-    expect(canvas.nodeKinds.list()).toEqual([bibleNodeKind])
+    expect(canvas.nodeKinds.list()).toEqual([bibleNodeKind, planNodeKind])
     await waitFor(() => { expect(card('prop:p1')).toBeNull() })
     expect(card('prop:p2')).toBeNull()
     await runtime.dispose()

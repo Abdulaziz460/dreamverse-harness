@@ -1,0 +1,32 @@
+{
+  "name": "@dv/ui-shot-plan",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Browser half of the DreamVerse shot plan: the canvas node kind that draws each plan at its latest version with a frame grid of one slot per shot, and the takes in use that keep the producers of a plan's reference assets on the canvas.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./client": {
+      "types": "./lib/types/client/index.d.ts",
+      "default": "./lib/client.js"
+    },
+    "./src/*": "./src/*",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "client": {
+      "inject": [],
+      "platform": "web"
+    }
+  },
+  "scripts": {
+    "bundle": "tsdown"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "workspace:~"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "workspace:~",
+    "@dv/ui-kit": "workspace:*"
+  }
+}

@@ -1,8 +1,8 @@
 /**
  * Canvas nodes and edges derived from a project state. The canvas shows the project's current state only: a
  * node is an item a creator works with now: an imported asset on the project's canvas list (see
- * {@link buildCanvasGraph}), a plan at its latest version, each node that a registered `NodeKind` draws from its own
- * slice, and the generation records that make up the current state: the takes of the
+ * {@link buildCanvasGraph}), each node that a registered `NodeKind` draws from its own slice, and the generation records
+ * that make up the current state: the takes of the
  * newest chain on each anchor node, every take without an anchored chain, and every take whose outputs are in use.
  * Deterministic edits (still grabs, timeline records) do not become nodes; a badge that a `TakesInUse` reports for an
  * asset, such as the trim of a timeline clip, shows on the node of that asset.
@@ -10,12 +10,12 @@
 import { chainOf } from '@dv/ui-kit/chain.ts'
 import type { DvLanguage } from '@dv/ui-kit/locale.ts'
 import type { ChainAnchor, NodeKind, NodeSeed, TakesInUse, VersionKind } from '@dv/ui-kit/registries.ts'
-import type { NodePosition, PlanVersion, ProjectRecord, RecordInput, WireState, WireOperation } from '@dv/ui-kit/types.ts'
+import type { NodePosition, ProjectRecord, RecordInput, WireState, WireOperation } from '@dv/ui-kit/types.ts'
 import { versionRefOf } from '@dv/ui-kit/references.ts'
 import { isGenerationOperation, isGenerationRecord } from '@dv/ui-kit/state.ts'
 
 /** What a node represents; the canvas colors nodes by it. A `seed` node is a node that a registered `NodeKind` drew. */
-export type CanvasNodeKind = 'asset' | 'plan' | 'take' | 'seed'
+export type CanvasNodeKind = 'asset' | 'take' | 'seed'
 
 /** Display states of a node. */
 export interface CanvasNodeFlags {
@@ -28,10 +28,8 @@ export interface CanvasNodeFlags {
 
 /** The fields of every canvas node. */
 interface CanvasNodeFields {
-  /** `plan:<PlanId>` for plans, the seed's ID for a seed, else the record ID. */
+  /** The seed's ID for a seed, else the record ID. */
   id: string
-  /** For plan nodes, the `PlanId` (`p1`). */
-  planId?: string
   /** For a take, its operation's label in `/api/dv/operations`, else the operation name; shown when `title` is empty. */
   label?: string
   title: string
@@ -43,7 +41,7 @@ interface CanvasNodeFields {
   /** A video or audio asset the editor plays; for a seed node, its first reference when it is a video. */
   video: string | null
   durationSec: number | null
-  /** The record behind the node; for plan and seed nodes, the record that wrote the shown version. */
+  /** The record behind the node; for a seed node, the record that wrote the shown version. */
   record: ProjectRecord | null
   flags: CanvasNodeFlags
   /** The labels that the registered `TakesInUse` descriptors report for the node's assets, such as 已裁剪. */
@@ -149,19 +147,6 @@ function anchorChains(records: ReadonlyMap<string, ProjectRecord>, anchors: read
 }
 
 /**
- * The records whose outputs the core's own reads of the plan slice find in use: the producers of the references of each
- * current plan version.
- * @param state - a project state.
- * @param plans - the latest version of each plan.
- * @returns the record IDs.
- */
-function coreUses(state: WireState, plans: readonly PlanVersion[]): string[] {
-  const proj = state.components.proj
-  const references = plans.flatMap(latest => [...latest.references ?? [], ...latest.shots.flatMap(shot => shot.references ?? [])])
-  return references.map(reference => proj.created_by[reference]).filter(id => id !== undefined)
-}
-
-/**
  * The generation records the canvas draws, which make up the current state of the project:
  * - for each anchor node and each starter operation, the records of the chain that the newest starter of that operation
  *   on that node started, so the chains of two workflows on one node both show;
@@ -223,10 +208,10 @@ function drawnTakes(
 }
 
 /**
- * The canvas graph of a project state, with a default layout: assets in column 0, plans in column 1, the seeds of each
- * registered `NodeKind` in its `column`, takes from column 2 rightwards by first-frame chain depth, retakes in their
- * source take's column. A seed's media belong to its node, and so do the assets of every version of the item that a
- * `VersionKind` draws as that node. A take reads a version of such an item from the item's node.
+ * The canvas graph of a project state, with a default layout: assets in column 0, the seeds of each registered
+ * `NodeKind` in its `column`, takes from column 2 rightwards by first-frame chain depth, retakes in their source take's
+ * column. A seed's media belong to its node, and so do the assets of every version of the item that a `VersionKind`
+ * draws as that node. A take reads a version of such an item from the item's node.
  * Every image or video on the project's canvas (`placed`) gets one node, unless a seed node (such as a reference image)
  * or a take node (a take output) already shows it: drawn from its first `asset.import` record of the current state when
  * there is one, else as `asset:<id>` with no record (an import that an undo went back past, a still, an export). A take that
@@ -268,26 +253,13 @@ export function buildCanvasGraph(
   const nodes: CanvasNode[] = []
   const byRecord = new Set<string>()
   const chains = anchorChains(records, anchors)
-  // The latest version of each plan: the plan nodes, and the plan references in use until a UI package reports them.
-  const plans = Object.entries(state.components.plan.plans).flatMap(([planId, versions]) => {
-    const latest = versions.at(-1)
-    return latest === undefined ? [] : [{ planId, latest }]
-  })
-  const used = [...coreUses(state, plans.map(plan => plan.latest)), ...inUse.flatMap(descriptor => descriptor.uses(state))]
+  const used = inUse.flatMap(descriptor => descriptor.uses(state))
   const takes = drawnTakes(state, isRender, chains, used)
   // The import node of each drawn imported asset.
   const importNodes = new Map<string, string>()
   // A seed's media, and the assets of an earlier version of a versioned item that a seed shows, belong to that node, so
   // their import is not drawn twice.
   const mediaNode = new Map<string, string>()
-  // One node per plan, showing its latest version; the editor switches between versions.
-  for (const { planId, latest } of plans) {
-    const record = records.get(latest.created_by) ?? null
-    nodes.push({
-      id: `plan:${planId}`, kind: 'plan', planId, title: latest.title ?? '', subtitle: String(latest.shots.length), thumb: null, references: [], video: null,
-      durationSec: null, record, flags: flagsOf(record), badges: [], take: null, x: 0, y: 0,
-    })
-  }
   // One node per seed of each registered node kind, drawn by the core with the default card.
   for (const nodeKind of nodeKinds) {
     for (const seed of nodeKind.nodes(state)) {
@@ -469,7 +441,7 @@ function addBadges(
 }
 
 /**
- * Assign default positions in place. Each column (assets, plans, seeds by their `NodeKind.column`, takes by first-frame
+ * Assign default positions in place. Each column (assets, seeds by their `NodeKind.column`, takes by first-frame
  * depth) wraps into several sub-columns once it holds more nodes than the shared row count, so a long shot list forms a
  * block that fits the screen. A retake sits right after its source take in the same column.
  * @param nodes - the nodes.
@@ -482,7 +454,7 @@ function layout(nodes: CanvasNode[], edges: CanvasEdge[]): void {
   const columnOf = (node: CanvasNode, depth = 0): number => {
     const known = column.get(node.id)
     if (known !== undefined) return known
-    let value = node.kind === 'seed' ? node.nodeKind.column : node.kind === 'plan' ? 1 : node.kind === 'take' ? 2 : 0
+    let value = node.kind === 'seed' ? node.nodeKind.column : node.kind === 'take' ? 2 : 0
     if (node.kind === 'take' && depth < 64) {
       const base = incoming(node.id, 'take')[0]
       const baseNode = base === undefined ? undefined : nodes.find(candidate => candidate.id === base)

@@ -16,6 +16,7 @@ import type { WireOperation, WireState } from '@dv/ui-kit/types.ts'
 import { DV_ASSET_DRAG_TYPE, DV_CANVAS_FOCUS_EVENT } from '@dv/ui-kit/workspace-events.ts'
 import { bibleNodeKind, bibleReferencesInUse, bibleVersionKinds } from '@dv/ui-story-bible/src/client/index.ts'
 import { asset, fixtureState, OPERATIONS, record, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
+import { planNodeKind } from '../../ui-shot-plan/src/client/index.ts'
 import { CanvasView } from '../src/client/CanvasView.tsx'
 import { createDvCanvas } from '../src/client/dv-canvas.ts'
 import { NODE_WIDTH } from '../src/client/graph.ts'
@@ -41,6 +42,15 @@ function bibleCanvas(): { canvas: DvCanvas; dispose: () => void } {
     ...bibleVersionKinds.map(kind => canvas.versionKinds.register(kind)),
   ]
   return { canvas, dispose: () => { for (const dispose of disposers) dispose() } }
+}
+
+/**
+ * @param canvas - the registries that get the node kind of plans; empty ones by default.
+ * @returns the registries with the node kind of plans, as `@dv/ui-shot-plan` registers it.
+ */
+function planCanvas(canvas: DvCanvas = createDvCanvas()): DvCanvas {
+  canvas.nodeKinds.register(planNodeKind)
+  return canvas
 }
 
 afterEach(() => {
@@ -103,12 +113,13 @@ function nodeLookup(view: RenderResult): (id: string) => HTMLElement {
  * @param edit - changes to the fixture state, applied to every state the route serves.
  * @param holdOperations - whether `POST /api/dv/operation` stays unanswered, as a render does until it ends.
  * @param operations - the operation declarations the route serves; the fixture's by default.
- * @param canvas - the `dvCanvas` registries the view reads; the story bible's descriptors by default.
+ * @param canvas - the `dvCanvas` registries the view reads; the story bible's descriptors and the node kind of plans by
+ *   default.
  * @returns the rendered view, the recorded writes, and a node lookup.
  */
 function mount(
   withTranslate = true, edit: (state: WireState) => void = () => undefined, holdOperations = false, operations = OPERATIONS,
-  canvas: DvCanvas = bibleCanvas().canvas,
+  canvas: DvCanvas = planCanvas(bibleCanvas().canvas),
 ) {
   const { client, writes, layoutWrites } = scriptedClient(edit, holdOperations, operations)
   const t: CanvasTranslate = makeTranslate(zh)
@@ -142,7 +153,7 @@ async function mountWithAssetPool(edit: (state: WireState) => void) {
 
 describe('CanvasView', () => {
   it('draws the project\'s current state with nodes at stored positions, stores the others\' spots, and stores a dragged position', async () => {
-    const { canvas } = bibleCanvas()
+    const canvas = planCanvas(bibleCanvas().canvas)
     canvas.takesInUse.register({ id: 'clips', uses: () => [], badges: () => [{ asset: 'shot2.mp4', label: '已裁剪' }] })
     const { view, node, layoutWrites } = mount(true, undefined, false, OPERATIONS, canvas)
     await waitFor(() => { node('g3') })
@@ -162,7 +173,7 @@ describe('CanvasView', () => {
   })
 
   it('reads the chain anchors of its registries: an anchor links and titles the takes of its chains until its disposal', async () => {
-    const canvas = createDvCanvas()
+    const canvas = planCanvas()
     const { view, node } = mount(true, (state) => {
       state.components.proj.records = state.components.proj.records.map(entry => entry.id === 'g1' ? { ...entry, started_by: { record: 'a1', slot: 1 } } : entry)
     }, false, OPERATIONS, canvas)
@@ -501,6 +512,17 @@ describe('CanvasView', () => {
     expect(view.queryByTestId('dv-canvas-node-editor')).toBeNull()
   })
 
+  it('opens the plan node for a dv:canvas-focus on the record that wrote an earlier plan version', async () => {
+    window.dispatchEvent(new CustomEvent(DV_CANVAS_FOCUS_EVENT, { detail: { recordId: 'p1' } }))
+    const { view } = mount(true, (state) => {
+      const [v1] = state.components.plan.plans['p1'] ?? []
+      if (v1 === undefined) throw new Error('fixture lacks plan p1')
+      state.components.plan.plans['p1'] = [v1, { ...v1, version: 2, created_by: 'q2' }]
+    })
+    const editor = await view.findByTestId('dv-canvas-node-editor')
+    expect(within(editor).getByRole('button', { name: '第 2 版' }).getAttribute('aria-pressed')).toBe('true')
+  })
+
   it('opens the editor centered, moves and resizes it, remembers the rectangle for the next node, and resets on a double click', async () => {
     // jsdom has no layout; a 1200 × 800 canvas area gives the default rectangle 240, 80, 720 × 640.
     vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1200)
@@ -578,7 +600,7 @@ describe('CanvasView', () => {
   })
 
   it('the plan editor marks a version replaced before approval as 已被第 {n} 版取代 and shows each shot\'s reference images', async () => {
-    const { canvas } = bibleCanvas()
+    const canvas = planCanvas(bibleCanvas().canvas)
     canvas.chainAnchors.register(APPROVAL)
     const { view, node } = mount(true, (state) => {
       const [v1] = state.components.plan.plans['p1'] ?? []
@@ -613,7 +635,7 @@ describe('CanvasView', () => {
   })
 
   it('the plan editor reads approval status from the union of the chain anchors\' approved versions until an anchor\'s disposal', async () => {
-    const canvas = createDvCanvas()
+    const canvas = planCanvas()
     const disposePlanAnchor = canvas.chainAnchors.register(APPROVAL)
     // A second anchor approves v2 of p1 from its own slice; the first approves only v1.
     const disposeTestAnchor = canvas.chainAnchors.register({

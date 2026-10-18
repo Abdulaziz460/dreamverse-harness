@@ -113,6 +113,9 @@
     - id: dv-ui-story-bible
       name: '@dv/ui-story-bible'
 
+    - id: dv-ui-shot-plan
+      name: '@dv/ui-shot-plan'
+
     - id: dv-ui-shell
       name: '@dv/ui-shell'
 

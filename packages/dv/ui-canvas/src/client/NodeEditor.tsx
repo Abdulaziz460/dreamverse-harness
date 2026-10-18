@@ -12,15 +12,15 @@
  * While the render starts the button is disabled and reads 渲染中…, and a refused request shows its error under the
  * button. "添加素材" opens the asset picker; a reference chip opens the preview of its asset, or the editor of the node of
  * its versioned item (read through the registered version kinds) over this one. The picker's asset pool and the preview
- * are the `dv.canvas.picker` and `dv.canvas.preview` entries at key `assets`. A plan switches
- * between its versions (第 1 版,
+ * are the `dv.canvas.picker` and `dv.canvas.preview` entries at key `assets`. A plan (a seed of the node kind `plan`,
+ * whose ID is `plan:<PlanId>`) switches between its versions (第 1 版,
  * 第 2 版, …) and shows the chosen version's approval status (from the approved versions that the registered chain
  * anchors report for the node), its reference assets, and one card per shot with exactly
  * what the plan holds: duration, model and task, reference assets, whether the shot continues the previous shot, and the
- * full prompt with each `Picture N` drawn as its image. A seed (a node that a registered `NodeKind` drew) shows the
- * `dv.canvas.editor` entry keyed by its `NodeKind.id`, which the canvas lends its writes, its asset picker of assets only
- * and its asset preview; it shows only the header when no entry is registered or the host renders no entries. A stale
- * node offers "仍然保留", which keeps its record as it is (`proj.stale_accept`).
+ * full prompt with each `Picture N` drawn as its image. Any other seed (a node that a registered `NodeKind` drew) shows
+ * the `dv.canvas.editor` entry keyed by its `NodeKind.id`, which the canvas lends its writes, its asset picker of assets
+ * only and its asset preview; it shows only the header when no entry is registered or the host renders no entries. A
+ * stale node offers "仍然保留", which keeps its record as it is (`proj.stale_accept`).
  */
 import { memo, useLayoutEffect, useRef, useState } from 'react'
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
@@ -481,7 +481,10 @@ export function NodeEditor(props: NodeEditorProps): ReactNode {
   const kind = kindLabel(node, t)
   const staleRecord = node.flags.stale ? node.record : null
   // The plan version on show; the editor holds the choice so the header row and the shot list read the same version.
-  const planVersions = node.kind === 'plan' ? props.state.components.plan.plans[node.planId ?? ''] ?? [] : []
+  // A plan seed's ID is `plan:<PlanId>`.
+  const planVersions = node.kind === 'seed' && node.nodeKind.kind === 'plan'
+    ? props.state.components.plan.plans[node.id.slice(node.id.indexOf(':') + 1)] ?? []
+    : []
   const [chosen, setChosen] = useState<number | null>(null)
   const plan = planVersions.find(version => version.version === chosen) ?? planVersions.at(-1)
   // The approved versions of the node are the union of what every chain anchor reports for it.
@@ -502,9 +505,12 @@ export function NodeEditor(props: NodeEditorProps): ReactNode {
   let body: ReactNode
   switch (node.kind) {
     case 'take': body = <TakeForm {...props} title={title} />; break
-    case 'plan': body = plan === undefined ? null : <PlanShots plan={plan} state={props.state} kinds={props.versionKinds} t={t} taskLabels={props.taskLabels} />; break
     case 'asset': body = <AssetPanel node={node} t={t} onRemoveFromCanvas={props.onRemoveFromCanvas} />; break
-    case 'seed': body = <SeedForm {...props} node={node} />; break
+    case 'seed':
+      body = plan !== undefined
+        ? <PlanShots plan={plan} state={props.state} kinds={props.versionKinds} t={t} taskLabels={props.taskLabels} />
+        : <SeedForm {...props} node={node} />
+      break
   }
   const { panelRef, rect, begin, follow, finish, reset, resizeBy } = placement
   const gestureHandlers = { onPointerMove: follow, onPointerUp: finish, onPointerCancel: finish }
@@ -536,7 +542,7 @@ export function NodeEditor(props: NodeEditorProps): ReactNode {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
           </button>
         </div>
-        {node.kind === 'plan' && plan !== undefined
+        {plan !== undefined
           ? (
             <PlanHeader
               versions={planVersions} plan={plan} approved={approved} state={props.state} kinds={props.versionKinds} t={t}
@@ -545,7 +551,7 @@ export function NodeEditor(props: NodeEditorProps): ReactNode {
           )
           : null}
       </header>
-      <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: node.kind === 'plan' ? 12 : 16 }}>
+      <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: plan !== undefined ? 12 : 16 }}>
         {staleRecord !== null
           ? (
             <p style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 0 8px', color: 'var(--dv-danger)' }}>

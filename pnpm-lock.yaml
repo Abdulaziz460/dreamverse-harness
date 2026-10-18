@@ -2179,6 +2179,9 @@ importers:
       '@dv/ui-shell':
         specifier: workspace:*
         version: link:../../dv/ui-shell
+      '@dv/ui-shot-plan':
+        specifier: workspace:*
+        version: link:../../dv/ui-shot-plan
       '@dv/ui-skills':
         specifier: workspace:*
         version: link:../../dv/ui-skills
@@ -7840,6 +7843,15 @@ importers:
       react-dom:
         specifier: ^18.2.0
         version: 18.3.1(react@18.3.1)
+
+  packages/dv/ui-shot-plan:
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:~
+        version: link:../../../vendor/cordis
+      '@dv/ui-kit':
+        specifier: workspace:*
+        version: link:../ui-kit
 
   packages/dv/ui-skills:
     devDependencies:

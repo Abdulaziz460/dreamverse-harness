@@ -1,6 +1,6 @@
 /**
- * The project canvas as a standalone component: an infinite surface of asset, plan, and take nodes, and the seeds of
- * the node kinds registered in `dvCanvas`, each drawn with the default card. Drag
+ * The project canvas as a standalone component: an infinite surface of asset and take nodes, and the seeds of the node
+ * kinds registered in `dvCanvas`, each drawn with the default card. Drag
  * empty space to pan, scroll to zoom around the cursor, drag a node to move it, click a node to select it and open its
  * editor panel, which grows out of the node and shrinks back into it on close (`@dv/ui-kit/zoom.ts`). Closing the
  * editor keeps the node selected (the accent ring); a click on empty canvas with no editor open
@@ -262,15 +262,11 @@ export function CanvasView(
       state: base.value, ...buildCanvasGraph(base.value, placed, operations.value ?? [], language, anchors, inUse, nodeKinds, versionKinds),
     }
   }, [base.value, placed, projectId, operations.value, language, anchors, inUse, nodeKinds, versionKinds])
-  // The frame grid of each plan node (one slot per shot of its latest version, which the card also reads for its version
-  // label and duration) and of each seed with slots. Memoized on the graph, because a pan or zoom re-renders the view on
-  // every pointer move.
-  const grids = useMemo(() => new Map(graph === null ? [] : graph.nodes.flatMap((node) => {
-    const latest = node.planId === undefined ? undefined : graph.state.components.plan.plans[node.planId]?.at(-1)
-    const slots = node.kind === 'seed' ? node.seed.slots : latest?.shots.length
-    if (slots === undefined) return []
-    return [[node.id, { latest, frames: slotFrames(graph.nodes, node.id, slots) }] as const]
-  })), [graph])
+  // The frame grid of each seed with slots. Memoized on the graph, because a pan or zoom re-renders the view on every
+  // pointer move.
+  const grids = useMemo(() => new Map(graph === null ? [] : graph.nodes.flatMap(node => node.kind === 'seed' && node.seed.slots !== undefined
+    ? [[node.id, { frames: slotFrames(graph.nodes, node.id, node.seed.slots) }] as const]
+    : [])), [graph])
 
   const [positions, setPositions] = useState<Record<string, NodePosition>>({})
   const [viewport, setViewport] = useState<CanvasViewport>({ x: 40, y: 40, zoom: 1 })
@@ -404,13 +400,12 @@ export function CanvasView(
   }, [])
   useEffect(() => {
     if (pendingFocus === null || !layoutReady || graph === null) return
-    // The record's own node, else the plan or seed node whose version it wrote, else the node of its first output.
+    // The record's own node, else the seed node whose version it wrote, else the node of its first output.
     const recordId = pendingFocus
     const firstOutput = graph.state.components.proj.records.find(record => record.id === recordId)?.outputs[0]
     const outputNode = firstOutput === undefined ? undefined : graph.assetNodes[firstOutput]
     const node = graph.nodes.find(candidate => candidate.id === recordId)
       ?? graph.nodes.find(candidate => candidate.record?.id === recordId)
-      ?? graph.nodes.find(candidate => graph.state.components.plan.plans[candidate.planId ?? '']?.some(version => version.created_by === recordId))
       ?? graph.nodes.find(candidate => candidate.kind === 'seed' && candidate.seed.records?.includes(recordId) === true)
       ?? graph.nodes.find(candidate => candidate.id === outputNode)
     pendingFocus = null
@@ -752,7 +747,6 @@ export function CanvasView(
               zoom={viewport.zoom}
               t={t}
               onPointerDown={onNodeDown(node)}
-              {...grid?.latest === undefined ? {} : { plan: grid.latest }}
               {...grid === undefined ? {} : { frames: grid.frames }}
               {...node.kind === 'take' && node.flags.failed ? { onRetry: () => { retryTake(node) }, retrying: retryingFrom === node.id } : {}}
               unseen={seenIds !== null && isFinishedTake(node) && !seenIds.has(node.id)}
