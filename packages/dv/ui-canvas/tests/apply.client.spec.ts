@@ -5,6 +5,7 @@ import { SidebarRightTabRegistry } from '@deepseek-ai/dsh-client-ui-sidebar-righ
 import { DvClient } from '@dv/ui-kit/api.ts'
 import type { ChainAnchor } from '@dv/ui-kit/registries.ts'
 import { CanvasBody } from '../src/client/CanvasBody.tsx'
+import { CanvasCenter } from '../src/client/CanvasCenter.tsx'
 import { CANVAS_ID, CANVAS_KIND } from '../src/client/definition.ts'
 import { apply, inject } from '../src/client/index.ts'
 import { en, zh } from '../src/client/locales.ts'
@@ -12,8 +13,11 @@ import { apply as hostApply } from '../src/index.ts'
 
 interface Recorded {
   name: string
-  key: string
-  locale: string
+  key?: string
+  id?: string
+  order?: number
+  label?: () => string
+  locale?: string
   inject: () => { client: unknown; canvas: unknown }
   children?: object
   component: unknown
@@ -61,16 +65,25 @@ describe('ui-canvas apply', () => {
     expect(definition?.title('sidebar://dv-canvas')).toBe('type.label')
     expect(definition?.guide?.map(entry => [entry.order, entry.title(), entry.description?.()])).toEqual([[40, 'guide.title', 'guide.description']])
     expect(dictionaries.get('dvCanvas')).toEqual({ zh, en })
-    expect(registered.map(entry => [entry.name, entry.key, entry.locale, entry.component])).toEqual([['sidebar.right.pane.tab', CANVAS_ID, 'dvCanvas', CanvasBody]])
+    expect(registered.map(entry => [entry.name, entry.key ?? entry.id, entry.locale, entry.component])).toEqual([
+      ['sidebar.right.pane.tab', CANVAS_ID, 'dvCanvas', CanvasBody],
+      ['dv.center.view', 'canvas', undefined, CanvasCenter],
+    ])
     expect(registered[0]?.inject().client).toBeInstanceOf(DvClient)
-    // The body declares the slot of the seed editors, which plugin UI halves fill by `NodeKind.id`.
-    expect(registered[0]?.children).toEqual({ 'dv.canvas.editor': { kind: 'keyed', scope: 'root' } })
+    // The center view comes first in the workspace's view control, under the tab type's label, with the body's client.
+    expect([registered[1]?.order, registered[1]?.label?.()]).toEqual([0, 'type.label'])
+    expect(registered[1]?.inject()).toBe(registered[0]?.inject())
+    // The center view declares the slot of the seed editors, which plugin UI halves fill by `NodeKind.id`; the body
+    // declares none.
+    expect(registered[1]?.children).toEqual({ 'dv.canvas.editor': { kind: 'keyed', scope: 'root' } })
+    expect(registered[0]?.children).toBeUndefined()
     expect(Object.keys(en).sort()).toEqual(Object.keys(zh).sort())
   })
 
-  it('provides dvCanvas with empty registries, and its descriptors reach the tab body and leave on disposal', async () => {
+  it('provides dvCanvas with empty registries, and its descriptors reach both canvas copies and leave on disposal', async () => {
     const { ctx, registered } = await boot()
     expect(registered[0]?.inject().canvas).toBe(ctx.dvCanvas)
+    expect(registered[1]?.inject().canvas).toBe(ctx.dvCanvas)
     expect(ctx.dvCanvas.chainAnchors.list()).toEqual([])
     const anchor: ChainAnchor = { starter: 'story.approve', anchor: () => 'plan:p1' }
     const dispose = ctx.dvCanvas.chainAnchors.register(anchor)

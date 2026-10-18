@@ -7819,15 +7819,9 @@ importers:
       '@deepseek-ai/dsh-workspace':
         specifier: workspace:*
         version: link:../../workspace/workspace
-      '@dv/ui-canvas':
-        specifier: workspace:*
-        version: link:../ui-canvas
       '@dv/ui-kit':
         specifier: workspace:*
         version: link:../ui-kit
-      '@dv/ui-timeline':
-        specifier: workspace:*
-        version: link:../ui-timeline
       '@types/react':
         specifier: ~18.3.1
         version: 18.3.31

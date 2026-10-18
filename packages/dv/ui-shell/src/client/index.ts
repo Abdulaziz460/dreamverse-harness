@@ -14,10 +14,10 @@ import { DV_TRAJECTORY_FOCUS_EVENT, type DvWorkspaceEventMap } from '@dv/ui-kit/
 import { createActions } from './actions.ts'
 import { CenterPanel, type ShellInjected } from './Center.tsx'
 import { applyChrome } from './chrome.tsx'
-import { followExploreEntries } from './explore.ts'
 import { BrandName, Navigator } from './Navigator.tsx'
 import { followPanelEntries } from './panels.ts'
 import { applyRightPanelWidth } from './right-panel.ts'
+import { followSlotTabs } from './slot-tabs.ts'
 import { getShell, refreshLinks } from './store.ts'
 import { applyTheme } from './theme.ts'
 import { CHAT_ID, ChatTab, chatDefinition, TRAJECTORY_ID, TrajectoryTab, trajectoryDefinition } from './tabs.tsx'
@@ -27,7 +27,7 @@ export type { ShellActions } from './actions.ts'
 export type { ShellInjected } from './Center.tsx'
 
 /** Services the shell uses. */
-export const inject = ['slots', 'sidebarRightTabs', 'sidebarRight', 'workspaces', 'sessions', 'uiWorkspace', 'dvCanvas']
+export const inject = ['slots', 'sidebarRightTabs', 'sidebarRight', 'workspaces', 'sessions', 'uiWorkspace']
 
 /** Milliseconds between reads of the project ↔ Workspace links, which pick up projects the agent creates. */
 const LINKS_POLL_MS = 4000
@@ -38,11 +38,11 @@ const LINKS_POLL_MS = 4000
  */
 export function apply(ctx: ClientContext): void {
   applyTheme(ctx)
-  const injected: ShellInjected = { shell: createActions(ctx), canvas: ctx.dvCanvas }
+  const injected: ShellInjected = { shell: createActions(ctx) }
   ctx.effect(() => ctx.slots.inject('main.conversation', () => ctx.slots.register(
     {
       name: 'main.conversation', priority: -1, inject: () => injected,
-      children: { 'dv.explore': { kind: 'list', scope: 'root' } },
+      children: { 'dv.explore': { kind: 'list', scope: 'root' }, 'dv.center.view': { kind: 'list', scope: 'root' } },
     }, CenterPanel,
   )), 'ui-shell: center')
   ctx.effect(() => ctx.slots.inject('sidebar.workspaces', () => ctx.slots.register(
@@ -53,7 +53,8 @@ export function apply(ctx: ClientContext): void {
   )), 'ui-shell: brand')
   applyChrome(ctx)
   followPanelEntries(ctx)
-  followExploreEntries(ctx)
+  followSlotTabs(ctx, 'dv.explore')
+  followSlotTabs(ctx, 'dv.center.view')
   ctx.inject(['layout'], (scope) => {
     scope.effect(() => {
       applyRightPanelWidth(scope.get('layout') as object)

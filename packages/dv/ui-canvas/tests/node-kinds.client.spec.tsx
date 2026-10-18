@@ -54,7 +54,7 @@ describe('node kinds', () => {
     state.components.asset.placed = ['umbrella.png']
     const client = new DvClient(scriptedFetch({ state }).fetch)
     const t: CanvasTranslate = makeTranslate(zh)
-    // The root frame declares the slot, as the canvas tab body does, and hands its renderSlot to the canvas.
+    // The root frame declares the slot, as the canvas center view does, and hands its renderSlot to the canvas.
     const Frame = ({ renderSlot }: PropsRenderSlots<'dv.canvas.editor'>): ReactNode =>
       <CanvasView projectId="p1" client={client} t={t} canvas={canvas} renderEditor={renderSlot} />
     await runtime.root.declare({ 'dv.canvas.editor': { kind: 'keyed', scope: 'root' } }, Frame)

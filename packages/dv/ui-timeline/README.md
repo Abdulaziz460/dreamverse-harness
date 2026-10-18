@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to give the web application a timeline editor beside the chat. The editor shows one tab per timeline, a viewer that plays the selected timeline across its clips, and one video track whose clips are as wide as they play and are marked when stale. You move, trim, split, and remove clips on the track, and insert assets from the asset pool by dropping them there or choosing them with ＋. The `dv-timeline` tab type of the right Sidebar wraps the editor in the project bar; `TimelineView` is the shell's center 时间线 view. Both show the project's current state and follow it when it changes.
+Use this package to give the web application a timeline editor beside the chat. The editor shows one tab per timeline, a viewer that plays the selected timeline across its clips, and one video track whose clips are as wide as they play and are marked when stale. You move, trim, split, and remove clips on the track, and insert assets from the asset pool by dropping them there or choosing them with ＋. The `dv-timeline` tab type of the right Sidebar wraps the editor in the project bar; `TimelineView` is the 时间线 / Timeline view of the shell's center (`dv.center.view`). Both show the project's current state and follow it when it changes.
 
 ## Table of Contents
 
@@ -33,7 +33,7 @@ The editor also has a toolbar and a ruler, and each clip carries its producer's 
   name: '@dv/ui-timeline'
 ```
 
-The Host half registers nothing. The browser half registers the `dv-timeline` tab type (offered by the Sidebar's guide page as "Timeline"), the `dvTimeline` locale namespace in Chinese and English, and the tab body under its own id `@dv/ui-timeline`. While the canvas service `dvCanvas` of `@dv/ui-canvas` is present, it also registers a `TakesInUse` under the same id: it uses, for each clip of every timeline, the render the clip waits for (`source.record`), else the producer of the clip's asset, so the canvas draws the takes that the timelines play; and it puts the badge 已裁剪 / Trimmed on the asset of each clip with an in or out point. A `dv:timeline-focus` window event with `{timelineId, clipId}` makes the editor select that clip of the timeline and move the playhead to its start.
+The Host half registers nothing. The browser half registers the `dv-timeline` tab type (offered by the Sidebar's guide page as "Timeline"), the `dvTimeline` locale namespace in Chinese and English, and the tab body under its own id `@dv/ui-timeline`. It registers `TimelineView` as the `dv.center.view` entry `timeline` (order 1, labeled with the tab type's label 时间线 / Timeline), which edits the project of the center's owner prop `projectId` and writes for the chat session of its owner prop `session`. While the canvas service `dvCanvas` of `@dv/ui-canvas` is present, it also registers a `TakesInUse` under the same id: it uses, for each clip of every timeline, the render the clip waits for (`source.record`), else the producer of the clip's asset, so the canvas draws the takes that the timelines play; and it puts the badge 已裁剪 / Trimmed on the asset of each clip with an in or out point. A `dv:timeline-focus` window event with `{timelineId, clipId}` makes the editor select that clip of the timeline and move the playhead to its start. A `dv:timeline-insert` window event with `{projectId, assetId}` (插入片段 / Insert clip in the 素材库 panel, which also makes the shell show this view) makes a mounted `TimelineView` of that project insert the asset once it has read the state, as `timeline.clip_insert` at the end of the selected timeline (else the first one), or as `timeline.create` of `t1` holding the clip when the state has no timeline; the module keeps a request until a view of its project mounts.
 
 | Gesture | Record |
 | --- | --- |
@@ -65,7 +65,7 @@ The DOM carries test IDs `dv-timeline-body`, `dv-timeline-editor`, `dv-timeline-
 | [`src/client/index.ts`](src/client/index.ts) | Registrations |
 | [`src/client/definition.ts`](src/client/definition.ts) | The tab type |
 | [`src/client/TimelineBody.tsx`](src/client/TimelineBody.tsx) | The tab body: project bar and editor |
-| [`src/client/TimelineView.tsx`](src/client/TimelineView.tsx) | The center view: state and writes |
+| [`src/client/TimelineView.tsx`](src/client/TimelineView.tsx) | The center view: state, writes, and the inserts that `dv:timeline-insert` requests |
 | [`src/client/TimelineEditor.tsx`](src/client/TimelineEditor.tsx) | The editor: tabs, viewer, toolbar, ruler, tracks, gestures |
 | [`src/client/timelines.ts`](src/client/timelines.ts) | Clip placement, drop position, timecode |
 | [`src/client/takes-in-use.ts`](src/client/takes-in-use.ts) | The `TakesInUse` of the canvas: clip records and trim badges |

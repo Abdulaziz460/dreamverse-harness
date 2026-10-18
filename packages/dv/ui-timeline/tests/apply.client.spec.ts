@@ -7,12 +7,16 @@ import { TIMELINE_ID, TIMELINE_KIND } from '../src/client/definition.ts'
 import { apply, inject } from '../src/client/index.ts'
 import { en, zh } from '../src/client/locales.ts'
 import { TimelineBody } from '../src/client/TimelineBody.tsx'
+import { TimelineView } from '../src/client/TimelineView.tsx'
 import { apply as hostApply } from '../src/index.ts'
 
 interface Recorded {
   name: string
-  key: string
-  locale: string
+  key?: string
+  id?: string
+  order?: number
+  label?: () => string
+  locale?: string
   inject: () => { client: unknown }
   component: unknown
 }
@@ -58,8 +62,14 @@ describe('ui-timeline apply', () => {
     expect(definition?.title('sidebar://dv-timeline')).toBe('type.label')
     expect(definition?.guide?.map(entry => [entry.order, entry.title(), entry.description?.()])).toEqual([[41, 'guide.title', 'guide.description']])
     expect(dictionaries.get('dvTimeline')).toEqual({ zh, en })
-    expect(registered.map(entry => [entry.name, entry.key, entry.locale, entry.component])).toEqual([['sidebar.right.pane.tab', TIMELINE_ID, 'dvTimeline', TimelineBody]])
+    expect(registered.map(entry => [entry.name, entry.key ?? entry.id, entry.locale, entry.component])).toEqual([
+      ['sidebar.right.pane.tab', TIMELINE_ID, 'dvTimeline', TimelineBody],
+      ['dv.center.view', 'timeline', undefined, TimelineView],
+    ])
     expect(registered[0]?.inject().client).toBeInstanceOf(DvClient)
+    // The center view comes after the canvas in the workspace's view control, under the tab type's label.
+    expect([registered[1]?.order, registered[1]?.label?.()]).toEqual([1, 'type.label'])
+    expect(registered[1]?.inject()).toBe(registered[0]?.inject())
     expect(Object.keys(en).sort()).toEqual(Object.keys(zh).sort())
   })
 

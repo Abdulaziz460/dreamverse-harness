@@ -152,5 +152,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
     /** The editor body of the nodes of one `NodeKind`, keyed by its `id`; `@dv/ui-canvas` renders it in a node's editor. */
     'dv.canvas.editor': { kind: 'keyed'; scope: 'root'; owner: { node: NodeSeed; state: WireState } }
+    /** One view of the open project, such as the canvas; `@dv/ui-shell` shows the selected entry in the workspace center. */
+    'dv.center.view': { kind: 'list'; scope: 'root'; owner: { projectId: string; session: string | null } }
   }
 }

@@ -1,7 +1,7 @@
 /**
- * Browser half: register `dv-timeline` as a right-Sidebar tab type, its dictionaries, and its body; while `dvCanvas` is
- * present, register the takes that the timelines use; export the timeline editor (`TimelineView`) for the workspace
- * center.
+ * Browser half: register `dv-timeline` as a right-Sidebar tab type, its dictionaries, and its body; register the timeline
+ * editor (`TimelineView`) as the 时间线 view of the workspace center (`dv.center.view`); while `dvCanvas` is present,
+ * register the takes that the timelines use.
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
@@ -13,6 +13,7 @@ import { en, NS, zh } from './locales.ts'
 import { timelineTakesInUse } from './takes-in-use.ts'
 import { TimelineBody } from './TimelineBody.tsx'
 import type { TimelineInjected } from './TimelineBody.tsx'
+import { TimelineView } from './TimelineView.tsx'
 
 export type { DvTimelineKey } from './locales.ts'
 export type { TimelineBodyProps, TimelineInjected } from './TimelineBody.tsx'
@@ -23,8 +24,10 @@ export type { TimelineViewProps } from './TimelineView.tsx'
 export const inject = ['slots', 'locale', 'sidebarRightTabs']
 
 /**
- * Client plugin body: register the type, its dictionaries, and its body under the type's id; while `dvCanvas` is present,
- * register the timeline's `TakesInUse` under the same id. Each registration leaves with its service or with the plugin.
+ * Client plugin body: register the type, its dictionaries, and its body under the type's id, and the center view
+ * `timeline`, which edits the project and writes for the chat session that the workspace center passes; while `dvCanvas`
+ * is present, register the timeline's `TakesInUse` under the same id. Each registration leaves with its service or with
+ * the plugin.
  * @param ctx - client root context.
  */
 export function apply(ctx: ClientContext): void {
@@ -36,6 +39,9 @@ export function apply(ctx: ClientContext): void {
     { name: 'sidebar.right.pane.tab', key: TIMELINE_ID, locale: NS, inject: () => injected },
     TimelineBody,
   )), 'ui-timeline: tab body')
+  ctx.effect(() => ctx.slots.inject('dv.center.view', () => ctx.slots.register(
+    { name: 'dv.center.view', id: 'timeline', order: 1, label: () => t('type.label'), inject: () => injected }, TimelineView,
+  )), 'ui-timeline: center view')
   ctx.inject(['dvCanvas'], (scope) => {
     scope.effect(() => scope.dvCanvas.takesInUse.register(timelineTakesInUse(t)), 'ui-timeline: takes in use')
   })

@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-使用本包让 web 应用在对话旁边多一个时间线编辑器。编辑器为每条时间线显示一个标签，一个跨片段连续播放所选时间线的预览，以及一条视频轨道：每个片段的宽度就是它播放的时长，过期时有标记。你可以在轨道上移动、裁剪、拆分和移除片段，并把素材库里的素材拖到轨道上或用 ＋ 选择来插入。右侧栏的 `dv-timeline` 标签类型把编辑器包在项目栏下；`TimelineView` 是 shell 中央的时间线视图。两者都显示项目的当前状态，当前状态改变时跟着改变。
+使用本包让 web 应用在对话旁边多一个时间线编辑器。编辑器为每条时间线显示一个标签，一个跨片段连续播放所选时间线的预览，以及一条视频轨道：每个片段的宽度就是它播放的时长，过期时有标记。你可以在轨道上移动、裁剪、拆分和移除片段，并把素材库里的素材拖到轨道上或用 ＋ 选择来插入。右侧栏的 `dv-timeline` 标签类型把编辑器包在项目栏下；`TimelineView` 是 shell 中间区域的 时间线 视图（`dv.center.view`）。两者都显示项目的当前状态，当前状态改变时跟着改变。
 
 ## 目录
 
@@ -33,7 +33,7 @@ kind: "package-reference"
   name: '@dv/ui-timeline'
 ```
 
-Host 半边不注册任何东西。浏览器半边注册 `dv-timeline` 标签类型（侧栏指南页以"时间线"提供）、中英文的 `dvTimeline` locale 命名空间，以及以自身 id `@dv/ui-timeline` 为键的标签主体。只要 `@dv/ui-canvas` 的画布服务 `dvCanvas` 存在，它还以同一 id 注册一个 `TakesInUse`：对每条时间线的每个片段，它使用该片段等待的渲染（`source.record`），否则使用片段素材的生成记录，于是画布画出时间线播放的版本；它还在每个有入点或出点的片段的素材上加 已裁剪 / Trimmed 标记。带 `{timelineId, clipId}` 的 `dv:timeline-focus` 窗口事件让编辑器选中该时间线的那个片段，并把播放头移到片段开头。
+Host 半边不注册任何东西。浏览器半边注册 `dv-timeline` 标签类型（侧栏指南页以"时间线"提供）、中英文的 `dvTimeline` locale 命名空间，以及以自身 id `@dv/ui-timeline` 为键的标签主体。它把 `TimelineView` 注册为 `dv.center.view` 条目 `timeline`（顺序 1，标签为标签类型的 时间线 / Timeline），编辑中间区域所有者属性 `projectId` 指定的项目，并为所有者属性 `session` 指定的对话写入记录。只要 `@dv/ui-canvas` 的画布服务 `dvCanvas` 存在，它还以同一 id 注册一个 `TakesInUse`：对每条时间线的每个片段，它使用该片段等待的渲染（`source.record`），否则使用片段素材的生成记录，于是画布画出时间线播放的版本；它还在每个有入点或出点的片段的素材上加 已裁剪 / Trimmed 标记。带 `{timelineId, clipId}` 的 `dv:timeline-focus` 窗口事件让编辑器选中该时间线的那个片段，并把播放头移到片段开头。带 `{projectId, assetId}` 的 `dv:timeline-insert` 窗口事件（素材库 面板里的 插入片段，它同时让 shell 显示本视图）让已挂载的该项目的 `TimelineView` 在读到状态后插入该素材：`timeline.clip_insert` 插在所选时间线（否则第一条）末尾；状态里没有时间线时为 `timeline.create`，新建包含该片段的 `t1`；请求由模块保留，直到该项目的视图挂载。
 
 | 手势 | 记录 |
 | --- | --- |
@@ -65,7 +65,7 @@ DOM 带测试 ID `dv-timeline-body`、`dv-timeline-editor`、`dv-timeline-viewer
 | [`src/client/index.ts`](src/client/index.ts) | 注册 |
 | [`src/client/definition.ts`](src/client/definition.ts) | 标签类型 |
 | [`src/client/TimelineBody.tsx`](src/client/TimelineBody.tsx) | 标签主体：项目栏和编辑器 |
-| [`src/client/TimelineView.tsx`](src/client/TimelineView.tsx) | 中央视图：状态和写入 |
+| [`src/client/TimelineView.tsx`](src/client/TimelineView.tsx) | 中央视图：状态、写入，以及 `dv:timeline-insert` 请求的插入 |
 | [`src/client/TimelineEditor.tsx`](src/client/TimelineEditor.tsx) | 编辑器：标签、预览、工具栏、标尺、轨道、手势 |
 | [`src/client/timelines.ts`](src/client/timelines.ts) | 片段摆放、放下位置、时间码 |
 | [`src/client/takes-in-use.ts`](src/client/takes-in-use.ts) | 画布的 `TakesInUse`：片段记录和裁剪标记 |

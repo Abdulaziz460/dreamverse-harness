@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-使用本包让 web 应用在对话旁边多一个 DreamVerse 项目的画布。`CanvasView` 在可平移、可缩放的画布上把项目当前状态的记录画成节点，节点之间按流过的素材连线，过期记录有标记。点一个节点打开浮动编辑器，可以渲染新版本、从素材库添加参考，或预填对话输入框。shell 把 `CanvasView` 放在中间区域；右侧栏的 `dv-canvas` 标签类型在项目栏下显示同一个画布。
+使用本包让 web 应用在对话旁边多一个 DreamVerse 项目的画布。`CanvasView` 在可平移、可缩放的画布上把项目当前状态的记录画成节点，节点之间按流过的素材连线，过期记录有标记。点一个节点打开浮动编辑器，可以渲染新版本、从素材库添加参考，或预填对话输入框。画布是 shell 中间区域的 画布 视图（`dv.center.view`）；右侧栏的 `dv-canvas` 标签类型在项目栏下显示同一个画布。
 
 ## 目录
 
@@ -33,7 +33,7 @@ kind: "package-reference"
   name: '@dv/ui-canvas'
 ```
 
-Host 半边不注册任何东西。浏览器半边提供客户端服务 `dvCanvas`（`@dv/ui-kit/registries.ts` 的 `DvCanvas`：注册表 `nodeKinds`、`chainAnchors`、`takesInUse` 和 `versionKinds`），插件的 UI 半边向其中注册之前它们是空的。它还注册 `dv-canvas` 标签类型（侧栏指南页以"视频画布"提供的页面）、中英文的 `dvCanvas` locale 命名空间，以及以自身 id `@dv/ui-canvas` 为键的标签主体。插件的 UI 半边在 `ctx.inject(['dvCanvas'], …)` 里注册它的描述符，并保留返回的注销函数；键已被占用的第二个描述符会抛错。标签主体和外壳的中央区把这些注册表作为 `canvas` 属性传给 `CanvasView`。已注册 `NodeKind` 的每个 seed 画成一个节点，带有其类别的 `data-node-kind`，位于其类别的布局列 `column`，用同一张默认卡片绘制：`NodeKind.color` 颜色的类别圆点、seed 的 `label`（否则为 `NodeKind.label()`）和 ` · <subtitle>`；带 `slots` 的 seed 随后像 `plan` 卡片那样显示画面网格和标题，其他 seed 像 `bible` 卡片那样显示 40 × 40 的第一张图片或视频、其余数量"+N"和标题；seed 的媒体不单独画成 `asset` 节点。标签主体声明键控插槽 `dv.canvas.editor`（它的 `SlotMap` 条目在 `@dv/ui-kit/registries.ts` 中），并把自己的 `renderSlot` 作为 `renderEditor` 传给 `CanvasView`：seed 的编辑器显示以该 seed 的 `NodeKind.id` 为键的条目，所有者属性为 `{ node, state }`，没有注册条目时只显示标题栏。外壳的中央区挂载 `CanvasView` 时不传 `renderEditor`，所以那里的 seed 编辑器只显示标题栏。
+Host 半边不注册任何东西。浏览器半边提供客户端服务 `dvCanvas`（`@dv/ui-kit/registries.ts` 的 `DvCanvas`：注册表 `nodeKinds`、`chainAnchors`、`takesInUse` 和 `versionKinds`），插件的 UI 半边向其中注册之前它们是空的。它还注册 `dv-canvas` 标签类型（侧栏指南页以"视频画布"提供的页面）、中英文的 `dvCanvas` locale 命名空间，以及以自身 id `@dv/ui-canvas` 为键的标签主体。它把 `CanvasCenter` 注册为 `dv.center.view` 条目 `canvas`（顺序 0，标签为标签类型的 画布 / Canvas），这是按中间区域的所有者属性 `projectId` 和 `session` 绘制项目并记录对话的 `CanvasView`。插件的 UI 半边在 `ctx.inject(['dvCanvas'], …)` 里注册它的描述符，并保留返回的注销函数；键已被占用的第二个描述符会抛错。标签主体和中间区域视图把这些注册表作为 `canvas` 属性传给 `CanvasView`。已注册 `NodeKind` 的每个 seed 画成一个节点，带有其类别的 `data-node-kind`，位于其类别的布局列 `column`，用同一张默认卡片绘制：`NodeKind.color` 颜色的类别圆点、seed 的 `label`（否则为 `NodeKind.label()`）和 ` · <subtitle>`；带 `slots` 的 seed 随后像 `plan` 卡片那样显示画面网格和标题，其他 seed 像 `bible` 卡片那样显示 40 × 40 的第一张图片或视频、其余数量"+N"和标题；seed 的媒体不单独画成 `asset` 节点。中间区域视图声明键控插槽 `dv.canvas.editor`（它的 `SlotMap` 条目在 `@dv/ui-kit/registries.ts` 中），并把自己的 `renderSlot` 作为 `renderEditor` 传给 `CanvasView`：seed 的编辑器显示以该 seed 的 `NodeKind.id` 为键的条目，所有者属性为 `{ node, state }`，没有注册条目时只显示标题栏。一个插槽只能由一个条目声明，所以标签主体不声明画布插槽，挂载 `CanvasView` 时不传 `renderEditor`，那里的 seed 编辑器只显示标题栏。
 
 | 手势 | 请求 |
 | --- | --- |
@@ -71,6 +71,7 @@ Host 半边不注册任何东西。浏览器半边提供客户端服务 `dvCanva
 | [`src/client/dv-canvas.ts`](src/client/dv-canvas.ts) | `dvCanvas` 注册表 |
 | [`src/client/definition.ts`](src/client/definition.ts) | 标签类型 |
 | [`src/client/CanvasBody.tsx`](src/client/CanvasBody.tsx) | 标签主体：项目栏下的 `CanvasView` |
+| [`src/client/CanvasCenter.tsx`](src/client/CanvasCenter.tsx) | 中间区域视图：渲染 seed 编辑器插槽的 `CanvasView` |
 | [`src/client/CanvasView.tsx`](src/client/CanvasView.tsx) | 画布：平移、缩放、拖动、拖放、布局存储 |
 | [`src/client/graph.ts`](src/client/graph.ts) | 节点、边和默认布局 |
 | [`src/client/NodeCard.tsx`](src/client/NodeCard.tsx)、[`src/client/NodeEditor.tsx`](src/client/NodeEditor.tsx) | 节点卡片和浮动编辑器 |
