@@ -3,9 +3,11 @@ import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { SidebarRightTabRegistry } from '@deepseek-ai/dsh-client-ui-sidebar-right/src/client/tab-registry.ts'
 import { DvClient } from '@dv/ui-kit/api.ts'
+import { createRegistry, type DvMentions, type MentionKind } from '@dv/ui-kit/registries.ts'
 import { TIMELINE_ID, TIMELINE_KIND } from '../src/client/definition.ts'
 import { apply, inject } from '../src/client/index.ts'
 import { en, zh } from '../src/client/locales.ts'
+import { clipMentionKind } from '../src/client/mention.ts'
 import { TimelineBody } from '../src/client/TimelineBody.tsx'
 import { TimelineView } from '../src/client/TimelineView.tsx'
 import { apply as hostApply } from '../src/index.ts'
@@ -46,7 +48,7 @@ async function boot() {
   ctx.provide('locale', locale as never)
   const fiber = ctx.plugin({ inject: [...inject], apply })
   await fiber.await()
-  return { tabs, registered, dictionaries, fiber }
+  return { ctx, tabs, registered, dictionaries, fiber }
 }
 
 describe('ui-timeline apply', () => {
@@ -71,6 +73,15 @@ describe('ui-timeline apply', () => {
     expect([registered[1]?.order, registered[1]?.label?.()]).toEqual([1, 'type.label'])
     expect(registered[1]?.inject()).toBe(registered[0]?.inject())
     expect(Object.keys(en).sort()).toEqual(Object.keys(zh).sort())
+  })
+
+  it('registers the clip mention kind once dvMentions is present, and the plugin disposal removes it', async () => {
+    const { ctx, fiber } = await boot()
+    const mentions: DvMentions = { kinds: createRegistry<MentionKind>(kind => [kind.id]) }
+    ctx.provide('dvMentions', mentions)
+    await vi.waitFor(() => { expect(mentions.kinds.list()).toEqual([clipMentionKind]) })
+    await fiber.dispose()
+    expect(mentions.kinds.list()).toEqual([])
   })
 
   it('removes everything when the plugin is disposed', async () => {

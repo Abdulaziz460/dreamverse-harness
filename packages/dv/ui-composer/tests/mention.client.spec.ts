@@ -34,16 +34,15 @@ function iconOf(item: { icon?: ComponentType }): string | null {
 }
 
 describe('projectItems', () => {
-  it('lists the clips, then the items of each mention kind by order under its section, then the assets', () => {
+  it('lists the items of each mention kind by order under its section, then the assets', () => {
     document.documentElement.lang = 'zh-CN'
     const items = projectItems(fixtureState(), [props, marks])
     expect(items.map(item => [item.uri, item.section])).toEqual([
-      ['dv:clip/cl1', '片段'], ['dv:clip/cl2', '片段'],
       ['dv:test_mark/m1', 'Marks'], ['dv:test_prop/p1', 'Props'], ['dv:test_prop/p2', 'Props'],
       ...['export-last.png', 'export.mp4', 'shot2-last.png', 'shot2.mp4', 'shot1-last.png', 'shot1.mp4', 'ref.png']
         .map(asset => [`dv:asset/${asset}`, '素材']),
     ])
-    const [mark, umbrella, hat] = items.slice(2, 5)
+    const [mark, umbrella, hat] = items.slice(0, 3)
     expect([umbrella?.label, umbrella?.description, hat?.description]).toEqual(['Umbrella', 'red', undefined])
     // A thumb is an asset ID: a video shows its first frame, an image shows as an image.
     expect(iconOf(umbrella ?? {})).toContain(`<video src="${assetUrl('shot1.mp4')}"`)
@@ -51,8 +50,8 @@ describe('projectItems', () => {
     expect(iconOf(hat ?? {})).toBeNull()
   })
 
-  it('lists no story bible item without a registered kind', () => {
-    expect(projectItems(fixtureState(), []).some(item => item.uri.startsWith('dv:character/'))).toBe(false)
+  it('lists no clip and no story bible item without a registered kind', () => {
+    expect(projectItems(fixtureState(), []).some(item => item.uri.startsWith('dv:clip/') || item.uri.startsWith('dv:character/'))).toBe(false)
   })
 })
 

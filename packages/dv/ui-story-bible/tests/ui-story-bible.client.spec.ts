@@ -100,7 +100,7 @@ describe('bibleMentionKinds', () => {
     const items = projectItems(fixtureState(), bibleMentionKinds)
     const hero = items.find(item => item.uri === 'dv:character/hero')
     expect([hero?.label, hero?.section, hero?.description, hero?.icon !== undefined]).toEqual(['Hero', '角色', 'A tired detective.', true])
-    expect(items.map(item => item.section)).toEqual(['片段', '片段', '角色', ...Array<string>(7).fill('素材')])
+    expect(items.map(item => item.section)).toEqual(['角色', ...Array<string>(7).fill('素材')])
   })
 })
 

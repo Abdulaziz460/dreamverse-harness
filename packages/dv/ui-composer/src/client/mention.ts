@@ -1,7 +1,6 @@
 /**
- * The `@` source that lists the project items of the project the shell has open: clips by timeline name and position
- * (`时间线 1 · 片段 2`, or `Timeline 1 · Clip 2` in English, for an unnamed timeline), the items of the mention kinds
- * that plugin UI halves register in `dvMentions`, and assets. A pick inserts a reference chip whose text is
+ * The `@` source that lists the project items of the project the shell has open: the items of the mention kinds that
+ * plugin UI halves register in `dvMentions`, and assets. A pick inserts a reference chip whose text is
  * `@[<label>](dv:<kind>/<id>)`; the host plugin `@dv/chat-references` expands that address into record and asset IDs
  * for the model, and puts the assets of the `dv:asset/<id>` chips of a sent message on the canvas.
  *
@@ -15,7 +14,6 @@ import type { DvMentions, MentionKind } from '@dv/ui-kit/registries.ts'
 import type { WireState } from '@dv/ui-kit/types.ts'
 import { getCurrentProject } from '@dv/ui-kit/current-project.ts'
 import { pickText } from '@dv/ui-kit/locale.ts'
-import { timelineName } from '@dv/ui-kit/timeline.ts'
 
 /** The source name; reference chips carry it so their codec serializes them. */
 export const MENTION_SOURCE = 'dv-project'
@@ -49,33 +47,15 @@ interface Item {
 }
 
 /**
- * The project items of a project state: every clip of every timeline, the items of each mention kind in `order`
- * (registration order on a tie) under the kind's section, and the assets. Labels and group names follow the interface
- * language at call time, so the label a pick inserts is in that language.
+ * The project items of a project state: the items of each mention kind in `order` (registration order on a tie) under
+ * the kind's section, and the assets. Labels and group names follow the interface language at call time, so the label a
+ * pick inserts is in that language.
  * @param state - the project's current state.
  * @param kinds - the registered mention kinds.
  * @returns the items in display order.
  */
 export function projectItems(state: WireState, kinds: readonly MentionKind[]): Item[] {
   const assetsById = new Map(state.assets.map(asset => [asset.id, asset]))
-  const proj = state.components.proj
-  const records = new Map(proj.records.map(record => [record.id, record]))
-  const clips = state.components.timeline.timelines.flatMap(timeline => timeline.clips.map((clip, position): Item => {
-    // A placeholder clip (no asset yet) takes its prompt from the render it waits for and shows no thumbnail.
-    const producer = records.get(clip.asset === null ? clip.source?.record ?? '' : proj.created_by[clip.asset] ?? '')
-    const frame = producer?.outputs.find(id => assetsById.get(id)?.mime.startsWith('image/') === true)
-    const name = timelineName(timeline, n => pickText(`时间线 ${String(n)}`, `Timeline ${String(n)}`))
-    const prompt = typeof producer?.params['prompt'] === 'string' ? producer.params['prompt'] : ''
-    return {
-      uri: `dv:clip/${encodeURIComponent(clip.id)}`,
-      label: pickText(`${name} · 片段 ${String(position + 1)}`, `${name} · Clip ${String(position + 1)}`),
-      section: pickText('片段', 'Clips'),
-      ...prompt === '' ? {} : { description: prompt.slice(0, 40) },
-      ...frame !== undefined
-        ? { icon: thumbnail(assetUrl(frame), false) }
-        : clip.asset === null ? {} : { icon: thumbnail(assetUrl(clip.asset), true) },
-    }
-  }))
   // A thumb is an asset ID: a video shows its first frame, anything else shows as an image.
   const mentioned = [...kinds].sort((a, b) => a.order - b.order).flatMap((kind) => {
     const section = kind.section()
@@ -89,7 +69,7 @@ export function projectItems(state: WireState, kinds: readonly MentionKind[]): I
       uri: `dv:asset/${encodeURIComponent(asset.id)}`, label: asset.name, section: pickText('素材', 'Assets'),
       icon: thumbnail(assetUrl(asset.id), asset.mime.startsWith('video/')),
     }))
-  return [...clips, ...mentioned, ...assets]
+  return [...mentioned, ...assets]
 }
 
 /**

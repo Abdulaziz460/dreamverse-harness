@@ -33,7 +33,7 @@ kind: "package-reference"
   name: '@dv/ui-timeline'
 ```
 
-Host 半边不注册任何东西。浏览器半边注册 `dv-timeline` 标签类型（侧栏指南页以"时间线"提供）、中英文的 `dvTimeline` locale 命名空间，以及以自身 id `@dv/ui-timeline` 为键的标签主体。它把 `TimelineView` 注册为 `dv.center.view` 条目 `timeline`（顺序 1，标签为标签类型的 时间线 / Timeline），编辑中间区域所有者属性 `projectId` 指定的项目，并为所有者属性 `session` 指定的对话写入记录。只要 `@dv/ui-canvas` 的画布服务 `dvCanvas` 存在，它还以同一 id 注册一个 `TakesInUse`：对每条时间线的每个片段，它使用该片段等待的渲染（`source.record`），否则使用片段素材的生成记录，于是画布画出时间线播放的版本；它还在每个有入点或出点的片段的素材上加 已裁剪 / Trimmed 标记。只要 `@dv/ui-history` 的历史服务 `dvHistory` 存在，它就注册 `HistoryRow` `timeline.`：它不给时间线记录的名称加主体，它的 `focus` 发出带记录的时间线和片段的 `dv:timeline-focus`。时间线是记录的 `timeline` 参数，否则是其 `clip` 参数所属的时间线（每个片段属于分配它的记录的时间线；拆分出的片段属于被拆分片段的时间线），否则对没有该参数的 `timeline.create` 为 `t1`；片段是 `clip` 参数，否则是记录分配的第一个片段。找不到时间线的记录不定位。带 `{timelineId, clipId}` 的 `dv:timeline-focus` 窗口事件让编辑器选中该时间线的那个片段，并把播放头移到片段开头。带 `{projectId, assetId}` 的 `dv:timeline-insert` 窗口事件（素材库 面板里的 插入片段，它同时让 shell 显示本视图）让已挂载的该项目的 `TimelineView` 在读到状态后插入该素材：`timeline.clip_insert` 插在所选时间线（否则第一条）末尾；状态里没有时间线时为 `timeline.create`，新建包含该片段的 `t1`；请求由模块保留，直到该项目的视图挂载。
+Host 半边不注册任何东西。浏览器半边注册 `dv-timeline` 标签类型（侧栏指南页以"时间线"提供）、中英文的 `dvTimeline` locale 命名空间，以及以自身 id `@dv/ui-timeline` 为键的标签主体。它把 `TimelineView` 注册为 `dv.center.view` 条目 `timeline`（顺序 1，标签为标签类型的 时间线 / Timeline），编辑中间区域所有者属性 `projectId` 指定的项目，并为所有者属性 `session` 指定的对话写入记录。只要 `@dv/ui-canvas` 的画布服务 `dvCanvas` 存在，它还以同一 id 注册一个 `TakesInUse`：对每条时间线的每个片段，它使用该片段等待的渲染（`source.record`），否则使用片段素材的生成记录，于是画布画出时间线播放的版本；它还在每个有入点或出点的片段的素材上加 已裁剪 / Trimmed 标记。只要 `@dv/ui-history` 的历史服务 `dvHistory` 存在，它就注册 `HistoryRow` `timeline.`：它不给时间线记录的名称加主体，它的 `focus` 发出带记录的时间线和片段的 `dv:timeline-focus`。时间线是记录的 `timeline` 参数，否则是其 `clip` 参数所属的时间线（每个片段属于分配它的记录的时间线；拆分出的片段属于被拆分片段的时间线），否则对没有该参数的 `timeline.create` 为 `t1`；片段是 `clip` 参数，否则是记录分配的第一个片段。找不到时间线的记录不定位。`@dv/ui-composer` 提供 `dvMentions` 时，它还注册提及类型 `clip`（ID 为 `@dv/ui-timeline`，分组 片段 / Clips，order 为 0，所以 `@` 菜单把片段列在其他每个类型之前）：每条时间线的每个片段显示为 时间线 1 · 片段 2 / Timeline 1 · Clip 2（未命名的时间线），带生成片段素材的记录的提示词的前 40 个字符（占位片段取它等待的渲染），缩略图为该记录输出的图片，没有时为片段自己的素材。带 `{timelineId, clipId}` 的 `dv:timeline-focus` 窗口事件让编辑器选中该时间线的那个片段，并把播放头移到片段开头。带 `{projectId, assetId}` 的 `dv:timeline-insert` 窗口事件（素材库 面板里的 插入片段，它同时让 shell 显示本视图）让已挂载的该项目的 `TimelineView` 在读到状态后插入该素材：`timeline.clip_insert` 插在所选时间线（否则第一条）末尾；状态里没有时间线时为 `timeline.create`，新建包含该片段的 `t1`；请求由模块保留，直到该项目的视图挂载。
 
 | 手势 | 记录 |
 | --- | --- |
@@ -70,6 +70,7 @@ DOM 带测试 ID `dv-timeline-body`、`dv-timeline-editor`、`dv-timeline-viewer
 | [`src/client/timelines.ts`](src/client/timelines.ts) | 片段摆放、放下位置、时间码 |
 | [`src/client/takes-in-use.ts`](src/client/takes-in-use.ts) | 画布的 `TakesInUse`：片段记录和裁剪标记 |
 | [`src/client/history-row.ts`](src/client/history-row.ts) | 时间线记录的 `HistoryRow`：每个片段所属的时间线和选中记录的定位 |
+| [`src/client/mention.ts`](src/client/mention.ts) | 对话输入框 `@` 菜单的片段提及类型 |
 | [`src/client/first-frame.ts`](src/client/first-frame.ts) | 视频的首帧，每个页面只读一次；没有静帧图的轨道片段把它沿整个宽度重复铺满 |
 | [`src/client/player.ts`](src/client/player.ts) | 跨片段连续播放 |
 | [`src/client/waveform.ts`](src/client/waveform.ts) | 原声轨道的音频解码、峰值包络和波形条 |
