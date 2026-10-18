@@ -1,6 +1,6 @@
 # Video model selection
 
-Each shot of a plan renders with one video model. Each video model has a key of four fields: `modality`, `task`, `provider` and `model`. Do this procedure for each shot.
+Each shot renders with one video model. Each video model has a key of four fields: `modality`, `task`, `provider` and `model`. Do this procedure for each shot.
 
 ## Procedure
 
@@ -19,7 +19,7 @@ Each shot of a plan renders with one video model. Each video model has a key of 
 6. If one candidate remains, use it. Go to step 9.
 7. If more than one candidate remains, compare their descriptions. If the choice depends on a preference of the user, ask the user. Show the provider, the model and the description of each option.
 8. Else, choose the candidate that fits the shot best.
-9. Write the four key fields of the chosen model on the plan shot.
+9. Give the shot the four key fields of the chosen model.
 
 ## Problems
 

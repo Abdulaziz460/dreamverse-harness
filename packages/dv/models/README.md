@@ -248,12 +248,12 @@ The definition is fixed text in the stable tool section. Registration or removal
 
 #### What the model sees
 
-While the DSH skill registry is mounted, the skill catalog that `dsh-tool-skill` renders lists the skill catalog line below. When the agent calls the `skill` tool with `video-model-selection`, the tool result carries `skills/video-model-selection.md`. That file is a nine-step procedure for each shot of a plan. The agent gets the candidates for the task of the shot with `dv_models_list` and `dv_models_get`. The agent removes each candidate that cannot render the duration, aspect ratio, resolution, references, or first frame of the shot. Users cannot invoke the skill with `/video-model-selection`.
+While the DSH skill registry is mounted, the skill catalog that `dsh-tool-skill` renders lists the skill catalog line below. When the agent calls the `skill` tool with `video-model-selection`, the tool result carries `skills/video-model-selection.md`. That file is a nine-step procedure for each shot. The agent gets the candidates for the task of the shot with `dv_models_list` and `dv_models_get`. The agent removes each candidate that cannot render the duration, aspect ratio, resolution, references, or first frame of the shot. Users cannot invoke the skill with `/video-model-selection`.
 
 ##### Skill catalog line
 
 ```markdown
-- `video-model-selection`: How to choose the video model for each shot of a plan: the task of the shot, the candidates from dv_models_list and dv_models_get, and when to ask the user.
+- `video-model-selection`: How to choose the video model for each shot: the task of the shot, the candidate models and their limits, and when to ask the user.
 ```
 
 #### Token effect

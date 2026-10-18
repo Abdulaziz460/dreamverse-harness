@@ -84,12 +84,12 @@ kind: "package-reference"
 
 #### 模型看到什么
 
-skill 注册表挂载且 `fasth3` 配置了任务 `ref2v` 期间，`dsh-tool-skill` 渲染的 skill 目录列出下面的目录条目。智能体用 `fasth3-reference-prompting` 调用 `skill` 工具时，工具结果带有 `skills/fasth3-reference-prompting.md`：一段面向模型 `fasth3`、任务 `ref2v` 的 `dv_shot_render` 以及同一模型和任务的计划镜头的 DreamVerse 对接说明（一个 DreamVerse 镜头就是一个目标视频；六个改写部分组成 `prompt`；模型按参考顺序分类型编号 `<Picture N>`、`<Video N>` 和 `<Audio N>`；参考图片、视频和音频文件以 `@[<label>](dv:asset/<AssetId>)` 引用，插件把它换成对应的 `<Picture N>`、`<Video N>` 或 `<Audio N>`；每个带声音的视频额外占一个 `<Audio N>`，首帧以 `@[首帧](dv:input/first_frame)` 引用，插件把它换成下一个 `<Picture N>`；参考视频和音频最多使用到镜头时长；至少一个参考；最多 8 张图片加首帧、3 个视频、3 个音频文件和 11 个参考；`duration_sec` 为 5 到 15），后接原样复制的 MiniMax-H3 官方全参考提示词指南 `VIDEO_PROMPT_WRITING_GUIDE_ref_en.md`。用户不能用 `/fasth3-reference-prompting` 调用该 skill；只有智能体加载它。
+skill 注册表挂载且 `fasth3` 配置了任务 `ref2v` 期间，`dsh-tool-skill` 渲染的 skill 目录列出下面的目录条目。智能体用 `fasth3-reference-prompting` 调用 `skill` 工具时，工具结果带有 `skills/fasth3-reference-prompting.md`：一段面向模型 `fasth3`、任务 `ref2v` 的镜头的 DreamVerse 对接说明（一个 DreamVerse 镜头就是一个目标视频；六个改写部分组成 `prompt`；模型按参考顺序分类型编号 `<Picture N>`、`<Video N>` 和 `<Audio N>`；参考图片、视频和音频文件以 `@[<label>](dv:asset/<AssetId>)` 引用，插件把它换成对应的 `<Picture N>`、`<Video N>` 或 `<Audio N>`；每个带声音的视频额外占一个 `<Audio N>`，首帧以 `@[首帧](dv:input/first_frame)` 引用，插件把它换成下一个 `<Picture N>`；参考视频和音频最多使用到镜头时长；至少一个参考；最多 8 张图片加首帧、3 个视频、3 个音频文件和 11 个参考；`duration_sec` 为 5 到 15），后接原样复制的 MiniMax-H3 官方全参考提示词指南 `VIDEO_PROMPT_WRITING_GUIDE_ref_en.md`。用户不能用 `/fasth3-reference-prompting` 调用该 skill；只有智能体加载它。
 
 ##### 目录条目
 
 ```markdown
-- `fasth3-reference-prompting`: Model limits and prompt rules for dv_shot_render with model fasth3 for task ref2v: reference images, videos and audio, how the prompt names them, and how a shot continues the previous one.
+- `fasth3-reference-prompting`: Model limits and prompt rules for model fasth3 for task ref2v: reference images, videos and audio, how the prompt names them, and how a shot continues the previous one.
 ```
 
 #### Token 影响
@@ -104,12 +104,12 @@ skill 注册表挂载且 `fasth3` 配置了任务 `ref2v` 期间，`dsh-tool-ski
 
 #### 模型看到什么
 
-skill 注册表挂载且 `fasth3` 配置了任务 `t2v` 期间，skill 目录列出下面的目录条目。智能体用 `fasth3-text-prompting` 调用 `skill` 工具时，工具结果带有 `skills/fasth3-text-prompting.md`：一段面向模型 `fasth3`、任务 `t2v` 的 `dv_shot_render` 以及同一模型和任务的计划镜头的 DreamVerse 对接说明（使用指南的 T2VA 模式，所以提示词直接从三个字段 `integrated_multimodal_description`、`overall_soundscape` 和 `non_diegetic_music` 开始；一个 DreamVerse 镜头就是一个目标视频；一切都用文字描述，必须保持同一张脸时使用任务 `ref2v`；`duration_sec` 为 5 到 15），后接原样复制的 MiniMax-H3 官方提示词指南 `VIDEO_PROMPT_WRITING_GUIDE_base_en.md`。用户不能用 `/fasth3-text-prompting` 调用该 skill；只有智能体加载它。
+skill 注册表挂载且 `fasth3` 配置了任务 `t2v` 期间，skill 目录列出下面的目录条目。智能体用 `fasth3-text-prompting` 调用 `skill` 工具时，工具结果带有 `skills/fasth3-text-prompting.md`：一段面向模型 `fasth3`、任务 `t2v` 的镜头的 DreamVerse 对接说明（使用指南的 T2VA 模式，所以提示词直接从三个字段 `integrated_multimodal_description`、`overall_soundscape` 和 `non_diegetic_music` 开始；一个 DreamVerse 镜头就是一个目标视频；一切都用文字描述，必须保持同一张脸时使用任务 `ref2v`；`duration_sec` 为 5 到 15），后接原样复制的 MiniMax-H3 官方提示词指南 `VIDEO_PROMPT_WRITING_GUIDE_base_en.md`。用户不能用 `/fasth3-text-prompting` 调用该 skill；只有智能体加载它。
 
 ##### 目录条目
 
 ```markdown
-- `fasth3-text-prompting`: Model limits and prompt rules for dv_shot_render with model fasth3 for task t2v: the three prompt fields, shot changes, camera motion, speakers and dialogue, sound and music.
+- `fasth3-text-prompting`: Model limits and prompt rules for model fasth3 for task t2v: the three prompt fields, shot changes, camera motion, speakers and dialogue, sound and music.
 ```
 
 #### Token 影响

@@ -111,8 +111,8 @@ export default class DvModels extends Service {
     })
     const skill = {
       name: 'video-model-selection',
-      description: 'How to choose the video model for each shot of a plan: the task of the shot, the candidates from '
-        + 'dv_models_list and dv_models_get, and when to ask the user.',
+      description: 'How to choose the video model for each shot: the task of the shot, the candidate models and their '
+        + 'limits, and when to ask the user.',
       source: 'runtime',
       content: readFileSync(new URL('../skills/video-model-selection.md', import.meta.url), 'utf8'),
       // The agent's own procedure: the model loads it, and the composer's / menu and the Skills page do not list it.

@@ -248,12 +248,12 @@ Read one model by its key from dv_models_list: its description and its schema (i
 
 #### 模型看到什么
 
-DSH skill 注册表挂载期间，`dsh-tool-skill` 渲染的 skill 目录列出下面的 skill 目录行。agent 以 `video-model-selection` 调用 `skill` 工具时，工具结果携带 `skills/video-model-selection.md`。该文件是针对计划中每个镜头的九步流程。agent 用 `dv_models_list` 和 `dv_models_get` 获取镜头任务的候选。agent 移除无法渲染镜头的时长、宽高比、分辨率、参考素材或首帧的每个候选。用户不能用 `/video-model-selection` 调用该 skill。
+DSH skill 注册表挂载期间，`dsh-tool-skill` 渲染的 skill 目录列出下面的 skill 目录行。agent 以 `video-model-selection` 调用 `skill` 工具时，工具结果携带 `skills/video-model-selection.md`。该文件是针对每个镜头的九步流程。agent 用 `dv_models_list` 和 `dv_models_get` 获取镜头任务的候选。agent 移除无法渲染镜头的时长、宽高比、分辨率、参考素材或首帧的每个候选。用户不能用 `/video-model-selection` 调用该 skill。
 
 ##### Skill 目录行
 
 ```markdown
-- `video-model-selection`: How to choose the video model for each shot of a plan: the task of the shot, the candidates from dv_models_list and dv_models_get, and when to ask the user.
+- `video-model-selection`: How to choose the video model for each shot: the task of the shot, the candidate models and their limits, and when to ask the user.
 ```
 
 #### Token 影响

@@ -84,12 +84,12 @@ The table `SERVED` in `src/index.ts` maps each model that the plugin can serve t
 
 #### What the model sees
 
-While the skill registry is mounted and `fasth3` is configured for task `ref2v`, the skill catalog that `dsh-tool-skill` renders lists the catalog entry below. When the agent calls the `skill` tool with `fasth3-reference-prompting`, the tool result carries `skills/fasth3-reference-prompting.md`: a DreamVerse connection section for `dv_shot_render` with model `fasth3` for task `ref2v` and for plan shots with the same model and task (one DreamVerse shot is one target video; the six rewrite sections form the `prompt`; the model's per-type numbering `<Picture N>`, `<Video N>` and `<Audio N>` in reference order; reference images, videos and audio files cited as `@[<label>](dv:asset/<AssetId>)`, which the plugin replaces with their `<Picture N>`, `<Video N>` or `<Audio N>`; with an extra `<Audio N>` for each video with sound and the first frame cited as `@[首帧](dv:input/first_frame)`, which the plugin replaces with the next `<Picture N>`; reference videos and audio used up to the shot's length; at least one reference; at most 8 images plus the first frame, 3 videos, 3 audio files and 11 references; `duration_sec` from 5 to 15), followed by the official MiniMax-H3 full-reference prompt guide `VIDEO_PROMPT_WRITING_GUIDE_ref_en.md` copied unchanged. Users cannot invoke the skill with `/fasth3-reference-prompting`; only the agent loads it.
+While the skill registry is mounted and `fasth3` is configured for task `ref2v`, the skill catalog that `dsh-tool-skill` renders lists the catalog entry below. When the agent calls the `skill` tool with `fasth3-reference-prompting`, the tool result carries `skills/fasth3-reference-prompting.md`: a DreamVerse connection section for a shot with model `fasth3` for task `ref2v` (one DreamVerse shot is one target video; the six rewrite sections form the `prompt`; the model's per-type numbering `<Picture N>`, `<Video N>` and `<Audio N>` in reference order; reference images, videos and audio files cited as `@[<label>](dv:asset/<AssetId>)`, which the plugin replaces with their `<Picture N>`, `<Video N>` or `<Audio N>`; with an extra `<Audio N>` for each video with sound and the first frame cited as `@[首帧](dv:input/first_frame)`, which the plugin replaces with the next `<Picture N>`; reference videos and audio used up to the shot's length; at least one reference; at most 8 images plus the first frame, 3 videos, 3 audio files and 11 references; `duration_sec` from 5 to 15), followed by the official MiniMax-H3 full-reference prompt guide `VIDEO_PROMPT_WRITING_GUIDE_ref_en.md` copied unchanged. Users cannot invoke the skill with `/fasth3-reference-prompting`; only the agent loads it.
 
 ##### Catalog entry
 
 ```markdown
-- `fasth3-reference-prompting`: Model limits and prompt rules for dv_shot_render with model fasth3 for task ref2v: reference images, videos and audio, how the prompt names them, and how a shot continues the previous one.
+- `fasth3-reference-prompting`: Model limits and prompt rules for model fasth3 for task ref2v: reference images, videos and audio, how the prompt names them, and how a shot continues the previous one.
 ```
 
 #### Token effect
@@ -104,12 +104,12 @@ Mounting or removing the plugin changes the skill list, and `dsh-tool-skill` app
 
 #### What the model sees
 
-While the skill registry is mounted and `fasth3` is configured for task `t2v`, the skill catalog lists the catalog entry below. When the agent calls the `skill` tool with `fasth3-text-prompting`, the tool result carries `skills/fasth3-text-prompting.md`: a DreamVerse connection section for `dv_shot_render` with model `fasth3` for task `t2v` and for plan shots with the same model and task (use the guide's T2VA mode, so the prompt begins directly with the three fields `integrated_multimodal_description`, `overall_soundscape` and `non_diegetic_music`; one DreamVerse shot is one target video; describe everything in words, and use task `ref2v` for a face that must stay the same; `duration_sec` from 5 to 15), followed by the official MiniMax-H3 prompt guide `VIDEO_PROMPT_WRITING_GUIDE_base_en.md` copied unchanged. Users cannot invoke the skill with `/fasth3-text-prompting`; only the agent loads it.
+While the skill registry is mounted and `fasth3` is configured for task `t2v`, the skill catalog lists the catalog entry below. When the agent calls the `skill` tool with `fasth3-text-prompting`, the tool result carries `skills/fasth3-text-prompting.md`: a DreamVerse connection section for a shot with model `fasth3` for task `t2v` (use the guide's T2VA mode, so the prompt begins directly with the three fields `integrated_multimodal_description`, `overall_soundscape` and `non_diegetic_music`; one DreamVerse shot is one target video; describe everything in words, and use task `ref2v` for a face that must stay the same; `duration_sec` from 5 to 15), followed by the official MiniMax-H3 prompt guide `VIDEO_PROMPT_WRITING_GUIDE_base_en.md` copied unchanged. Users cannot invoke the skill with `/fasth3-text-prompting`; only the agent loads it.
 
 ##### Catalog entry
 
 ```markdown
-- `fasth3-text-prompting`: Model limits and prompt rules for dv_shot_render with model fasth3 for task t2v: the three prompt fields, shot changes, camera motion, speakers and dialogue, sound and music.
+- `fasth3-text-prompting`: Model limits and prompt rules for model fasth3 for task t2v: the three prompt fields, shot changes, camera motion, speakers and dialogue, sound and music.
 ```
 
 #### Token effect

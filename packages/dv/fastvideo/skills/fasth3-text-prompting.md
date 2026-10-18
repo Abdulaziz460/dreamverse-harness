@@ -1,6 +1,6 @@
 # FastH3 prompts for task t2v
 
-Model `fasth3` for task `t2v` renders a shot from a prompt only. The served model is FastH3 8-Step V2, which renders 5 to 15 seconds of video with sound per shot from text. Write every such prompt with the official MiniMax-H3 prompt guide below, in its T2VA mode; this section maps the guide to `dv_shot_render` with model `fasth3` for task `t2v` and to plan shots with the same model and task.
+Model `fasth3` for task `t2v` renders a shot from a prompt only. The served model is FastH3 8-Step V2, which renders 5 to 15 seconds of video with sound per shot from text. Write every such prompt with the official MiniMax-H3 prompt guide below, in its T2VA mode; this section maps the guide to a DreamVerse shot with model `fasth3` for task `t2v`.
 
 ## DreamVerse connection
 

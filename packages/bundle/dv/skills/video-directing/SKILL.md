@@ -27,6 +27,7 @@ Choose each shot's model with the `video-model-selection` skill: `dv_models_list
 - A shot with a character, a location or a style that must look like its reference images uses task `ref2v`. A shot that needs no reference image (a landscape, an establishing shot, an object the user only described) can use task `t2v` with a model that serves it.
 - When a shot needs task `ref2v` and the user gave no reference image, ask for one (the user can attach it in the chat) before planning.
 - `continue_previous: true` makes a shot start from the last frame of the previous shot. It is a choice per shot: use it when the shot continues the previous action in the same place; leave it out for a new angle, a new scene, or an unrelated shot. Shot 1 never continues.
+- A continuing shot renders with the last frame of the previous shot as its `first_frame` input, so its prompt follows the first-frame rule of its prompt skill (section 4).
 - Plan-level `references` apply to every task `ref2v` shot that names no `references` of its own.
 - Do not change a shot's model, task, references or `continue_previous` on your own after the user agreed to the plan; propose the change and stop.
 
