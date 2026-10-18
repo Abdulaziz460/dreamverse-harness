@@ -27,7 +27,7 @@ export type { ShellActions } from './actions.ts'
 export type { ShellInjected } from './Center.tsx'
 
 /** Services the shell uses. */
-export const inject = ['slots', 'sidebarRightTabs', 'sidebarRight', 'workspaces', 'sessions', 'uiWorkspace']
+export const inject = ['slots', 'sidebarRightTabs', 'sidebarRight', 'workspaces', 'sessions', 'uiWorkspace', 'dvCanvas']
 
 /** Milliseconds between reads of the project ↔ Workspace links, which pick up projects the agent creates. */
 const LINKS_POLL_MS = 4000
@@ -38,7 +38,7 @@ const LINKS_POLL_MS = 4000
  */
 export function apply(ctx: ClientContext): void {
   applyTheme(ctx)
-  const injected: ShellInjected = { shell: createActions(ctx) }
+  const injected: ShellInjected = { shell: createActions(ctx), canvas: ctx.dvCanvas }
   ctx.effect(() => ctx.slots.inject('main.conversation', () => ctx.slots.register(
     {
       name: 'main.conversation', priority: -1, inject: () => injected,

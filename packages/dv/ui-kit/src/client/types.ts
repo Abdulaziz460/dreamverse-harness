@@ -246,6 +246,8 @@ export interface ComponentStates {
   timeline: TimelineState
   /** The assets on the canvas, in the order they were placed. */
   asset: { placed: string[] }
+  /** The slice of any other loaded component; a plugin UI half narrows its own slice with a guard. */
+  [key: string]: unknown
 }
 
 /** The project's current state, with the assets the views need beside it. */

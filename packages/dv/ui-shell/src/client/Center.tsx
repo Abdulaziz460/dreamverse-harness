@@ -20,6 +20,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type { PropsRenderFactories, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { DV_CURRENT_TIMELINE_EVENT, getTimelineOf, publishCurrentTimeline, useCurrentTimeline } from '@dv/ui-kit/current-timeline.ts'
 import { pickText, useText } from '@dv/ui-kit/locale.ts'
+import type { DvCanvas } from '@dv/ui-kit/registries.ts'
 import { useProjectState } from '@dv/ui-kit/useProject.ts'
 import {
   DV_CANVAS_FOCUS_EVENT, DV_TIMELINE_FOCUS_EVENT, DV_TIMELINE_INSERT_EVENT, type DvWorkspaceEventMap,
@@ -41,6 +42,8 @@ import css from './shell.module.css'
 /** What the shell's DSH UI slot registrations inject. */
 export interface ShellInjected {
   shell: ShellActions
+  /** The `dvCanvas` registries that the center's canvas reads. */
+  canvas: DvCanvas
 }
 
 /** Props of the center entry. */
@@ -259,7 +262,7 @@ function TemplateChips(): ReactNode {
  * @param props - the shell actions.
  * @returns the section, or nothing without projects.
  */
-function RecentProjects({ shell }: ShellInjected): ReactNode {
+function RecentProjects({ shell }: Pick<ShellInjected, 'shell'>): ReactNode {
   const t = useText()
   const projects = useShell(s => s.links?.projects ?? NO_PROJECTS)
   const [showAll, setShowAll] = useState(false)
@@ -337,7 +340,7 @@ function Explore({ renderSlot }: Pick<CenterProps, 'renderSlot'>): ReactNode {
  */
 function ProjectCard(
   { shell, projectId, title, createdAt, summary }:
-    ShellInjected & { projectId: string; title: string; createdAt: string; summary: WireProjectSummary | null },
+    Pick<ShellInjected, 'shell'> & { projectId: string; title: string; createdAt: string; summary: WireProjectSummary | null },
 ): ReactNode {
   const t = useText()
   const meta = editedText(summary?.edited_at ?? createdAt, t)
@@ -506,7 +509,7 @@ function WorkspacePage(props: CenterProps & { projectId: string; sessionInProjec
       </header>
       <div className={css.viewArea}>
         {view === 'canvas'
-          ? <CanvasView projectId={projectId} client={client} session={session} />
+          ? <CanvasView projectId={projectId} client={client} session={session} canvas={props.canvas} />
           : <TimelineView projectId={projectId} client={client} session={session} />}
       </div>
     </div>

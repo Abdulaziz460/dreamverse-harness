@@ -23,6 +23,7 @@ import type { CSSProperties, DragEvent as ReactDragEvent, PointerEvent as ReactP
 import { DvClient } from '@dv/ui-kit/api.ts'
 import { useLanguage } from '@dv/ui-kit/locale.ts'
 import { formatInputRef } from '@dv/ui-kit/references.ts'
+import type { DvCanvas } from '@dv/ui-kit/registries.ts'
 import type { WireTaskLabels } from '@dv/ui-kit/tool-labels.ts'
 import type { CanvasViewport, NodePosition, OperationRequest } from '@dv/ui-kit/types.ts'
 import { DV_ASSET_DRAG_TYPE, DV_CANVAS_FOCUS_EVENT } from '@dv/ui-kit/workspace-events.ts'
@@ -47,6 +48,8 @@ export interface CanvasViewProps {
   session?: string | null
   /** The `dvCanvas` translate; when omitted, the dictionary of the DSH interface language that `<html lang>` names. */
   t?: CanvasTranslate
+  /** The `dvCanvas` registries that plugin UI halves fill for this view. */
+  canvas?: DvCanvas
 }
 
 /** The tallest a card grows (larger text at low zoom plus a badge row), used when fitting. */

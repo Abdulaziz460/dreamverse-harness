@@ -1,5 +1,6 @@
 /**
- * Browser half: register `dv-canvas` as a right-Sidebar tab type, its dictionaries, and its body.
+ * Browser half: provide `dvCanvas`, the registries that plugin UI halves fill, with the chain anchor of plan approvals;
+ * register `dv-canvas` as a right-Sidebar tab type, its dictionaries, and its body.
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
@@ -9,6 +10,7 @@ import { DvClient } from '@dv/ui-kit/api.ts'
 import { CanvasBody } from './CanvasBody.tsx'
 import type { CanvasInjected } from './CanvasBody.tsx'
 import { CANVAS_ID, canvasDefinition } from './definition.ts'
+import { createDvCanvas, planApprovalAnchor } from './dv-canvas.ts'
 import { en, NS, zh } from './locales.ts'
 
 export type { DvCanvasKey } from './locales.ts'
@@ -20,14 +22,19 @@ export type { CanvasViewProps } from './CanvasView.tsx'
 export const inject = ['slots', 'locale', 'sidebarRightTabs']
 
 /**
- * Client plugin body: register the type, its dictionaries, and its body under the type's id.
+ * Client plugin body: provide `dvCanvas` and register the plan approval anchor in it; register the type, its
+ * dictionaries, and its body under the type's id.
  * @param ctx - client root context.
  */
 export function apply(ctx: ClientContext): void {
+  // At apply's top level, never inside an effect: other plugins register into the registries from their own fibers.
+  const canvas = createDvCanvas()
+  ctx.reflect.provide('dvCanvas', canvas)
+  ctx.effect(() => canvas.chainAnchors.register(planApprovalAnchor), 'ui-canvas: plan approval chain anchor')
   const t = ctx.locale.bind(NS)
   ctx.effect(() => ctx.sidebarRightTabs.register(canvasDefinition(t)), 'ui-canvas: tab type')
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-canvas: dictionaries')
-  const injected: CanvasInjected = { client: new DvClient() }
+  const injected: CanvasInjected = { client: new DvClient(), canvas }
   ctx.effect(() => ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register(
     { name: 'sidebar.right.pane.tab', key: CANVAS_ID, locale: NS, inject: () => injected },
     CanvasBody,

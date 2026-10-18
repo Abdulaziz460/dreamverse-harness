@@ -33,7 +33,7 @@ The canvas shows the project's current state only, with no history view: charact
   name: '@dv/ui-canvas'
 ```
 
-The Host half registers nothing. The browser half registers the `dv-canvas` tab type (a page the Sidebar's guide offers as "Video canvas"), the `dvCanvas` locale namespace in Chinese and English, and the tab body under its own id `@dv/ui-canvas`.
+The Host half registers nothing. The browser half provides the client service `dvCanvas` (`DvCanvas` of `@dv/ui-kit/registries.ts`: the registries `nodeKinds`, `chainAnchors`, `takesInUse`, and `versionKinds`) and registers in it the chain anchor of `plan.approve`, which hangs an approval off the node `plan:<plan>` and reads the approved versions of a plan from `approved_by`. It also registers the `dv-canvas` tab type (a page the Sidebar's guide offers as "Video canvas"), the `dvCanvas` locale namespace in Chinese and English, and the tab body under its own id `@dv/ui-canvas`. A plugin's UI half registers its descriptors inside `ctx.inject(['dvCanvas'], …)` and keeps the disposers; a second descriptor with a held key throws. The tab body and the shell's center pass the registries to `CanvasView` as its `canvas` prop.
 
 | Gesture | Request |
 | --- | --- |
@@ -67,7 +67,8 @@ The editor of a take shows its model and generation task from the record's param
 
 | File | Content |
 | --- | --- |
-| [`src/client/index.ts`](src/client/index.ts) | Registrations |
+| [`src/client/index.ts`](src/client/index.ts) | The `dvCanvas` service and registrations |
+| [`src/client/dv-canvas.ts`](src/client/dv-canvas.ts) | The `dvCanvas` registries and the chain anchor of plan approvals |
 | [`src/client/definition.ts`](src/client/definition.ts) | The tab type |
 | [`src/client/CanvasBody.tsx`](src/client/CanvasBody.tsx) | The tab body: the project bar above a `CanvasView` |
 | [`src/client/CanvasView.tsx`](src/client/CanvasView.tsx) | The surface: pan, zoom, drag, drop, layout storage |
