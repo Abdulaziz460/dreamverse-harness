@@ -1,6 +1,7 @@
 /**
  * The Shot plan component of DreamVerse as the `dvShotPlan` Cordis service: the plan of a video before anything is
- * rendered. A plan has a `PlanId` (`p1`, `p2`, …) and numbered versions. It owns three operations:
+ * rendered. A plan has a `PlanId` (`p1`, `p2`, …) and numbered versions. It owns three operations and registers the first
+ * two; a workflow plugin approves plan versions:
  * - `plan.create`: version 1 of a new plan (the shots with their models, prompts and durations, and the references),
  *   stored as a JSON asset so the agent and the user read the same text; the assigned PlanId goes in `report.plan`;
  * - `plan.update`: the next version of the plan its `plan` param names;
@@ -13,7 +14,7 @@
  * `plan.create` and `plan.update` refuse a shot whose key is not in the catalog, so a plan names only models the
  * deployment serves.
  *
- * `dvProject` turns each operation into its agent tool (`dv_plan_create`, `dv_plan_update`, `dv_plan_approve`). The
+ * `dvProject` turns each registered operation into its agent tool (`dv_plan_create`, `dv_plan_update`). The
  * reducer keeps the `plan` slice: every version of every plan and the record that approved it.
  *
  * @module @dv/shot-plan
@@ -279,7 +280,9 @@ export default class DvShotPlan extends Service {
     super(ctx, 'dvShotPlan')
     ctx.effect(() => ctx.dvProject.registerComponent('plan'), 'dvShotPlan component')
     ctx.effect(() => ctx.dvProject.registerReducer('plan', planReducer), 'dvShotPlan reducer')
-    for (const spec of this.operations()) ctx.effect(() => ctx.dvProject.registerOperation(spec), `dvShotPlan ${spec.name}`)
+    for (const spec of this.operations().filter(entry => entry.name !== 'plan.approve')) {
+      ctx.effect(() => ctx.dvProject.registerOperation(spec), `dvShotPlan ${spec.name}`)
+    }
   }
 
   /**
@@ -507,7 +510,7 @@ export default class DvShotPlan extends Service {
     return { text: [head, ...cost.shots.map(line => `- ${line}`)].join('\n'), gpu_seconds: cost.gpu_seconds }
   }
 
-  /** The three plan operations. */
+  /** The three plan operations; the constructor registers all but `plan.approve`. */
   private operations(): OperationSpec[] {
     const create: OperationSpec = {
       name: 'plan.create',
@@ -515,9 +518,8 @@ export default class DvShotPlan extends Service {
       version: '1',
       description: 'Propose a new plan for a separate story: for each shot its model from dv_models_list, its prompt written for it, its '
         + 'duration, and its inputs (references; continue_previous to start from the previous shot\'s last frame). The report names '
-        + 'the new plan ID (p1, p2, …), one line per shot, and gpu_seconds, the GPU estimate of approving it; show them to the user. '
-        + 'To extend, shorten or change an existing plan, call dv_plan_update instead. Nothing is rendered until the user agrees in '
-        + 'the conversation and you call dv_plan_approve.',
+        + 'the new plan ID (p1, p2, …) and one line per shot. To extend, shorten or change an existing plan, call dv_plan_update '
+        + 'instead. A plan renders nothing by itself.',
       inputs: {},
       params: PLAN_PARAMS,
       outputs: [{ role: 'plan', type: 'json' }],
@@ -544,9 +546,8 @@ export default class DvShotPlan extends Service {
         ...create,
         name: 'plan.update',
         description: 'Write the next version of an existing plan: pass its plan ID and the complete plan (every shot, in order; '
-          + 'a shot added after six shots is shot 7). Use it to extend, shorten or change the story. The report names the version, '
-          + 'one line per shot (the new or changed shots, and the shots that keep their takes), and gpu_seconds, the GPU estimate of '
-          + 'approving it. Approving the version renders only the new or changed shots and updates the plan\'s timeline.',
+          + 'a shot added after six shots is shot 7). Use it to extend, shorten or change the story. The report names the version '
+          + 'and one line per shot. A version renders nothing by itself.',
         params: { plan: { type: 'string', required: true, description: 'The plan ID (p1, p2, …).' }, ...PLAN_PARAMS },
         summarize: record => `plan updated (${shotCount(record.params)} shots)`,
         precondition: (request, state) => {

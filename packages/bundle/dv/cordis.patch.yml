@@ -74,6 +74,11 @@
     - id: dv-timeline
       name: '@dv/timeline'
 
+    # The story workflow: dv_story_preview and dv_story_approve preview and approve a plan version; its story-directing
+    # skill holds the order of calls.
+    - id: dv-workflow-story
+      name: '@dv/workflow-story'
+
     # dv: mentions in chat messages and chat image import.
     - id: dv-chat-references
       name: '@dv/chat-references'
@@ -102,6 +107,9 @@
     - id: dv-ui-history
       name: '@dv/ui-history'
 
+    - id: dv-ui-workflow-story
+      name: '@dv/ui-workflow-story'
+
     - id: dv-ui-shell
       name: '@dv/ui-shell'
 
@@ -113,7 +121,7 @@
       name: '@dv/ui-skills'
 
 # The video-directing skill ships in this bundle's skills directory; skill-filesystem discovers it beside the user's own.
-# The model and timeline skills are registered by their plugins through ctx.skills.
+# The model, timeline and story skills are registered by their plugins through ctx.skills.
 - id: skill-filesystem
   config:
     customSkillDirs:

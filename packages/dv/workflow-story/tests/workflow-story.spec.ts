@@ -1,6 +1,7 @@
 /**
- * `dvStory` in the REAL composition of `fixture.ts`: registration, `story.preview`, `story.approve` and the `story`
- * slice, with the intended differences from `plan.approve` (test case T4 pass 2) and the agent's flow (pass 3).
+ * `dvStory` in the REAL composition of `fixture.ts`: registration, the `story-directing` skill, `story.preview`,
+ * `story.approve` and the `story` slice, with the intended differences from `plan.approve` (test case T4 pass 2) and the
+ * agent's flow (pass 3).
  */
 import type { AssetId, OperationSpec, OperationToolValue, RunRequest } from '@dv/project'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -57,6 +58,37 @@ describe('dvStory', () => {
     expect(fixture.ctx.tools.get('dv_story_approve')).toBeUndefined()
   })
 
+  it('registers the story-directing skill while dvStory is mounted, and removes it on disposal', async () => {
+    const fixture = await start(undefined, true)
+    const skill = await fixture.ctx.skills.get('story-directing')
+    expect(skill).toMatchObject({ name: 'story-directing', source: 'runtime', invocation: { modelInvocable: true } })
+    expect(skill?.whenToUse).toContain('extended, shortened or changed')
+    expect(skill?.content.startsWith('# Story directing\n')).toBe(true)
+    // The skill holds the flow: preview, the question in bold, then the approval with the user's agreement.
+    expect(skill?.content).toContain('`dv_story_approve` with `plan` and `user_approved: true`, then `dv_proj_wait`')
+    expect(skill?.content).not.toContain('dv_plan_approve')
+    const entry = [...fixture.ctx.loader.entries()].find(candidate => candidate.options.name.endsWith('/dv-story.mjs'))
+    await entry?.fiber?.dispose()
+    expect(await fixture.ctx.skills.get('story-directing')).toBeUndefined()
+  })
+
+  it('T4.3: the agent creates a plan, previews it, approves it with user_approved and waits; no tool is dv_plan_approve', async () => {
+    const fixture = await start()
+    const tools = fixture.ctx.tools.schemas().map(tool => tool.name).filter(name => /^dv_(?:plan|story)_/u.test(name))
+    expect(tools.sort()).toEqual(['dv_plan_create', 'dv_plan_update', 'dv_story_approve', 'dv_story_preview'])
+    const calls: Array<[string, Record<string, unknown>]> = [
+      ['dv_plan_create', { reason: 'propose', title: 'Streets', shots: [{ ...TXT, prompt: 'A street at dawn', duration_sec: 1 }] }],
+      ['dv_story_preview', { reason: 'show the cost', plan: 'p1' }],
+      ['dv_story_approve', { reason: 'the user agreed', plan: 'p1', user_approved: true }],
+      ['dv_proj_wait', { reason: 'renders' }],
+    ]
+    for (const [name, args] of calls) expect(refusal(await fixture.call(name, args)), name).toBe('')
+    const records = fixture.ctx.dvProject.getState(fixture.project).components.proj.records
+    expect(records.map(record => [record.operation, record.status])).toEqual([
+      ['proj.create', 'done'], ['plan.create', 'done'], ['story.approve', 'done'], ['shot.render', 'done'], ['timeline.create', 'done'],
+    ])
+  })
+
   it('previews the shots a version renders and their GPU estimate, and keeps only takes of a story approval of the plan', async () => {
     const fixture = await start()
     const picture = fixture.put('face', 'image/png', 'face.png')
@@ -73,9 +105,7 @@ describe('dvStory', () => {
       gpu_seconds: 1 * 3 + 2 * 3 + 2 * 1.5, problems: [],
     })
     expect(fixture.ctx.dvProject.listHistory({ project: fixture.project })).toHaveLength(history)
-    // A plan.approve take starts at no story approval, and a free take with equal params belongs to no plan.
-    await fixture.record('plan.approve', { plan: 'p1' })
-    await fixture.ctx.dvProject.wait(fixture.project)
+    // A free take with equal params belongs to no plan.
     await fixture.take({ ...dawn, aspect_ratio: '9:16' })
     expect(await preview(fixture, 'p1')).toMatchObject({ rendered: 3 })
     // Plan p2's one shot equals shot 3 of p1, and its story approval renders it as a take of p2.

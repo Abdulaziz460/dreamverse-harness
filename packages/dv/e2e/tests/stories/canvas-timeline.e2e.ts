@@ -78,7 +78,7 @@ async function seedProject(title: string, shots = 3, timelines: number[] = []): 
       prompt: `${title} shot ${String(index + 1)}`, duration_sec: 1 + (index % 2), modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3',
     })),
   })
-  await runOperation(id, 'plan.approve', { plan: plan.report?.['plan'] })
+  await runOperation(id, 'story.approve', { plan: plan.report?.['plan'] })
   const state = await waitFor(async () => {
     const current = await stateOf(id)
     const done = current.components.proj.records.filter(record => record.operation === RENDER_OPERATION && record.status === 'done')
@@ -497,7 +497,7 @@ describe('canvas stories', () => {
         duration_sec: 1, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', continue_previous: true,
       }],
     })
-    await runOperation(project.id, 'plan.approve', { plan: 'p1' })
+    await runOperation(project.id, 'story.approve', { plan: 'p1' })
     const state = await waitFor(async () => {
       const current = await stateOf(project.id)
       const done = current.components.proj.records.filter(record => record.operation === RENDER_OPERATION && record.status === 'done')
@@ -507,7 +507,7 @@ describe('canvas stories', () => {
     expect(state.components.timeline.timelines.map(timeline => timeline.id)).toEqual(['t1'])
     expect(state.components.timeline.timelines[0]?.clips.map(clip => clip.asset).slice(0, 2)).toEqual(project.clipAssets)
     const renders = state.components.proj.records.filter(record => record.operation === RENDER_OPERATION)
-    expect(renders.map(record => [record.params['plan'], record.params['plan_version'], record.params['shot']])).toEqual([
+    expect(renders.map(render => [...['plan', 'version'].map(key => state.components.proj.records.find(record => record.id === render.started_by?.record)?.report?.[key]), render.started_by?.slot])).toEqual([
       ['p1', 1, 1], ['p1', 1, 2], ['p1', 2, 3],
     ])
     const firstFrames = (render: ProjectRecord | undefined): unknown[] =>
@@ -547,18 +547,18 @@ describe('canvas stories', () => {
     const added = [...v1.shots, { prompt: 'canvas-current shot 4', duration_sec: 1, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3' }]
     // v2 adds shot 4 and is approved; v3 changes shot 2 and is never approved; v4 returns to the three v1 shots.
     await runOperation(project.id, 'plan.update', { ...base, shots: added })
-    await runOperation(project.id, 'plan.approve', { plan: 'p1' })
+    await runOperation(project.id, 'story.approve', { plan: 'p1' })
     const v2State = await waitFor(async () => {
       const current = await stateOf(project.id)
       const clips = current.components.timeline.timelines[0]?.clips ?? []
       return clips.length === 4 && clips.every(clip => clip.asset !== null) ? current : null
     }, 'shot 4 of plan p1 v2 renders onto timeline t1', 120_000)
     const v2Layout = v2State.components.proj.records.findLast(record => record.operation === 'timeline.update')
-    const shot4 = v2State.components.proj.records.find(record => record.operation === RENDER_OPERATION && record.params['shot'] === 4)
+    const shot4 = v2State.components.proj.records.find(record => record.operation === RENDER_OPERATION && record.started_by?.slot === 4)
     if (v2Layout === undefined || shot4 === undefined) throw new Error('the v2 approval wrote no timeline update or shot 4 render')
     await runOperation(project.id, 'plan.update', { ...base, shots: added.map((shot, index) => index === 1 ? { ...shot, prompt: 'canvas-current shot 2, closer' } : shot) })
     await runOperation(project.id, 'plan.update', { ...base, shots: v1.shots })
-    await runOperation(project.id, 'plan.approve', { plan: 'p1' })
+    await runOperation(project.id, 'story.approve', { plan: 'p1' })
     await waitFor(async () => {
       const clips = (await stateOf(project.id)).components.timeline.timelines[0]?.clips ?? []
       return clips.length === 3 ? clips : null
@@ -1291,7 +1291,7 @@ describe('timeline stories', () => {
     })
     harness.backend.hold()
     try {
-      await runOperation(project, 'plan.approve', { plan: plan.report?.['plan'] })
+      await runOperation(project, 'story.approve', { plan: plan.report?.['plan'] })
       // The approval puts all three shots on timeline t1 right away, as placeholders of their running renders.
       const pending = await stateOf(project)
       expect(pending.components.timeline.timelines[0]?.clips.map(clip => clip.asset)).toEqual([null, null, null])

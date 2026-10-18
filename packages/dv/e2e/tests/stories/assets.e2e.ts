@@ -56,7 +56,8 @@ const RULES: ScriptedRule[] = [
         shots: [{ prompt: '广告镜头一', duration_sec: 1, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3' }],
       } }] }),
       // The story's project is new, so its first plan is p1.
-      { calls: [{ name: 'dv_plan_approve', args: { reason: '用户同意', plan: 'p1', user_approved: true } }] },
+      { calls: [{ name: 'dv_story_preview', args: { reason: '预览计划', plan: 'p1' } }] },
+      { calls: [{ name: 'dv_story_approve', args: { reason: '用户同意', plan: 'p1', user_approved: true } }] },
       { calls: [{ name: 'dv_proj_wait', args: {} }] },
     ],
     endText: '镜头已渲染。',

@@ -12,8 +12,10 @@
  *
  * @module @dv/workflow-story
  */
+import { readFileSync } from 'node:fs'
 import { Service, type Context } from '@deepseek-ai/cordis'
 import { brandString } from '@deepseek-ai/dsh-brand'
+import type {} from '@deepseek-ai/dsh-skill'
 import z from '@deepseek-ai/schemastery'
 import { ProjectError, type OperationContext, type OperationResult, type OperationSpec, type ProjectState } from '@dv/project'
 import type { PlanId, PlanVersion } from '@dv/shot-plan'
@@ -37,6 +39,15 @@ export type Config = Record<string, unknown>
 
 /** Loader validation. */
 export const Config: z<Config> = z.object({})
+
+/** The skill that holds the story flow: create the plan, preview it, ask the user in bold, approve it, and wait. */
+const STORY_DIRECTING_SKILL = {
+  name: 'story-directing',
+  description: 'The order of calls from planned shots to rendered shots on the plan\'s timeline: create or update the plan, preview it, show its GPU estimate, ask the user in bold, approve it, and wait.',
+  whenToUse: 'The shots of a story are planned and must be rendered, or the user wants a story that a plan made extended, shortened or changed.',
+  content: readFileSync(new URL('../skills/story-directing/SKILL.md', import.meta.url), 'utf8'),
+  source: 'runtime',
+}
 
 /** The params of a story call: the plan, and the version, the latest when omitted. */
 interface StoryParams {
@@ -88,6 +99,9 @@ export default class DvStory extends Service {
     ctx.effect(() => ctx.dvProject.registerReducer('story', storyReducer), 'dvStory reducer')
     ctx.effect(() => ctx.dvProject.registerOperation(this.previewOperation()), 'dvStory story.preview')
     ctx.effect(() => ctx.dvProject.registerOperation(this.approveOperation()), 'dvStory story.approve')
+    ctx.inject(['skills'], (child) => {
+      child.effect(() => child.skills.register(STORY_DIRECTING_SKILL), `dvStory ${STORY_DIRECTING_SKILL.name}`)
+    })
   }
 
   /**

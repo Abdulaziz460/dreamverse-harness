@@ -25,6 +25,7 @@ import DvTimeline from '@dv/timeline'
 import DvApi from '@dv/api'
 import DvChatReferences from '@dv/chat-references'
 import DvModels, { formatModelKey } from '@dv/models'
+import DvStory from '@dv/workflow-story'
 import * as yaml from 'js-yaml'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { FakeModel, FFMPEG, FFPROBE } from '../../../dv/api/tests/support.ts'
@@ -60,7 +61,7 @@ const PLUGINS: Record<string, object> = {
   '@dv/ffmpeg': DvFfmpeg, '@dv/asset-pool': DvAssetPool, '@dv/inspector': DvInspector, '@dv/story-bible': DvStoryBible,
   '@dv/shot-plan': DvShotPlan, '@dv/shot-render': DvShotRender, '@dv/timeline': DvTimeline,
   '@dv/api': DvApi, '@dv/chat-references': DvChatReferences,
-  '@dv/models': DvModels, '@dv/fastvideo': FakeFastVideo,
+  '@dv/models': DvModels, '@dv/fastvideo': FakeFastVideo, '@dv/workflow-story': DvStory,
 }
 
 /** One row of a Loader entry list. */
@@ -90,7 +91,7 @@ describe('DreamVerse bundle composition', () => {
     disposers.push(() => { delete globals.__dvComposition })
     const rows = bundleRows()
     expect(rows.map(row => row.id)).toEqual(expect.arrayContaining([
-      'dv-models', 'dv-fastvideo', 'dv-project', 'dv-shot-plan', 'dv-shot-render', 'dv-timeline', 'dv-chat-references', 'dv-api',
+      'dv-models', 'dv-fastvideo', 'dv-project', 'dv-shot-plan', 'dv-shot-render', 'dv-timeline', 'dv-workflow-story', 'dv-chat-references', 'dv-api',
     ]))
     // Each row keeps its id and `!!js` config; its package name points at a module that re-exports the plugin class.
     const entries = [
@@ -116,6 +117,10 @@ describe('DreamVerse bundle composition', () => {
     expect(ctx.get('dvProject')?.listOperations().map(spec => spec.name))
       .toEqual(expect.arrayContaining(['plan.create', 'shot.render', 'timeline.create', 'timeline.update']))
     expect(ctx.get('tools')?.get('dv_shot_render')).toBeDefined()
+    // The story workflow approves plans: the agent sees its preview and approve tools and no plan tool that approves.
+    expect(ctx.get('tools')?.get('dv_story_preview')).toBeDefined()
+    expect(ctx.get('tools')?.get('dv_story_approve')).toBeDefined()
+    expect(ctx.get('tools')?.get('dv_plan_approve')).toBeUndefined()
     expect(ctx.get('tools')?.get('dv_models_list')).toBeDefined()
     expect(ctx.get('tools')?.get('dv_models_get')).toBeDefined()
     // The bundle names one server per task of fasth3.

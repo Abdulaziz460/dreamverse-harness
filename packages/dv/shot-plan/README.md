@@ -1,5 +1,5 @@
 ---
-description: "Shot plan component of DreamVerse: the dvShotPlan service, plans with a PlanId and numbered versions, the operations plan.create, plan.update and plan.approve with their agent tools, shots that name a model of the model catalog by its modality, task, provider and model, and the plan state slice."
+description: "Shot plan component of DreamVerse: the dvShotPlan service, plans with a PlanId and numbered versions, the operations plan.create and plan.update with their agent tools, shots that name a model of the model catalog by its modality, task, provider and model, and the plan state slice."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to plan a video before anything is rendered. A plan has a `PlanId` (`p1`, `p2`, …) and numbered versions, and each shot names the video model that renders it by its key in the model catalog of [`@dv/models`](../models/README.md): `modality`, `task`, `provider` and `model`. `plan.create` stores version 1 of a new plan, `plan.update` stores the next version, and `plan.approve` records the user's go-ahead for one version, schedules `shot.render` for each new or changed shot with its model, and lays out every shot's take on a timeline. The agent calls them as `dv_plan_create`, `dv_plan_update` and `dv_plan_approve`.
+Use this package to plan a video before anything is rendered. A plan has a `PlanId` (`p1`, `p2`, …) and numbered versions, and each shot names the video model that renders it by its key in the model catalog of [`@dv/models`](../models/README.md): `modality`, `task`, `provider` and `model`. `plan.create` stores version 1 of a new plan and `plan.update` stores the next version. The agent calls them as `dv_plan_create` and `dv_plan_update`. A workflow plugin, such as [`@dv/workflow-story`](../workflow-story/README.md), approves a version and renders its shots. The package keeps the code of `plan.approve`, which records the user's go-ahead for one version, schedules `shot.render` for each new or changed shot with its model, and lays out every shot's take on a timeline, but does not register it.
 
 ## Table of Contents
 
@@ -37,7 +37,7 @@ The plugin has no configuration fields.
 | --- | --- | --- | --- | --- |
 | `plan.create` | `dv_plan_create` | `shots` (each `modality`, `task`, `provider` and `model` (the key of a model that `dv_models_list` lists), `prompt`, `duration_sec?`, `references?` (task `ref2v` only), `continue_previous?` (task `ref2v` only, never on shot 1), `seed?`), `title?`, `references?` (shared by the shots of task `ref2v`), `aspect_ratio?`, `resolution?`, `seed?` | `plan` (`plan.json`); report `{plan, version: 1, shots, gpu_seconds}` with the assigned PlanId | `never` |
 | `plan.update` | `dv_plan_update` | `plan` (PlanId) and the params of `plan.create`: the complete next version | `plan` (`plan.json`); report `{plan, version, shots, gpu_seconds}` | `never` |
-| `plan.approve` | `dv_plan_approve` | `plan` (PlanId), `version?` (default the latest) | none; report `{plan, version, scheduled}` (the scheduled shot renders in shot order, then the timeline record) | `always`, with `confirmSummary` |
+| `plan.approve` (not registered) | none | `plan` (PlanId), `version?` (default the latest) | none; report `{plan, version, scheduled}` (the scheduled shot renders in shot order, then the timeline record) | `always`, with `confirmSummary` |
 
 A `PlanId` is `p<n>`: `plan.create` assigns one more than the highest number any Shot plan record of the project stored in `report.plan`, anywhere in the history list, steps after the current position included, so no two plans of the history list share an ID. A version is numbered from 1, and a shot by its 1-based position in the version, so a shot added after six shots is shot 7. A reference is a character, location or style version (`c1@1`) or an asset ID. The slice `components.plan` is `{plans: Record<PlanId, PlanVersion[]>}`, oldest version first; a `PlanVersion` is the `Plan` fields with `version`, `created_by` (the `plan.create` or `plan.update` record) and `approved_by` (the latest finished `plan.approve` record of the version, or null). The service method `get(state, plan, version?)` returns one `PlanVersion` of a project state, `shots(state, plan, version?)` resolves its shots the way every workflow reads a plan, and `shotsToRender(state, plan, version?)` returns the shot positions an approval of that version would render. A `ResolvedShot` holds the shot's 1-based `slot`, the `shot` as written, the plan's `aspect_ratio` and `resolution`, the shot's `seed` else the plan's, the `references` that apply (its own, else the plan's, none for a task other than `ref2v`) and `continuePrevious` (`continue_previous` on a shot of task `ref2v` after slot 1). `approvePlan(context)` schedules the renders of a running `plan.approve` call.
 
@@ -75,11 +75,11 @@ The reducer ignores records that are not `done`: a finished `plan.create` adds v
 
 #### What the model sees
 
-Three tools, `dv_plan_create`, `dv_plan_update` and `dv_plan_approve`, in the format `@dv/project` gives every operation tool. The descriptions tell the agent to create a plan only for a separate story, to give each shot a model from `dv_models_list` and a prompt written for it, to extend, shorten or change a story with `dv_plan_update` on its plan (passing the complete plan, every shot in order), and to call `dv_plan_approve` only after it showed the plan and the user agreed in the conversation; `dv_plan_create` and `dv_plan_update` also carry the deterministic note. Project adds `user_approved` to `dv_plan_approve` because its `confirm` is `always`.
+Two tools, `dv_plan_create` and `dv_plan_update`, in the format `@dv/project` gives every operation tool. The descriptions tell the agent to create a plan only for a separate story, to give each shot a model from `dv_models_list` and a prompt written for it, and to extend, shorten or change a story with `dv_plan_update` on its plan (passing the complete plan, every shot in order); they say that a plan renders nothing by itself and name no approval tool and no GPU estimate. Both carry the deterministic note.
 
 #### Token effect
 
-About 1,600 tokens for the three definitions, fixed while the plugin is mounted; the shared arguments of `@dv/project` add up to about 200 tokens to each definition.
+About 1,200 tokens for the two definitions, fixed while the plugin is mounted; the shared arguments of `@dv/project` add up to about 200 tokens to each definition.
 
 #### KV Cache effect
 
@@ -89,11 +89,11 @@ The definitions sit in the stable tool section of every agent request; mounting 
 
 #### What the model sees
 
-A `dv_plan_create` call returns one text block such as `done <record>: plan with 2 shots` with the `plan.json` output, the params, and the report `{"plan":"p1","version":1,"shots":[…],"gpu_seconds":20}`, so the agent can show the GPU estimate before it asks; a `dv_plan_update` call returns `plan updated (2 shots)` and the report with the new version, whose shot lines name the shots that keep their takes. A plan with a shot that the deployment cannot render is refused before any record with one sentence per problem, such as a model key that is not in the catalog with the instruction to call `dv_models_list`. A `dv_plan_approve` call without `user_approved: true` is refused with the shot lines and GPU estimate of `confirmSummary` and the instruction to ask the user in the conversation, the question in bold. A `dv_plan_approve` call with it returns `done <record>: plan p1 v2 approved` and the scheduled records; the agent then waits with `dv_proj_wait`. An approval whose shots the render refuses, such as a shot of task `ref2v` with too few references, is refused before any record with a message that names the shots and the reason of `shot.render`.
+A `dv_plan_create` call returns one text block such as `done <record>: plan with 2 shots` with the `plan.json` output, the params, and the report `{"plan":"p1","version":1,"shots":[…],"gpu_seconds":20}`; a `dv_plan_update` call returns `plan updated (2 shots)` and the report with the new version. A plan with a shot that the deployment cannot render is refused before any record with one sentence per problem, such as a model key that is not in the catalog with the instruction to call `dv_models_list`.
 
 #### Token effect
 
-A create or update result repeats the plan in its params and adds one shot line to the report: roughly 100 tokens plus about 80 per shot. An approval result is under 100 tokens plus one ID per scheduled record.
+A create or update result repeats the plan in its params and adds one shot line to the report: roughly 100 tokens plus about 80 per shot.
 
 #### KV Cache effect
 
@@ -105,4 +105,5 @@ Each result is appended to the conversation after its call; the cached prefix st
 
 - **Text-only plans**: the plan is a JSON file; there is no plan editor or preview beyond the record and the canvas node.
 - **The approval names other components' operations**: `plan.approve` names `shot.render`, `timeline.create` and `timeline.update` as strings and depends on their params (for `shot.render`, `modality`, `task`, `provider` and `model`), input roles and output order; a change there needs a change here.
+- **Report lines know only `plan.approve` takes**: the `shots` lines and `gpu_seconds` of the `plan.create` and `plan.update` reports keep a shot's take only when an unregistered `plan.approve` rendered it, so after an approval by a workflow plugin they list every shot as rendering; the workflow's preview gives the lines and the GPU estimate of its approval.
 - **Only task `ref2v` takes references**: a shot carries the plan's references only for task `ref2v`, so a task added to `TaskMap` of `@dv/models` that takes references needs a change here.

@@ -24,10 +24,10 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-在 `@dv/project`、`@dv/shot-plan`、`@dv/shot-render` 和 `@dv/timeline` 之后挂载本插件。它没有配置，注册组件键 `story` 及其 reducer。
+在 `@dv/project`、`@dv/shot-plan`、`@dv/shot-render` 和 `@dv/timeline` 之后挂载本插件。它没有配置，注册组件键 `story` 及其 reducer。挂载了 `@deepseek-ai/dsh-skill` 的技能注册表 `skills` 时，插件从 [`skills/story-directing/SKILL.md`](skills/story-directing/SKILL.md) 注册 `story-directing` 技能。
 
 ```yaml
-- id: dv-story
+- id: dv-workflow-story
   name: '@dv/workflow-story'
 ```
 
@@ -55,6 +55,7 @@ kind: "package-reference"
 | --- | --- |
 | [`src/index.ts`](src/index.ts) | `dvStory`：`story.preview`、`story.approve`、计划遍历、预览行、问题和链 |
 | [`src/reducer.ts`](src/reducer.ts) | `story` 切片、其 reducer 及其项目摘要字段 |
+| [`skills/story-directing/SKILL.md`](skills/story-directing/SKILL.md) | `story-directing` 技能的正文 |
 
 -----
 
@@ -99,9 +100,22 @@ kind: "package-reference"
 
 每个结果在调用之后追加到对话；缓存前缀保持不变。
 
+### 技能
+
+#### 模型看到什么
+
+技能目录列出 `story-directing` 及其描述和使用时机。智能体加载该技能时，读到调用顺序：`dv_plan_create` 或 `dv_plan_update`，然后 `dv_story_preview`（`problems` 不为空时用 `dv_plan_update` 修改后再次预览），给出镜头表格和预览的 GPU 估算并以粗体提一个问题，下一轮用 `user_approved: true` 调用 `dv_story_approve`，然后调用 `dv_proj_wait`。它还告诉智能体如何延长、缩短或修改由计划生成的故事。
+
+#### Token 影响
+
+插件挂载期间，技能目录中约 70 个 token；智能体每次加载该技能约 800 个 token。
+
+#### KV Cache 影响
+
+目录条目位于稳定的技能部分；挂载或移除插件会改变目录。加载的技能作为工具结果追加到对话中；已缓存的前缀保持不变。
+
 ## 已知限制与延期工作
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- **未挂载** — DreamVerse 套件不挂载本包，所以没有智能体看到 `dv_story_preview` 或 `dv_story_approve`；智能体的批准仍是 `@dv/shot-plan` 的 `plan.approve`。
 - **`plan.approve` 的成片** — `plan.approve` 渲染的成片不以任何故事批准为起始记录，所以这样的计划第一次故事批准会重新渲染每个镜头，并把成片排到下一个空闲时间线上。

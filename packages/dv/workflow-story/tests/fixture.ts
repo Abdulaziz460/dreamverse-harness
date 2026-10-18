@@ -1,9 +1,10 @@
 /**
  * The story workflow in a REAL composition: a test-only `cordis.yml` boots the DSH tool registry, `dvProject`,
  * `dvFfmpeg`, the asset pool, `dvTimeline`, the model catalog `dvModels`, `dvShotRender`, `dvShotPlan` and `dvStory`
- * through the Loader. The only fake is the model `fake` of provider `test`, one entry per task, whose validation each
- * test chooses and whose render streams a few bytes as the video and the last still. A composition can start from the
- * stored projects of `fixtures/`, which the record store loads at boot as it loads any older log.
+ * through the Loader, and the DSH skill registry when a test asks for it. The only fake is the model `fake` of provider
+ * `test`, one entry per task, whose validation each test chooses and whose render streams a few bytes as the video and
+ * the last still. A composition can start from the stored projects of `fixtures/`, which the record store loads at boot
+ * as it loads any older log.
  */
 import { cpSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -14,6 +15,7 @@ import Include from '@deepseek-ai/cordis-plugin-include'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
+import { SkillRegistry } from '@deepseek-ai/dsh-skill'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import DvAssetPool from '@dv/asset-pool'
@@ -29,7 +31,9 @@ const FFMPEG = process.env['DV_FFMPEG'] ?? '/mnt/lustre/vlm-d1su/opt/ffmpeg-nati
 const FFPROBE = process.env['DV_FFPROBE'] ?? 'ffprobe'
 
 /** The plugin classes the fixture rows resolve through `globalThis`, because Node imports the rows outside Vite. */
-const PLUGINS = { SystemPrompt, ToolRuntime, DvProject, DvFfmpeg, DvAssetPool, DvTimeline, DvModels, DvShotRender, DvShotPlan, DvStory }
+const PLUGINS = {
+  SkillRegistry, SystemPrompt, ToolRuntime, DvProject, DvFfmpeg, DvAssetPool, DvTimeline, DvModels, DvShotRender, DvShotPlan, DvStory,
+}
 
 /** A user action outside any chat session: it lands on `main` directly. */
 export const USER = { actor: 'user' as const, surface: 'canvas' as const, session: null, turn: null, tool_call: null }
@@ -89,9 +93,10 @@ export async function disposeAll(): Promise<void> {
 /**
  * Boot the composition from a test-only `cordis.yml`, with the model `fake` in tasks `ref2v` and `t2v`.
  * @param stored - a directory under `fixtures/` whose project directories the record store loads at boot.
+ * @param skills - whether the DSH skill registry is mounted.
  * @returns the fixture, with a new project bound to chat session `s1`.
  */
-export async function start(stored?: string): Promise<Fixture> {
+export async function start(stored?: string, skills = false): Promise<Fixture> {
   const dir = mkdtempSync(join(tmpdir(), 'dv-workflow-story-'))
   if (stored !== undefined) cpSync(new URL(`fixtures/${stored}`, import.meta.url), join(dir, 'projects'), { recursive: true })
   const globals = globalThis as typeof globalThis & { __dvStoryComposition?: typeof PLUGINS }
@@ -101,6 +106,7 @@ export async function start(stored?: string): Promise<Fixture> {
     writeFileSync(join(dir, `${id}.mjs`), `export default globalThis.__dvStoryComposition.${key}\n`)
     rows.push(`- id: ${id}`, `  name: ${pathToFileURL(join(dir, `${id}.mjs`)).href}`, ...config.length === 0 ? [] : ['  config:', ...config.map(line => `    ${line}`)])
   }
+  if (skills) row('skills', 'SkillRegistry', [])
   row('system-prompt', 'SystemPrompt', [])
   row('tools', 'ToolRuntime', [])
   row('dv-project', 'DvProject', [`root: ${join(dir, 'projects')}`, `sessionRoot: ${join(dir, 'sessions')}`])

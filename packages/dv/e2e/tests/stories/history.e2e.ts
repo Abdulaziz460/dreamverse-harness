@@ -346,7 +346,7 @@ describe('History panel', () => {
     const shots = [1, 2].map(shot => ({ prompt: `history-fold shot ${String(shot)}`, duration_sec: 1, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3' }))
     const plan = await runOperation(id, 'plan.create', { title: '折叠', references: [imported.outputs[0] ?? ''], shots })
     expect(plan.report?.['plan']).toBe('p1')
-    const approval = await runOperation(id, 'plan.approve', { plan: 'p1' })
+    const approval = await runOperation(id, 'story.approve', { plan: 'p1' })
     const scheduled = approval.report?.['scheduled'] as string[]
     expect(scheduled).toHaveLength(3)
     const page = await openPage()

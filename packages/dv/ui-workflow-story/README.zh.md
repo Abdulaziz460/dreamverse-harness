@@ -75,4 +75,4 @@ Host 半边不注册任何东西。浏览器半边在 `ctx.inject(['dvCanvas'], 
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- **未挂载** — DreamVerse bundle 没有挂载本包，所以画布把一次故事批准的记录画成自由 take，历史行也没有主语。
+- **story 切片没有类型** — 客户端状态类型把 `story` 切片定为 `unknown`，`isStorySlice` 只检查切片里有一个 `approvals` 对象；本包不读取 `@dv/workflow-story` 的客户端类型。

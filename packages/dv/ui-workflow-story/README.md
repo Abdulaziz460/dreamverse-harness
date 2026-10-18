@@ -75,4 +75,4 @@ None; the package sends nothing to a model.
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- **Not mounted** — the DreamVerse bundle does not mount the package, so the canvas draws the records of a story approval as free takes and the History row has no subject.
+- **Untyped story slice** — the client state type gives the `story` slice the type `unknown`, and `isStorySlice` checks only that the slice holds an `approvals` object; the package reads no client type of `@dv/workflow-story`.

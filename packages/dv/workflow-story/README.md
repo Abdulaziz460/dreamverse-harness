@@ -24,10 +24,10 @@ Use this package to preview and approve a shot plan version. Its read `story.pre
 <a id="use-this-package"></a>
 ## Use this package
 
-Mount the plugin after `@dv/project`, `@dv/shot-plan`, `@dv/shot-render` and `@dv/timeline`. It has no configuration and registers the component key `story` with its reducer.
+Mount the plugin after `@dv/project`, `@dv/shot-plan`, `@dv/shot-render` and `@dv/timeline`. It has no configuration and registers the component key `story` with its reducer. While the skill registry `skills` of `@deepseek-ai/dsh-skill` is mounted, the plugin registers the `story-directing` skill from [`skills/story-directing/SKILL.md`](skills/story-directing/SKILL.md).
 
 ```yaml
-- id: dv-story
+- id: dv-workflow-story
   name: '@dv/workflow-story'
 ```
 
@@ -55,6 +55,7 @@ The `story` reducer folds each finished `story.approve` into `approvals` (per pl
 | --- | --- |
 | [`src/index.ts`](src/index.ts) | `dvStory`: `story.preview`, `story.approve`, the plan walk, the preview lines, the problems and the chain |
 | [`src/reducer.ts`](src/reducer.ts) | The `story` slice, its reducer and its project summary field |
+| [`skills/story-directing/SKILL.md`](skills/story-directing/SKILL.md) | The body of the `story-directing` skill |
 
 -----
 
@@ -99,9 +100,22 @@ A preview result is about 60 tokens, plus about 30 per shot line and per problem
 
 Each result is appended to the conversation after its call; the cached prefix stays intact.
 
+### Skill
+
+#### What the model sees
+
+The skill catalog lists `story-directing` with its description and when to use it. When the agent loads the skill, it reads the order of calls: `dv_plan_create` or `dv_plan_update`, then `dv_story_preview` (with `dv_plan_update` and a new preview while `problems` is not empty), a table of the shots with the preview's GPU estimate and one question in bold, and in the next turn `dv_story_approve` with `user_approved: true`, then `dv_proj_wait`. It also tells the agent how to extend, shorten or change a story that a plan made.
+
+#### Token effect
+
+About 70 tokens in the skill catalog while the plugin is mounted; about 800 tokens each time the agent loads the skill.
+
+#### KV Cache effect
+
+The catalog entry sits in the stable skill section; mounting or removing the plugin changes the catalog. A loaded skill is appended to the conversation as a tool result; the cached prefix stays intact.
+
 ## Known Limitations and Deferred Work
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- **Not mounted** — the DreamVerse bundle does not mount the package, so no agent sees `dv_story_preview` or `dv_story_approve`; `plan.approve` of `@dv/shot-plan` remains the agent's approval.
 - **Takes of `plan.approve`** — a take that `plan.approve` rendered starts at no story approval, so the first story approval of such a plan renders every shot again and lays the takes on the next free timeline.

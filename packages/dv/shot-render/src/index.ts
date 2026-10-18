@@ -90,10 +90,10 @@ const RENDER_PARAMS: OperationSpec['params'] = {
     type: 'object', additionalProperties: true,
     description: 'The model\'s own parameters, as dv_models_get lists them; omit it when the model has none.',
   },
-  // Set when an approved plan schedules the render; the live stream shows the shot position.
-  plan: { type: 'string', description: 'The plan ID (p1, p2, …) whose approval scheduled this render; set by dv_plan_approve.' },
-  plan_version: { type: 'integer', description: 'The approved version of that plan; set by dv_plan_approve.' },
-  shot: { type: 'integer', description: 'The shot position in that version, 1 = first; set by dv_plan_approve.' },
+  // Set only in the renders that a plan approval of an older project scheduled; the live stream shows the shot position.
+  plan: { type: 'string', description: 'The plan ID (p1, p2, …) whose approval scheduled this render in an older project; leave it out.' },
+  plan_version: { type: 'integer', description: 'The approved version of that plan; leave it out.' },
+  shot: { type: 'integer', description: 'The shot position in that version, 1 = first; leave it out.' },
 }
 
 /** The inputs of `shot.render`; a model accepts the subset its schema lists. */

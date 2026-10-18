@@ -90,7 +90,8 @@ const RULES: ScriptedRule[] = [
       { calls: [{ name: 'dv_asset_import', args: { reason: '产品图', base64: PNG_BASE64, mime: 'image/png', name: 'product.png' } }] },
       view => planCall(view, '产品广告'),
       // The story's project is new, so its first plan is p1.
-      { calls: [{ name: 'dv_plan_approve', args: { reason: '用户同意', plan: 'p1', user_approved: true } }] },
+      { calls: [{ name: 'dv_story_preview', args: { reason: '预览计划', plan: 'p1' } }] },
+      { calls: [{ name: 'dv_story_approve', args: { reason: '用户同意', plan: 'p1', user_approved: true } }] },
       { calls: [{ name: 'dv_proj_wait', args: {} }] },
     ],
     endText: '两个镜头已渲染。',
@@ -101,14 +102,16 @@ const RULES: ScriptedRule[] = [
       { calls: [{ name: 'dv_asset_import', args: { reason: '产品图', base64: PNG_BASE64, mime: 'image/png', name: 'ask-first.png' } }] },
       view => planCall(view, '先问再渲染'),
       // Without user_approved, Project refuses the call and tells the agent to ask in the conversation.
-      { calls: [{ name: 'dv_plan_approve', args: { reason: '按计划渲染', plan: 'p1' } }] },
+      { calls: [{ name: 'dv_story_preview', args: { reason: '预览计划', plan: 'p1' } }] },
+      { calls: [{ name: 'dv_story_approve', args: { reason: '按计划渲染', plan: 'p1' } }] },
       { text: '计划有两个镜头。**现在渲染这两个镜头吗？**' },
     ],
   },
   {
     match: '可以渲染',
     steps: [
-      { calls: [{ name: 'dv_plan_approve', args: { reason: '用户同意', plan: 'p1', user_approved: true } }] },
+      { calls: [{ name: 'dv_story_preview', args: { reason: '预览计划', plan: 'p1' } }] },
+      { calls: [{ name: 'dv_story_approve', args: { reason: '用户同意', plan: 'p1', user_approved: true } }] },
       { calls: [{ name: 'dv_proj_wait', args: {} }] },
     ],
     endText: '两个镜头已渲染。',
@@ -470,17 +473,17 @@ describe('chat with the agent', () => {
     await waitChat(page, '现在渲染这两个镜头吗')
     // Project refused the call without user_approved and told the agent to ask in the conversation.
     const answered = requestFor('先给我看计划')?.messages.filter(message => message.role === 'tool').map(message => textOf(message.content)) ?? []
-    const refusal = answered.find(text => text.includes('dv_plan_approve needs the user\'s agreement'))
+    const refusal = answered.find(text => text.includes('dv_story_approve needs the user\'s agreement'))
     expect(refusal).toContain('user_approved: true')
     // The agent's question is bold, and the refused step is named for creators, never by its wire tool name.
     expect(await chat(page).locator('strong', { hasText: '现在渲染这两个镜头吗？' }).count()).toBeGreaterThan(0)
-    const approveRows = chat(page).locator('[data-tool="dv_plan_approve"]')
+    const approveRows = chat(page).locator('[data-tool="dv_story_approve"]')
     await waitFor(async () => (await approveRows.allTextContents()).some(text => text.includes('批准分镜计划')), 'the 批准分镜计划 step', 10_000)
-    expect(await chat(page).getByText('dv_plan_approve').count()).toBe(0)
+    expect(await chat(page).getByText('dv_story_approve').count()).toBe(0)
     // Nothing renders before the user agrees: the plan waits for approval.
     const currentState = async (): Promise<WireState> => await harness.api.get(`/api/dv/state?project=${projectId}`) as WireState
     const waiting = await currentState()
-    expect(waiting.components.plan.plans['p1']?.[0]?.approved_by).toBeNull()
+    expect(waiting.components).not.toHaveProperty(['story', 'approvals', 'p1'])
     expect(waiting.components.proj.records.filter(record => record.operation === 'shot.render')).toHaveLength(0)
     // The canvas plan editor lists each shot with its reference image, the image in place of the bare Picture 1, and its model and task.
     const editor = page.locator('[data-testid="dv-canvas-node-editor"]')
@@ -505,7 +508,7 @@ describe('chat with the agent', () => {
     await send(page, '可以渲染')
     await waitChat(page, '两个镜头已渲染', 60_000)
     const rendered = (await currentState()).components.proj.records.filter(record => record.operation === 'shot.render')
-    expect(rendered.map(record => [record.params['shot'], record.status])).toEqual([[1, 'done'], [2, 'done']])
+    expect(rendered.map(record => [record.started_by?.slot, record.status])).toEqual([[1, 'done'], [2, 'done']])
     expect(errors).toEqual([])
   })
 
@@ -596,7 +599,7 @@ describe('chat with the agent', () => {
     const plan = await runOperation(projectId, 'plan.create', {
       title: '改片段', references: [assetId], shots: [{ prompt: '镜头甲', duration_sec: 1, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3' }],
     })
-    await runOperation(projectId, 'plan.approve', { plan: plan.report?.['plan'] })
+    await runOperation(projectId, 'story.approve', { plan: plan.report?.['plan'] })
     const done = await waitFor(async () => {
       const state = await harness.api.get(`/api/dv/state?project=${projectId}`) as WireState
       return state.components.proj.records.find(record => record.operation === 'shot.render' && record.status === 'done')
