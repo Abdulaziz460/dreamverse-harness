@@ -1,0 +1,2 @@
+--- packages/dv/reference-kit/src/index.ts
+export const media = 'image'

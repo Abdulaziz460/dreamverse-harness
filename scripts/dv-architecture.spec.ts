@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { compareBaseline, parseFixture, readScanFiles, RULE_STATEMENTS, scan, type Baseline, type ScanFile, type Violation } from './dv-architecture.ts'
+import { compareBaseline, listOwners, parseFixture, readScanFiles, RULE_STATEMENTS, scan, type Baseline, type ScanFile, type Violation } from './dv-architecture.ts'
 import { checkBudget, countLines, findingsOnAddedLines, parseAllow, parseDiff, type FileChange } from './dv-blast-radius.ts'
 
 const root = resolve(import.meta.dirname, '..')
@@ -23,11 +23,13 @@ describe('DreamVerse architecture fitness test', () => {
   it.each<[string, string[]]>([
     ['R1-negative.txt', ['R1b']],
     ['R2-negative.txt', ['R2a']],
+    ['R2a-reference-kit-negative.txt', ['R2a']],
     ['R2b-negative.txt', ['R2b', 'R4']],
     ['R3-negative.txt', ['R3', 'R3']],
     ['R3-component-negative.txt', ['R3', 'R3']],
     ['R3-name-negative.txt', ['R3', 'R4']],
     ['R3-generation-negative.txt', ['R3', 'R4']],
+    ['R3c-reference-key-negative.txt', ['R3c', 'R3c']],
     ['R4-negative.txt', ['R4']],
     ['R5-negative.txt', ['R5c', 'R5c']],
     ['R5c-create-element-negative.txt', ['R5c']],
@@ -40,12 +42,17 @@ describe('DreamVerse architecture fitness test', () => {
     ['R8d-negative.txt', ['R8d', 'R8d']],
     ['R8e-negative.txt', ['R8e']],
     ['R8f-negative.txt', ['R8f']],
+    ['R8f-define-reference-negative.txt', ['R8f']],
   ])('rejects the fixture %s with %j', (name, expected) => {
     expect(rules(fixture(name)).sort()).toEqual(expected)
   })
 
   it('accepts a value-type union member and a content block type in the kernel', () => {
     expect(scan(fixture('R1-positive.txt'))).toEqual([])
+  })
+
+  it('lets a domain package import the base package reference-kit and its client face', () => {
+    expect(scan(fixture('R7-reference-kit-positive.txt'))).toEqual([])
   })
 })
 
@@ -164,6 +171,27 @@ describe('rule clauses', () => {
     expect(paths).toContain('packages/bundle/dv/skills/video-directing/SKILL.md')
     expect(paths).toContain('packages/dv/project/package.json')
     expect(paths.filter(path => path.includes('/tests/'))).toEqual([])
+  })
+})
+
+describe('owner listing', () => {
+  it('lists one block per key from defineReference, defineReferenceUi, hand-written UI registrations and skills', () => {
+    const character = 'packages/dv/character/src/index.ts:3'
+    const ui = 'packages/dv/ui-character/src/client/index.ts:2'
+    expect(listOwners(fixture('owners.txt'))).toEqual([
+      { what: 'component', name: 'character', pkg: 'character', where: character, extra: '' },
+      { what: 'kind', name: 'character', pkg: 'character', where: character, extra: '' },
+      { what: 'operation', name: 'character.create', pkg: 'character', where: character, extra: 'dv_character_create' },
+      { what: 'operation', name: 'character.update', pkg: 'character', where: character, extra: 'dv_character_update' },
+      { what: 'skill', name: 'character', pkg: 'character', where: 'packages/dv/character/skills/character/SKILL.md:1', extra: '' },
+      { what: 'node type', name: 'character', pkg: 'ui-character', where: ui, extra: 'slot @dv/ui-character' },
+      { what: 'version kind', name: 'character', pkg: 'ui-character', where: ui, extra: '' },
+      { what: 'mention kind', name: 'character', pkg: 'ui-character', where: ui, extra: '' },
+      { what: 'history row', name: 'character.', pkg: 'ui-character', where: ui, extra: '' },
+      { what: 'mention kind', name: 'clip', pkg: 'ui-timeline', where: 'packages/dv/ui-timeline/src/client/mention.ts:1', extra: '' },
+      { what: 'node type', name: 'plan', pkg: 'ui-shot-plan', where: 'packages/dv/ui-shot-plan/src/client/index.ts:1', extra: 'slot @dv/ui-shot-plan' },
+      { what: 'history row', name: 'plan.', pkg: 'ui-shot-plan', where: 'packages/dv/ui-shot-plan/src/client/index.ts:2', extra: '' },
+    ])
   })
 })
 

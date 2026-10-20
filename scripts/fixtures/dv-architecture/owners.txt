@@ -1,0 +1,16 @@
+--- packages/dv/character/src/index.ts
+export default class DvCharacter extends defineReference({
+  service: 'dvCharacter',
+  component: 'character',
+}) {}
+--- packages/dv/character/skills/character/SKILL.md
+# Character
+--- packages/dv/ui-character/src/client/index.ts
+export const character = defineReferenceUi({
+  id: '@dv/ui-character', key: 'character',
+})
+--- packages/dv/ui-shot-plan/src/client/index.ts
+export const planNodeType: NodeType = { id: '@dv/ui-shot-plan', type: 'plan' }
+export const planHistoryRow: HistoryRow = { match: 'plan.' }
+--- packages/dv/ui-timeline/src/client/mention.ts
+export const clipMentionKind: MentionKind = { id: '@dv/ui-timeline', kind: 'clip' }

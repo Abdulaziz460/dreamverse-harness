@@ -19,13 +19,13 @@ export type Baseline = Record<string, number>
 /** The one-line statement of each rule, printed with each failure. */
 export const RULE_STATEMENTS: Readonly<Record<string, string>> = {
   R1: 'The kernel names no plugin noun and never reads started_by.',
-  R2: 'Base packages name no media type; workflow-kit names no workflow.',
-  R3: 'One owner per component key, reference kind and operation.',
+  R2: 'Base packages, reference-kit included, name no media type; workflow-kit names no workflow.',
+  R3: 'One owner per component key, reference kind and operation; defineReference operations are checked at runtime; a defineReference key is one lowercase word and not proj, asset, record or version.',
   R4: 'A host package names only operations of its own component key.',
   R5: 'UI core names no plugin noun.',
   R6: 'No deep import into another package\'s src.',
   R7: 'Dependencies point down the layers; a ./types entry reaches no host-only module.',
-  R8: 'A skill never names a consumer.',
+  R8: 'A skill never names a consumer; only the package that owns a reference kind names its tools.',
   marker: 'The only exception marker is "// dv-arch-allow R<k>: transition until W4", and it suppresses a match on its line.',
 }
 
@@ -49,11 +49,33 @@ interface Facts {
   slotPackages: Set<string>
   /** Packages whose `package.json` exports a `./types` entry. */
   typesEntries: Set<string>
-  /** Packages whose `src` calls `registerReferenceKind(` (R8 f). */
+  /** Packages whose `src` calls `registerReferenceKind(` or `defineReference(` (R8 f). */
   kindOwners: Set<string>
+  /** The owner rows of `listOwners`, in walk order. */
+  ownerRows: OwnerRow[]
 }
 
-const BASE = ['models', 'generation', 'asset-pool', 'ffmpeg']
+const OWNER_WHATS = ['component', 'kind', 'operation', 'skill', 'node type', 'version kind', 'mention kind', 'history row'] as const
+/** The type of a name that `pnpm dv:owners` prints an owner for. */
+export type OwnerWhat = (typeof OWNER_WHATS)[number]
+/** One owned name and the package that declares it, as `pnpm dv:owners` prints it. */
+export interface OwnerRow {
+  what: OwnerWhat
+  /** The owned name, such as 'character', 'character.create' or the History match 'character.'. */
+  name: string
+  /** The owning package directory name, such as 'ui-character'; 'bundle' for packages/bundle/dv. */
+  pkg: string
+  /** '<path>:<line>' of the declaration. */
+  where: string
+  /** The tool name of an operation ('dv_character_create'); 'slot @dv/<pkg>' for a node type; else ''. */
+  extra: string
+}
+/** The UI registry types of hand-written owner rows, with the property that holds the owned name. */
+const UI_ROWS: Readonly<Record<string, [OwnerWhat, string]>> = {
+  NodeType: ['node type', 'type'], VersionKind: ['version kind', 'kind'], MentionKind: ['mention kind', 'kind'], HistoryRow: ['history row', 'match'],
+}
+
+const BASE = ['models', 'generation', 'asset-pool', 'ffmpeg', 'reference-kit']
 const SURFACE = ['api', 'chat-references', 'mcp-presets']
 const UI_CORE = ['ui-kit', 'ui-canvas', 'ui-history', 'ui-shell', 'ui-composer']
 /** Value-import targets, then extra `import type` targets, of each host layer (§1, R7). */
@@ -76,6 +98,9 @@ const MARKER = /\/\/ dv-arch-allow (R\d+): (.*)$/u
 /** Modules that a `./types` entry must never reach (R7 b). */
 const HOST_ONLY = /^(?:node:|@deepseek-ai\/(?:cordis|dsh-tools)(?:\/|$))/u
 const KIT_LINES = 300
+/** A reference noun key names its skill, ID param and tools; the kernel reserves the other keys (project/src/types.ts:78). */
+const NOUN_KEY = /^[a-z][a-z0-9]*$/u
+const RESERVED_KEYS = ['proj', 'asset', 'record', 'version']
 
 /**
  * Read the files the rules scan: `src` of every DreamVerse package, never a `tests/` folder, the skill Markdown, and
@@ -109,6 +134,25 @@ const add = (map: Map<string, Set<string>>, key: string, pkg: string): void => {
   map.set(key, (map.get(key) ?? new Set()).add(pkg))
 }
 
+/** The property called `name` of an object literal, and its text, when its value is a string literal. */
+const stringProperty = (node: ts.Node | undefined, name: string): { at: ts.Node; text: string } | undefined => {
+  const found = node !== undefined && ts.isObjectLiteralExpression(node) ? node.properties.find(p => textOf(p.name) === name) : undefined
+  const ok = found !== undefined && ts.isPropertyAssignment(found) && ts.isStringLiteralLike(found.initializer)
+  return ok ? { at: found, text: found.initializer.text } : undefined
+}
+
+/** The operation that a `name:` beside `component:`, or an `operation:` of a `defineGeneration` declaration, names (R3). */
+function declaredOperation(node: ts.Node): string | undefined {
+  const literal = ts.isPropertyAssignment(node) && ts.isStringLiteralLike(node.initializer)
+  if (!literal || !ts.isObjectLiteralExpression(node.parent)) return undefined
+  const declared = node.parent.properties.some(p => (ts.isPropertyAssignment(p) || ts.isShorthandPropertyAssignment(p))
+    && textOf(p.name) === 'component')
+  const generation = ts.isCallExpression(node.parent.parent) && textOf(node.parent.parent.expression) === 'defineGeneration'
+  const property = textOf(node.name)
+  const name = (property === 'name' && declared) || (property === 'operation' && generation) ? OPERATION.exec(node.initializer.text) : null
+  return name !== null && name[2] !== '' ? name[0] : undefined
+}
+
 function walk(node: ts.Node, visit: (node: ts.Node) => void): void {
   visit(node)
   ts.forEachChild(node, (child) => {
@@ -121,24 +165,48 @@ function collectFacts(sources: readonly Source[], files: readonly ScanFile[]): F
   const facts: Facts = {
     packages: new Set(files.map(file => packageOf(file.path))), owners: new Map(), claims: [], providers: new Set(),
     primitives: new Set(), primitivePackages: new Set(), slotPackages: new Set(), typesEntries: new Set(), kindOwners: new Set(),
+    ownerRows: [],
   }
   for (const file of files) {
     if (file.path.endsWith('/package.json') && /"\.\/types"\s*:/u.test(file.text)) facts.typesEntries.add(packageOf(file.path))
+    const skill = file.path.endsWith('/SKILL.md') ? file.path.split('/').at(-2) : /([^/]+)\.md$/u.exec(file.path)?.[1]
+    if (skill !== undefined) facts.ownerRows.push({ what: 'skill', name: skill, pkg: packageOf(file.path), where: `${file.path}:1`, extra: '' })
   }
   for (const { path, pkg, sf } of sources) {
     if (sf.text.includes('dvModels.register(')) facts.providers.add(pkg)
     walk(sf, (node) => {
       const callee = ts.isCallExpression(node) ? textOf(node.expression) : undefined
       const arg = ts.isCallExpression(node) ? node.arguments[0] : undefined
+      const row = (what: OwnerWhat, name: string, at: ts.Node, extra = what === 'node type' ? `slot @dv/${pkg}` : ''): void => {
+        facts.ownerRows.push({ what, name, pkg, where: `${path}:${String(lineOf(sf, at))}`, extra })
+      }
       const claim = (key: string): void => {
         facts.claims.push({ file: path, line: lineOf(sf, node), rule: 'R3', text: key, pkg })
         add(facts.owners, key, pkg)
+        row('component', key, node)
       }
       if (callee === 'registerComponent' && arg !== undefined && ts.isStringLiteralLike(arg)) claim(arg.text)
-      if (callee === 'registerReferenceKind') facts.kindOwners.add(pkg)
+      if (callee === 'registerReferenceKind' || callee === 'defineReference') facts.kindOwners.add(pkg)
       if (ts.isPropertyAssignment(node) && textOf(node.name) === 'component' && ts.isStringLiteralLike(node.initializer)) {
         claim(node.initializer.text)
       }
+      const operation = declaredOperation(node)
+      if (operation !== undefined) row('operation', operation, node, `dv_${operation.replace('.', '_')}`)
+      // A defineReference noun owns its kind and both operations; a defineReferenceUi call fills four UI registries.
+      const reference = callee === 'defineReference' ? stringProperty(arg, 'component') : undefined
+      if (reference !== undefined) {
+        row('kind', reference.text, reference.at)
+        for (const verb of ['create', 'update']) row('operation', `${reference.text}.${verb}`, reference.at, `dv_${reference.text}_${verb}`)
+      }
+      const ui = callee === 'defineReferenceUi' ? stringProperty(arg, 'key') : undefined
+      if (ui !== undefined) {
+        for (const what of ['node type', 'version kind', 'mention kind'] as const) row(what, ui.text, ui.at)
+        row('history row', `${ui.text}.`, ui.at)
+      }
+      const typed = ts.isVariableDeclaration(node) && node.type !== undefined && ts.isTypeReferenceNode(node.type)
+      const [what, property = ''] = typed ? UI_ROWS[node.type.typeName.getText(sf)] ?? [] : []
+      const owned = what !== undefined && ts.isVariableDeclaration(node) ? stringProperty(node.initializer, property) : undefined
+      if (what !== undefined && owned !== undefined) row(what, owned.text, node)
       if (ts.isInterfaceDeclaration(node) && node.name.text === 'PrimitiveTypes' && pkg !== 'models') {
         facts.primitivePackages.add(pkg)
         for (const member of node.members) facts.primitives.add(textOf(member.name) ?? '')
@@ -275,7 +343,7 @@ function scanSource({ path, pkg, sf }: Source, facts: Facts, out: Violation[]): 
       const exempt = ['types.ts', 'runner.ts', 'record-store.ts'].includes(path.split('/').pop() ?? '')
       if ((ts.isIdentifier(node) || literal !== undefined) && textOf(node) === 'started_by' && !exempt) report('R1e', 'started_by')
     }
-    if (pkg === 'models' || pkg === 'generation') {
+    if (pkg === 'models' || pkg === 'generation' || pkg === 'reference-kit') {
       const banned = new Set(['image', 'audio', ...facts.primitives, ...(pkg === 'generation' ? ['video', 'shot', 'plan'] : [])])
       const typeKey = ts.isIdentifier(node) && ts.isPropertySignature(node.parent) && node.parent.name === node
       if ((literal !== undefined || typeKey) && banned.has(textOf(node) ?? '')) report('R2a', textOf(node) ?? '')
@@ -284,14 +352,10 @@ function scanSource({ path, pkg, sf }: Source, facts: Facts, out: Violation[]): 
     const operationKey = key !== null && key[2] !== '' ? key[1] ?? '' : undefined
     if (pkg === 'workflow-kit' && literal !== undefined && workflowKey(operationKey ?? literal)) report('R2b', literal)
     // R3: `name:` beside `component:`, or `operation:` in a defineGeneration declaration, names a key of this package.
-    if (ts.isPropertyAssignment(node) && ts.isObjectLiteralExpression(node.parent) && ts.isStringLiteralLike(node.initializer)) {
-      const declared = node.parent.properties.some(p => (ts.isPropertyAssignment(p) || ts.isShorthandPropertyAssignment(p))
-        && textOf(p.name) === 'component')
-      const generation = ts.isCallExpression(node.parent.parent) && textOf(node.parent.parent.expression) === 'defineGeneration'
-      const property = textOf(node.name)
-      const name = (property === 'name' && declared) || (property === 'operation' && generation) ? OPERATION.exec(node.initializer.text) : null
-      if (name !== null && name[2] !== '' && facts.owners.get(name[1] ?? '')?.has(pkg) !== true) report('R3', name[0])
-    }
+    const noun = ts.isCallExpression(node) && textOf(node.expression) === 'defineReference' ? stringProperty(node.arguments[0], 'component') : undefined
+    if (noun !== undefined && (!NOUN_KEY.test(noun.text) || RESERVED_KEYS.includes(noun.text))) report('R3c', noun.text)
+    const operation = declaredOperation(node)
+    if (operation !== undefined && facts.owners.get(operation.split('.')[0] ?? '')?.has(pkg) !== true) report('R3', operation)
     const surfaceAsset = ['api', 'chat-references'].includes(pkg) && ['asset.import', 'asset.place'].includes(literal ?? '')
     const host = layer !== 'ui' && layer !== 'ui-core'
     if (host && operationKey !== undefined && ownedElsewhere(operationKey, pkg, facts) && !surfaceAsset) report('R4', literal ?? '')
@@ -372,15 +436,37 @@ function applyMarkers(path: string, text: string, found: Violation[]): Violation
   return [...found.filter(v => !suppressed.has(v)), ...invalid]
 }
 
+/** Parse each TypeScript file of a scan, with its package. */
+const parseSources = (files: readonly ScanFile[]): Source[] => files.filter(file => /\.tsx?$/u.test(file.path)).map(file => ({
+  path: file.path, pkg: packageOf(file.path), sf: ts.createSourceFile(file.path, file.text, ts.ScriptTarget.Latest, true),
+}))
+
+/**
+ * List the owner of every component key, reference kind, operation, skill and UI registration that the static patterns
+ * of `collectFacts` find: one row per (what, name, package) at its first declaration in path order, sorted by key
+ * (the name up to its first `.`), then by the order of `OwnerWhat`, then by name, so one noun prints as one block.
+ * @param files - the repository files from `readScanFiles`, or the files of a fixture.
+ * @returns the sorted owner rows.
+ */
+export function listOwners(files: readonly ScanFile[]): OwnerRow[] {
+  const sorted = [...files].sort((a, b) => a.path.localeCompare(b.path))
+  const rows = new Map<string, OwnerRow>()
+  for (const row of collectFacts(parseSources(sorted), sorted).ownerRows) {
+    if (!rows.has(`${row.what} ${row.name} ${row.pkg}`)) rows.set(`${row.what} ${row.name} ${row.pkg}`, row)
+  }
+  // Three stable sorts, the last by the most significant field.
+  return [...rows.values()].sort((a, b) => a.name.localeCompare(b.name))
+    .sort((a, b) => OWNER_WHATS.indexOf(a.what) - OWNER_WHATS.indexOf(b.what))
+    .sort((a, b) => (a.name.split('.')[0] ?? '').localeCompare(b.name.split('.')[0] ?? ''))
+}
+
 /**
  * Run R1-R8 over a set of files.
  * @param files - the repository files from `readScanFiles`, or the files of a fixture.
  * @returns every violation that no valid exception marker suppresses.
  */
 export function scan(files: readonly ScanFile[]): Violation[] {
-  const sources = files.filter(file => /\.tsx?$/u.test(file.path)).map(file => ({
-    path: file.path, pkg: packageOf(file.path), sf: ts.createSourceFile(file.path, file.text, ts.ScriptTarget.Latest, true),
-  }))
+  const sources = parseSources(files)
   const facts = collectFacts(sources, files)
   const violations: Violation[] = []
   for (const source of sources) {

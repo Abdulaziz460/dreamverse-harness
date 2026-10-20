@@ -1,0 +1,4 @@
+--- packages/dv/character/src/index.ts
+import { defineReference } from '@dv/reference-kit'
+--- packages/dv/character/src/types.ts
+import type { ReferenceSlice } from '@dv/reference-kit/types'
