@@ -5,7 +5,7 @@
  */
 import type { AssetId, RecordId } from '@dv/project/types'
 import type { PlanId } from '@dv/shot-plan/types'
-import type { CharacterId } from '@dv/story-bible/types'
+import type { CharacterId } from '@dv/character/types'
 import type { ClipId, TimelineId } from '@dv/timeline/types'
 import type { WireReferenceVersion } from '../src/client/reference-kit.tsx'
 import type { WireTaskLabels } from '../src/client/tool-labels.ts'
@@ -59,7 +59,7 @@ export function fixtureState(): WireState {
   const hero = { role: 'reference', ref: { character: 'hero', version: 1 }, resolved_asset: 'ref.png' }
   const records = [
     record({ id: 'u1', operation: 'asset.import', params: { name: 'ref.png' }, outputs: ['ref.png'] }),
-    record({ id: 'e1', operation: 'bible.character_create', params: { character: 'hero', name: 'Hero' } }),
+    record({ id: 'e1', operation: 'character.create', params: { character: 'hero', name: 'Hero' } }),
     record({
       id: 'p1', turn: 't2', actor: 'agent', operation: 'plan.create', params: { shots: [{ prompt: 'hero walks', modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3' }, { prompt: 'hero turns', modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3' }] },
       report: { plan: 'p1', version: 1 },
@@ -103,11 +103,9 @@ export function fixtureState(): WireState {
           'export-last.png': 'x1',
         },
       },
-      bible: {
-        characters: { ['hero' as CharacterId]: [{ id: 'hero' as CharacterId, version: 1, name: 'Hero', description: 'A tired detective.', references: ['ref.png' as AssetId], created_by: 'e1' as RecordId }] },
-        locations: {},
-        styles: {},
-      },
+      character: { ['hero' as CharacterId]: [{ id: 'hero' as CharacterId, version: 1, name: 'Hero', description: 'A tired detective.', references: ['ref.png' as AssetId], created_by: 'e1' as RecordId }] },
+      location: {},
+      style: {},
       plan: { plans: { ['p1' as PlanId]: [{ version: 1, shots: [{ prompt: 'hero walks', modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3' }, { prompt: 'hero turns', modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', continue_previous: true }], created_by: 'p1' as RecordId }] } },
       asset: { placed: [] },
       timeline: {

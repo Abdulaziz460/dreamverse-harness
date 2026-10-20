@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to fit the DSH chat composer to a DreamVerse project. Typing `@`, or picking 引用 / Reference in the composer's ＋ menu, lists the items of the mention kinds that plugin UI halves register in `dvMentions` (the clips of `@dv/ui-timeline`, and the characters, locations, and styles of `@dv/ui-story-bible`) and the open project's assets as reference chips. DreamVerse tool rows in the chat show creator-facing names, and the link 在历史中查看 / Show in history selects a call's record. The canvas and the asset pool panel prefill the composer through `dv:compose`. The agent asks for the user's agreement in the conversation.
+Use this package to fit the DSH chat composer to a DreamVerse project. Typing `@`, or picking 引用 / Reference in the composer's ＋ menu, lists the items of the mention kinds that plugin UI halves register in `dvMentions` (the clips of `@dv/ui-timeline`, and the characters, locations, and styles of `@dv/ui-character`, `@dv/ui-location`, and `@dv/ui-style`) and the open project's assets as reference chips. DreamVerse tool rows in the chat show creator-facing names, and the link 在历史中查看 / Show in history selects a call's record. The canvas and the asset pool panel prefill the composer through `dv:compose`. The agent asks for the user's agreement in the conversation.
 
 ## Table of Contents
 

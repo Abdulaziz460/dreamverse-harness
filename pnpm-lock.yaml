@@ -2128,6 +2128,9 @@ importers:
       '@dv/asset-pool':
         specifier: workspace:*
         version: link:../../dv/asset-pool
+      '@dv/character':
+        specifier: workspace:*
+        version: link:../../dv/character
       '@dv/chat-references':
         specifier: workspace:*
         version: link:../../dv/chat-references
@@ -2140,6 +2143,9 @@ importers:
       '@dv/inspector':
         specifier: workspace:*
         version: link:../../dv/inspector
+      '@dv/location':
+        specifier: workspace:*
+        version: link:../../dv/location
       '@dv/mcp-presets':
         specifier: workspace:*
         version: link:../../dv/mcp-presets
@@ -2155,9 +2161,9 @@ importers:
       '@dv/shot-render':
         specifier: workspace:*
         version: link:../../dv/shot-render
-      '@dv/story-bible':
+      '@dv/style':
         specifier: workspace:*
-        version: link:../../dv/story-bible
+        version: link:../../dv/style
       '@dv/timeline':
         specifier: workspace:*
         version: link:../../dv/timeline
@@ -2167,12 +2173,18 @@ importers:
       '@dv/ui-canvas':
         specifier: workspace:*
         version: link:../../dv/ui-canvas
+      '@dv/ui-character':
+        specifier: workspace:*
+        version: link:../../dv/ui-character
       '@dv/ui-composer':
         specifier: workspace:*
         version: link:../../dv/ui-composer
       '@dv/ui-history':
         specifier: workspace:*
         version: link:../../dv/ui-history
+      '@dv/ui-location':
+        specifier: workspace:*
+        version: link:../../dv/ui-location
       '@dv/ui-mcp-presets':
         specifier: workspace:*
         version: link:../../dv/ui-mcp-presets
@@ -2188,9 +2200,9 @@ importers:
       '@dv/ui-skills':
         specifier: workspace:*
         version: link:../../dv/ui-skills
-      '@dv/ui-story-bible':
+      '@dv/ui-style':
         specifier: workspace:*
-        version: link:../../dv/ui-story-bible
+        version: link:../../dv/ui-style
       '@dv/ui-timeline':
         specifier: workspace:*
         version: link:../../dv/ui-timeline
@@ -7003,9 +7015,6 @@ importers:
       '@dv/shot-render':
         specifier: workspace:*
         version: link:../shot-render
-      '@dv/story-bible':
-        specifier: workspace:*
-        version: link:../story-bible
       '@dv/timeline':
         specifier: workspace:*
         version: link:../timeline
@@ -7028,9 +7037,18 @@ importers:
       '@deepseek-ai/dsh-tools':
         specifier: workspace:*
         version: link:../../core/tools
+      '@dv/character':
+        specifier: workspace:*
+        version: link:../character
       '@dv/ffmpeg':
         specifier: workspace:*
         version: link:../ffmpeg
+      '@dv/location':
+        specifier: workspace:*
+        version: link:../location
+      '@dv/style':
+        specifier: workspace:*
+        version: link:../style
       '@types/node':
         specifier: ^22.20.0
         version: 22.20.0
@@ -7075,6 +7093,37 @@ importers:
         specifier: ^22.20.0
         version: 22.20.0
 
+  packages/dv/character:
+    dependencies:
+      '@deepseek-ai/dsh-brand':
+        specifier: workspace:*
+        version: link:../../util/brand
+      '@dv/project':
+        specifier: workspace:*
+        version: link:../project
+      '@dv/reference-kit':
+        specifier: workspace:*
+        version: link:../reference-kit
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:~
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-llm':
+        specifier: workspace:*
+        version: link:../../llm/llm
+      '@deepseek-ai/dsh-skill':
+        specifier: workspace:*
+        version: link:../../skill/skill
+      '@deepseek-ai/dsh-system-prompt':
+        specifier: workspace:*
+        version: link:../../core/system-prompt
+      '@deepseek-ai/dsh-tools':
+        specifier: workspace:*
+        version: link:../../core/tools
+      '@types/node':
+        specifier: ^22.20.0
+        version: 22.20.0
+
   packages/dv/chat-references:
     dependencies:
       '@deepseek-ai/dsh-agent':
@@ -7098,9 +7147,6 @@ importers:
       '@dv/project':
         specifier: workspace:*
         version: link:../project
-      '@dv/story-bible':
-        specifier: workspace:*
-        version: link:../story-bible
       '@dv/timeline':
         specifier: workspace:*
         version: link:../timeline
@@ -7117,6 +7163,9 @@ importers:
       '@deepseek-ai/dsh-tools':
         specifier: workspace:*
         version: link:../../core/tools
+      '@dv/character':
+        specifier: workspace:*
+        version: link:../character
       '@dv/ffmpeg':
         specifier: workspace:*
         version: link:../ffmpeg
@@ -7296,6 +7345,37 @@ importers:
       '@deepseek-ai/dsh-brand':
         specifier: workspace:*
         version: link:../../util/brand
+      '@deepseek-ai/dsh-system-prompt':
+        specifier: workspace:*
+        version: link:../../core/system-prompt
+      '@deepseek-ai/dsh-tools':
+        specifier: workspace:*
+        version: link:../../core/tools
+      '@types/node':
+        specifier: ^22.20.0
+        version: 22.20.0
+
+  packages/dv/location:
+    dependencies:
+      '@deepseek-ai/dsh-brand':
+        specifier: workspace:*
+        version: link:../../util/brand
+      '@dv/project':
+        specifier: workspace:*
+        version: link:../project
+      '@dv/reference-kit':
+        specifier: workspace:*
+        version: link:../reference-kit
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:~
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-llm':
+        specifier: workspace:*
+        version: link:../../llm/llm
+      '@deepseek-ai/dsh-skill':
+        specifier: workspace:*
+        version: link:../../skill/skill
       '@deepseek-ai/dsh-system-prompt':
         specifier: workspace:*
         version: link:../../core/system-prompt
@@ -7559,6 +7639,37 @@ importers:
         specifier: ^22.20.0
         version: 22.20.0
 
+  packages/dv/style:
+    dependencies:
+      '@deepseek-ai/dsh-brand':
+        specifier: workspace:*
+        version: link:../../util/brand
+      '@dv/project':
+        specifier: workspace:*
+        version: link:../project
+      '@dv/reference-kit':
+        specifier: workspace:*
+        version: link:../reference-kit
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:~
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-llm':
+        specifier: workspace:*
+        version: link:../../llm/llm
+      '@deepseek-ai/dsh-skill':
+        specifier: workspace:*
+        version: link:../../skill/skill
+      '@deepseek-ai/dsh-system-prompt':
+        specifier: workspace:*
+        version: link:../../core/system-prompt
+      '@deepseek-ai/dsh-tools':
+        specifier: workspace:*
+        version: link:../../core/tools
+      '@types/node':
+        specifier: ^22.20.0
+        version: 22.20.0
+
   packages/dv/timeline:
     dependencies:
       '@deepseek-ai/dsh-brand':
@@ -7683,6 +7794,45 @@ importers:
         specifier: ^18.2.0
         version: 18.3.1(react@18.3.1)
 
+  packages/dv/ui-character:
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:~
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-client-test-runtime':
+        specifier: workspace:*
+        version: link:../../test-support/client-runtime
+      '@deepseek-ai/dsh-client-ui-renderer':
+        specifier: workspace:*
+        version: link:../../client/ui-renderer
+      '@deepseek-ai/dsh-client-ui-slots':
+        specifier: workspace:*
+        version: link:../../client/ui-slots
+      '@dv/ui-canvas':
+        specifier: workspace:*
+        version: link:../ui-canvas
+      '@dv/ui-composer':
+        specifier: workspace:*
+        version: link:../ui-composer
+      '@dv/ui-history':
+        specifier: workspace:*
+        version: link:../ui-history
+      '@dv/ui-kit':
+        specifier: workspace:*
+        version: link:../ui-kit
+      '@testing-library/react':
+        specifier: ^16.1.0
+        version: 16.3.2(@testing-library/dom@10.4.2)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@types/react':
+        specifier: ~18.3.1
+        version: 18.3.31
+      react:
+        specifier: ^18.2.0
+        version: 18.3.1
+      react-dom:
+        specifier: ^18.2.0
+        version: 18.3.1(react@18.3.1)
+
   packages/dv/ui-composer:
     devDependencies:
       '@deepseek-ai/cordis':
@@ -7793,6 +7943,42 @@ importers:
       react:
         specifier: ^18.2.0
         version: 18.3.1
+
+  packages/dv/ui-location:
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:~
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-client-test-runtime':
+        specifier: workspace:*
+        version: link:../../test-support/client-runtime
+      '@deepseek-ai/dsh-client-ui-renderer':
+        specifier: workspace:*
+        version: link:../../client/ui-renderer
+      '@deepseek-ai/dsh-client-ui-slots':
+        specifier: workspace:*
+        version: link:../../client/ui-slots
+      '@dv/ui-composer':
+        specifier: workspace:*
+        version: link:../ui-composer
+      '@dv/ui-history':
+        specifier: workspace:*
+        version: link:../ui-history
+      '@dv/ui-kit':
+        specifier: workspace:*
+        version: link:../ui-kit
+      '@testing-library/react':
+        specifier: ^16.1.0
+        version: 16.3.2(@testing-library/dom@10.4.2)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@types/react':
+        specifier: ~18.3.1
+        version: 18.3.31
+      react:
+        specifier: ^18.2.0
+        version: 18.3.1
+      react-dom:
+        specifier: ^18.2.0
+        version: 18.3.1(react@18.3.1)
 
   packages/dv/ui-mcp-presets:
     devDependencies:
@@ -8030,6 +8216,42 @@ importers:
       '@dv/ui-composer':
         specifier: workspace:*
         version: link:../ui-composer
+      '@dv/ui-kit':
+        specifier: workspace:*
+        version: link:../ui-kit
+      '@testing-library/react':
+        specifier: ^16.1.0
+        version: 16.3.2(@testing-library/dom@10.4.2)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@types/react':
+        specifier: ~18.3.1
+        version: 18.3.31
+      react:
+        specifier: ^18.2.0
+        version: 18.3.1
+      react-dom:
+        specifier: ^18.2.0
+        version: 18.3.1(react@18.3.1)
+
+  packages/dv/ui-style:
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:~
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-client-test-runtime':
+        specifier: workspace:*
+        version: link:../../test-support/client-runtime
+      '@deepseek-ai/dsh-client-ui-renderer':
+        specifier: workspace:*
+        version: link:../../client/ui-renderer
+      '@deepseek-ai/dsh-client-ui-slots':
+        specifier: workspace:*
+        version: link:../../client/ui-slots
+      '@dv/ui-composer':
+        specifier: workspace:*
+        version: link:../ui-composer
+      '@dv/ui-history':
+        specifier: workspace:*
+        version: link:../ui-history
       '@dv/ui-kit':
         specifier: workspace:*
         version: link:../ui-kit

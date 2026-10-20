@@ -26,7 +26,7 @@ kind: "package-reference"
 
 在叠了 `dsh-web-app`（提供右侧栏和客户端模块加载器）和 `@dv/api`（提供面板调用的路由）的 profile 里挂载插件。先构建浏览器 bundle：`pnpm run build` 会写出 `lib/client.js`。
 
-面板请求项目历史列表中的步骤，最新的在前。每行显示带主体的操作名称（`@dv/ui-kit` 的 `operationLabel`：操作在 `/api/dv/operations` 里的 `label`，没有时用它的工具名称，再没有时用操作名）（修改分镜计划 p1 → v2、渲染镜头 1、新建角色「名字」）、谁做的（你、智能体、自动）、多久以前、状态，以及只有渲染行（`@dv/ui-kit` 的 `isGenerationRecord` 认定的记录，即图片、视频或音频生成）才有的一张缩略图（版本的静帧，没有静帧时用视频画面，什么都没产出时用空方块，让渲染行保持对齐）；其他行只显示文字。智能体行的第二行显示记录自身的 `intent`，即智能体为这次调用给出的理由。主体来自为该操作注册的 `HistoryRow`（先按完整操作名匹配，再按 `'<key>.'` 匹配），例如 `@dv/ui-shot-plan` 的 `plan.` 行和 `@dv/ui-story-bible` 的 `bible.` 行；没有时，带链位置的记录写出这个位置，链带有 lane 时再加 ` · <lane>`（`@dv/ui-kit` 的 `chainOf`：记录自身的 `started_by`，没有时用它 `based_on` 根记录的 `started_by`，所以画布上的重新生成保留它的镜头号）。`started_by.record` 是某一行记录的已加载记录，比如分镜计划批准的渲染和时间线记录，按日志顺序折叠在那一行下面，由 渲染 n 个镜头 开关展开。当前位置的一行带 当前，它之后的行变灰：文字变淡，缩略图变成黑白。其他每一行末尾有一个 ⋮ 按钮（更多操作），它的菜单提供 回到这一步（`/api/dv/undo` 带 `to` = 该步骤），把当前位置移到那一步，可在当前一步之前或之后。
+面板请求项目历史列表中的步骤，最新的在前。每行显示带主体的操作名称（`@dv/ui-kit` 的 `operationLabel`：操作在 `/api/dv/operations` 里的 `label`，没有时用它的工具名称，再没有时用操作名）（修改分镜计划 p1 → v2、渲染镜头 1、新建角色「名字」）、谁做的（你、智能体、自动）、多久以前、状态，以及只有渲染行（`@dv/ui-kit` 的 `isGenerationRecord` 认定的记录，即图片、视频或音频生成）才有的一张缩略图（版本的静帧，没有静帧时用视频画面，什么都没产出时用空方块，让渲染行保持对齐）；其他行只显示文字。智能体行的第二行显示记录自身的 `intent`，即智能体为这次调用给出的理由。主体来自为该操作注册的 `HistoryRow`（先按完整操作名匹配，再按 `'<key>.'` 匹配），例如 `@dv/ui-shot-plan` 的 `plan.` 行和 `@dv/ui-character` 的 `character.` 行；没有时，带链位置的记录写出这个位置，链带有 lane 时再加 ` · <lane>`（`@dv/ui-kit` 的 `chainOf`：记录自身的 `started_by`，没有时用它 `based_on` 根记录的 `started_by`，所以画布上的重新生成保留它的镜头号）。`started_by.record` 是某一行记录的已加载记录，比如分镜计划批准的渲染和时间线记录，按日志顺序折叠在那一行下面，由 渲染 n 个镜头 开关展开。当前位置的一行带 当前，它之后的行变灰：文字变淡，缩略图变成黑白。其他每一行末尾有一个 ⋮ 按钮（更多操作），它的菜单提供 回到这一步（`/api/dv/undo` 带 `to` = 该步骤），把当前位置移到那一步，可在当前一步之前或之后。
 
 ```yaml
 - id: dv-ui-history
@@ -39,7 +39,7 @@ Host 半边不注册任何东西。浏览器半边提供客户端服务 `dvHisto
 | --- | --- |
 | 打开面板、点"加载更多"翻页 | `POST /api/dv/history`；每页 50 条，下一页用 `before` |
 | 选中当前状态中匹配的 `HistoryRow` 带 `focus` 的行，例如时间线记录或时间线导出的行（`@dv/ui-timeline` 的 `timeline.` 行） | `focus` 返回的事件，例如 `dv:timeline-focus` `{timelineId, clipId}`；shell 显示时间线，编辑器选中该片段 |
-| 选中当前状态中除 `proj` 行以外的其他行，例如渲染、设定、分镜计划或素材的行 | `dv:canvas-focus` `{recordId}`；shell 显示画布，画布打开记录的节点 |
+| 选中当前状态中除 `proj` 行以外的其他行，例如渲染、角色、分镜计划或素材的行 | `dv:canvas-focus` `{recordId}`；shell 显示画布，画布打开记录的节点 |
 | 选中的智能体行里的"在轨迹中查看" | `dv:trajectory-focus` `{session, toolCall}`；shell 在该对话上打开 轨迹 |
 | 顶部的撤销（提示 撤销（Ctrl+Z / ⌘Z）） | `POST /api/dv/undo`；被拒绝时显示服务端的消息 |
 | 顶部的重做（提示 重做（Shift+Ctrl+Z / ⇧⌘Z）），当前位置是最后一步时不可用 | `POST /api/dv/redo` |

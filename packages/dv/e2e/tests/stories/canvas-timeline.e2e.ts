@@ -71,7 +71,7 @@ async function seedProject(title: string, shots = 3, timelines: number[] = []): 
   const created = await harness.api.post('/api/dv/projects', { title, surface: 'canvas' }) as { id: string }
   const id = created.id
   const imported = await runOperation(id, 'asset.import', { base64: PNG_BASE64, mime: 'image/png', name: 'ref.png' })
-  await runOperation(id, 'bible.character_create', { character: 'c1', name: 'Dancer' }, [{ role: 'reference', ref: imported.outputs[0] ?? '' }])
+  await runOperation(id, 'character.create', { character: 'c1', name: 'Dancer' }, [{ role: 'reference', ref: imported.outputs[0] ?? '' }])
   const plan = await runOperation(id, 'plan.create', {
     title, references: ['c1@1'],
     shots: Array.from({ length: shots }, (_, index) => ({
@@ -361,7 +361,7 @@ describe('canvas stories', () => {
     const page = await openPage()
     await gotoProject(page, project.id)
     await fitCanvas(page)
-    await page.locator('[data-node-type="bible"]').first().click()
+    await page.locator('[data-node-type="character"]').first().click()
     const editor = page.locator('[data-testid="dv-canvas-node-editor"]')
     await expect.poll(() => editor.count()).toBe(1)
     const frame = await page.locator('[data-testid="dv-canvas-view"]').boundingBox()
@@ -667,7 +667,7 @@ describe('canvas stories', () => {
     const project = await seedProject('canvas-stale', 2)
     const state = await stateOf(project.id)
     const frame = state.assets.find(asset => asset.mime.startsWith('image/') && asset.name !== 'ref.png')
-    await runOperation(project.id, 'bible.character_update', { character: 'c1' }, [{ role: 'reference', ref: frame?.id ?? '' }])
+    await runOperation(project.id, 'character.update', { character: 'c1' }, [{ role: 'reference', ref: frame?.id ?? '' }])
     const page = await openPage()
     await gotoProject(page, project.id)
     const staleTakes = page.locator('[data-node-type="take"][data-node-stale="true"]')
@@ -1284,7 +1284,7 @@ describe('timeline stories', () => {
     const created = await harness.api.post('/api/dv/projects', { title: 'timeline-pending', surface: 'canvas' }) as { id: string }
     const project = created.id
     const imported = await runOperation(project, 'asset.import', { base64: PNG_BASE64, mime: 'image/png', name: 'ref.png' })
-    await runOperation(project, 'bible.character_create', { character: 'c1', name: 'Dancer' }, [{ role: 'reference', ref: imported.outputs[0] ?? '' }])
+    await runOperation(project, 'character.create', { character: 'c1', name: 'Dancer' }, [{ role: 'reference', ref: imported.outputs[0] ?? '' }])
     const plan = await runOperation(project, 'plan.create', {
       title: 'timeline-pending', references: ['c1@1'],
       shots: [1, 2, 3].map(shot => ({ prompt: `timeline-pending shot ${String(shot)}`, duration_sec: shot === 2 ? 2 : 1, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3' })),
@@ -1472,7 +1472,7 @@ describe('going back and keep anyway', () => {
     const project = await seedProject('keep-anyway', 2)
     const state = await stateOf(project.id)
     const frame = state.assets.find(asset => asset.mime.startsWith('image/') && asset.name !== 'ref.png')
-    await runOperation(project.id, 'bible.character_update', { character: 'c1' }, [{ role: 'reference', ref: frame?.id ?? '' }])
+    await runOperation(project.id, 'character.update', { character: 'c1' }, [{ role: 'reference', ref: frame?.id ?? '' }])
     const page = await openPage()
     await gotoProject(page, project.id)
     const staleTakes = page.locator('[data-node-type="take"][data-node-stale="true"]')
@@ -1516,7 +1516,7 @@ describe('English interface', () => {
       return [...found]
     })
     expect(await chinese()).toEqual([])
-    for (const kind of ['take', 'bible', 'plan']) {
+    for (const kind of ['take', 'character', 'plan']) {
       await page.locator(`[data-node-type="${kind}"]`).first().click()
       await page.locator('[data-testid="dv-canvas-node-editor"]').waitFor()
       expect(await chinese()).toEqual([])

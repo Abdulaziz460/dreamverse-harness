@@ -9,7 +9,7 @@ import type { ReactNode } from 'react'
 import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import type { PlanId } from '@dv/shot-plan/types'
-import type { CharacterId } from '@dv/story-bible/types'
+import type { CharacterId } from '@dv/character/types'
 import { assetUrl } from '@dv/ui-kit/api.ts'
 import { createRegistry } from '@dv/ui-kit/registries.ts'
 import type { ChainAnchor, DvCanvas, NodeType, EntryEditorHost, TakesInUse, VersionKind } from '@dv/ui-kit/registries.ts'
@@ -24,16 +24,16 @@ const APPROVAL: ChainAnchor = {
   approvedVersions: (_state, anchorId) => anchorId === 'plan:p1' ? [1] : [],
 }
 
-/** The characters of the fixture's story bible as a version kind, as a story bible UI half registers it. */
+/** The characters of the fixture as a version kind, as the character UI half registers it. */
 const CHARACTERS: VersionKind = {
   kind: 'character',
   label: () => '角色',
-  node: id => `bible:${id}`,
+  node: id => `character:${id}`,
   latest: () => [],
   name: (state, id, version) =>
-    state.components.bible.characters[id as CharacterId]?.find(entry => entry.version === version)?.name ?? null,
+    state.components.character[id as CharacterId]?.find(entry => entry.version === version)?.name ?? null,
   assets: (state, id, version) =>
-    state.components.bible.characters[id as CharacterId]?.find(entry => entry.version === version)?.references ?? [],
+    state.components.character[id as CharacterId]?.find(entry => entry.version === version)?.references ?? [],
 }
 
 /** The canvas's writes, picker and preview, which the plan editor does not call. */

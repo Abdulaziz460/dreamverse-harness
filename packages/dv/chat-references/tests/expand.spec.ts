@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import { versionRefOf, type AssetId, type ProjectId, type ProjectRecord, type ProjectState, type RecordId, type SessionId, type TurnId } from '@dv/project'
-import type { CharacterId } from '@dv/story-bible'
+import type { CharacterId } from '@dv/character'
 import type { ClipId, TimelineId } from '@dv/timeline'
 import { expansionBlock, formatMention, parseMentions, type ExpansionSources } from '../src/expand.ts'
 

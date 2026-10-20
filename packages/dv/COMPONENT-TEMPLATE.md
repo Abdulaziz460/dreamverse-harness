@@ -94,9 +94,11 @@ The reducer is pure: `initial()`, and `reduce(slice, record)` that ignores recor
 
 | Member         | Who                              | Meaning                                                                                                                                     |
 | -------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `agentSummary` | Story bible, Shot plan, Timeline | the fields of the slice that the agent reads in the project summary of `dv_proj_state`; field names unique across components                |
+| `agentSummary` | Character, Shot plan, Timeline   | the fields of the slice that the agent reads in the project summary of `dv_proj_state`; field names unique across components                |
 
-**Reference kinds.** A component whose items an input names as `<id>@<version>` declares each kind in `ReferenceKinds` (as Story bible declares `character`, `location` and `style`) and registers it after its component key: `ctx.effect(() => ctx.dvProject.registerReferenceKind({ kind, component, assetsOf, createdBy, latest }))`. `assetsOf(slice, id, version)` gives the assets a version stands for, which the runner resolves version inputs to; `createdBy(slice, id, version)` gives the record that wrote the version, which Project uses for stale marks and for `<id>@<n>` parsing; `latest(slice, id)` gives the newest version of an ID, or null. One plugin owns each kind (`kind_exists`). IDs are unique across kinds: the kind's create refuses an ID that `ctx.dvProject.kindsWithId(context.state, id)` lists.
+**Reference kinds.** A component whose items an input names as `<id>@<version>` declares each kind in `ReferenceKinds` (as `@dv/character` declares `character`) and registers it after its component key: `ctx.effect(() => ctx.dvProject.registerReferenceKind({ kind, component, assetsOf, createdBy, latest }))`; a noun whose items keep reference images declares all of this with one `defineReference` call of `@dv/reference-kit`, as `@dv/character` does. `assetsOf(slice, id, version)` gives the assets a version stands for, which the runner resolves version inputs to; `createdBy(slice, id, version)` gives the record that wrote the version, which Project uses for stale marks and for `<id>@<n>` parsing; `latest(slice, id)` gives the newest version of an ID, or null. One plugin owns each kind (`kind_exists`). IDs are unique across kinds: the kind's create refuses an ID that `ctx.dvProject.kindsWithId(context.state, id)` lists.
+
+`pnpm dv:owners` prints the owner of every component key, reference kind, operation, skill and UI registration.
 
 ## 4. Configuration and wiring
 

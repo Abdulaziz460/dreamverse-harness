@@ -78,7 +78,7 @@ const RULES: ScriptedRule[] = [
     steps: [
       { calls: [{ name: 'dv_asset_import', args: { reason: '人物参考图', base64: PNG_BASE64, mime: 'image/png', name: 'hero.png' } }] },
       view => ({ calls: [{
-        name: 'dv_bible_character_create',
+        name: 'dv_character_create',
         args: { reason: '登记人物', character: 'c1', name: '小橘', inputs: { reference: [assetIdOf(view.toolResults[0], 'asset')] } },
       }] }),
     ],
@@ -333,7 +333,7 @@ describe('chat with the agent', () => {
     const state = await harness.api.get(`/api/dv/state?project=${projectId}`) as WireState
     const agentRecords = state.components.proj.records.filter(record => record.actor === 'agent' && record.operation !== 'proj.create')
     expect(agentRecords.map(record => record.operation))
-      .toEqual(['asset.import', 'bible.character_create', 'asset.import', 'shot.render'])
+      .toEqual(['asset.import', 'character.create', 'asset.import', 'shot.render'])
     expect(new Set(agentRecords.map(record => record.turn)).size).toBe(2)
     // One line: each record follows the record written just before it.
     const records = state.components.proj.records
@@ -457,7 +457,7 @@ describe('chat with the agent', () => {
     await send(page, '加人物')
     await waitChat(page, '人物小橘已登记', 30_000)
     const after = await stateOf()
-    expect(after.components.proj.records.filter(record => record.operation === 'bible.character_create')).toHaveLength(1)
+    expect(after.components.proj.records.filter(record => record.operation === 'character.create')).toHaveLength(1)
     expect(after.components.proj.records.some(record => record.id === last)).toBe(false)
     expect((await history()).map(entry => entry.id)).not.toContain(last)
     await send(page, '只回复九')
@@ -634,14 +634,14 @@ describe('chat with the agent', () => {
     await send(page, '加人物')
     await waitChat(page, '人物小橘已登记')
     const first = locationOf(page).session
-    await page.locator('[data-dv-workspace] [data-node-type="bible"]').first().waitFor({ timeout: 15_000 })
+    await page.locator('[data-dv-workspace] [data-node-type="character"]').first().waitFor({ timeout: 15_000 })
     // The character is in the project's current state, which every chat session of the project reads.
     // 新建会话 in the session switcher starts a second chat session in the same project.
     await pickFromSwitcher(page, '新建会话')
     await waitFor(() => Promise.resolve(locationOf(page).session !== first && locationOf(page).session !== null), 'a second session', 15_000)
     expect(locationOf(page).project).toBe(projectId)
     expect(await userMessages(page)).toEqual([])
-    expect(await page.locator('[data-dv-workspace] [data-node-type="bible"]').count()).toBeGreaterThan(0)
+    expect(await page.locator('[data-dv-workspace] [data-node-type="character"]').count()).toBeGreaterThan(0)
     await send(page, '只回复十三')
     await waitChat(page, '收到十三')
     expect(promptOf(requestFor('只回复十三') as ChatRequest)).toContain('小橘')

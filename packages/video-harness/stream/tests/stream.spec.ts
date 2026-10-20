@@ -4,7 +4,7 @@ import { Context } from '@deepseek-ai/cordis'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { WebRoute, WebUpgradeRoute } from '@deepseek-ai/dsh-host-webserver'
 import type { AssetId, ProjectId, RecordId } from '@dv/project'
-import type { CharacterId } from '@dv/story-bible'
+import type { CharacterId } from '@dv/character'
 import { afterEach, describe, expect, it } from 'vitest'
 import VhStream, { SegmentBroadcaster, type StreamFrame } from '../src/index.ts'
 import { startBase } from '../../../dv/api/tests/support.ts'
@@ -141,7 +141,7 @@ describe('shot.render with a live stream', () => {
       intent: 'import',
     })
     await fixture.project.run({
-      ...user, project: projectId, operation: 'bible.character_create', inputs: imported.outputs.map(asset => ({ role: 'reference', ref: { asset } })), params: { character: 'c1', name: 'Lead' },
+      ...user, project: projectId, operation: 'character.create', inputs: imported.outputs.map(asset => ({ role: 'reference', ref: { asset } })), params: { character: 'c1', name: 'Lead' },
       intent: 'character',
     })
     // The slot that the starter record gave the render becomes the segment index.

@@ -16,7 +16,8 @@ API            @dv/api                    routes that read state and run operati
 registry       @dv/project                records, the history list, undo and redo, state, agent tools, the dv:project prompt section
   ▲ registerOperation, registerReducer             ▲ dvProject.run (asset.import, asset.place), current-state reads
   │                                                │
-components     @dv/asset-pool @dv/story-bible      chat references   @dv/chat-references   dv: mentions, chat images
+components     @dv/asset-pool @dv/character       chat references   @dv/chat-references   dv: mentions, chat images
+               @dv/location @dv/style
                @dv/shot-plan @dv/shot-render
                @dv/timeline @dv/inspector
   │ ctx.dvModels (Consumer: @dv/shot-render)
@@ -34,14 +35,14 @@ bundle         @dv/bundle                 the cordis.patch.yml rows of every pac
 | 层      | 包                                                                                                                 | 角色                                                                                                                                                      |
 | ------ | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 注册表    | [`@dv/project`](../../packages/dv/project/README.zh.md)                                                           | `dvProject` 服务：组件向它注册操作和归约函数，就像工具向 `ctx.tools` 注册一样。它是项目文件唯一的写入者，把每个操作变成一个 DSH 工具，并注册 `dv:project` 系统提示词段。                                              |
-| 组件     | `@dv/asset-pool`、`@dv/story-bible`、`@dv/shot-plan`、`@dv/shot-render`、`@dv/timeline`、`@dv/inspector`               | 各自拥有一项能力的插件：它的数据（一个状态切片及其归约函数）、它的操作，以及智能体读到的关于它们的文字。外部程序经 [`@dv/ffmpeg`](../../packages/dv/ffmpeg/README.zh.md) 运行。                                     |
+| 组件     | `@dv/asset-pool`、`@dv/character`、`@dv/location`、`@dv/style`、`@dv/shot-plan`、`@dv/shot-render`、`@dv/timeline`、`@dv/inspector`               | 各自拥有一项能力的插件：它的数据（一个状态切片及其归约函数）、它的操作，以及智能体读到的关于它们的文字。外部程序经 [`@dv/ffmpeg`](../../packages/dv/ffmpeg/README.zh.md) 运行。                                     |
 | 模型     | [`@dv/models`](../../packages/dv/models/README.zh.md)、[`@dv/fastvideo`](../../packages/dv/fastvideo/README.zh.md) | 模型目录：`@dv/models` 持有 `dvModels` Service Definition 以及 `PrimitiveTypes` 和 `TaskMap`，`@dv/fastvideo` 这样的提供方插件是 Service Provider，注册自己服务的模型，镜头渲染是 Consumer。    |
 | API    | [`@dv/api`](../../packages/dv/api/README.zh.md)                                                                   | DSH `connection` 服务上的 Fetch 路由和 `webServer` 上的事件流；视图读取或修改项目的唯一途径。                                                                                       |
 | 对话引用   | [`@dv/chat-references`](../../packages/dv/chat-references/README.zh.md)                                           | `agent/pre-step` 和 `session/event` 上的监听器，把用户在对话消息中指向的东西变成项目 ID 和素材。                                                                                     |
 | 视图     | `@dv/ui-*`                                                                                                        | DSH Web 客户端的右侧栏标签类型和中央视图；`@dv/ui-kit` 是它们共用的库。                                                                                                          |
 | bundle | [`@dv/bundle`](../../packages/bundle/dv/README.zh.md)                                                             | profile 层：把每一行组成 `video-harness` 和 `video-harness-headless` 两个 profile，并附带 `video-directing` skill。                                                     |
 
-组件用 `dvProject.registerOperation` 注册操作，用 `dvProject.registerReducer` 注册归约函数。每个操作同时是智能体工具 `dv_<操作名，点换成下划线>`，一次调用成为一条记录。素材库的 `dv_asset_import`、`dv_asset_grab_still` 和 `dv_asset_cut_segment` 添加素材，`dv_asset_place` 和 `dv_asset_unplace` 把素材放到画布上和从画布移除；设定库的 `dv_bible_*` 工具创建和更新角色、场景和风格的版本；分镜的 `dv_plan_create` 写入一个新分镜计划的版次 1，该计划得到一个 `PlanId`（`p1`、`p2`、…），`dv_plan_update` 写入 `plan` 参数所指计划的下一个版次；故事工作流的 `dv_story_preview` 报告批准一个版次会渲染什么、花费多少，`dv_story_approve` 批准它；镜头渲染的 `dv_shot_render` 按调用指定的[模型](#model-catalog)渲染镜头的一个版本，`duration_sec` 是该模型范围内的整秒数（默认为模型的最小值）；时间线的 `dv_timeline_*` 工具创建、更新、重命名和删除时间线，并插入、移动、移除、拆分、裁剪和替换片段，不创建文件，它的 `dv_timeline_export` 把一条时间线写成一个视频；检查器的 `dv_inspect_image` 和 `dv_inspect_asset` 读取素材，不写记录。项目组件自己的 `dv_proj_*` 工具创建和打开项目、读取状态和历史、撤销、接受过期记录，以及等待排定的记录。操作声明资源类别（`none`、`cpu`、`gpu`）和确认策略（`never`、`always`、`over_gpu_budget`；见[在对话中确认](#confirmation-in-the-conversation)）；项目组件的调度器按类别并发上限运行排定的记录。
+组件用 `dvProject.registerOperation` 注册操作，用 `dvProject.registerReducer` 注册归约函数。每个操作同时是智能体工具 `dv_<操作名，点换成下划线>`，一次调用成为一条记录。素材库的 `dv_asset_import`、`dv_asset_grab_still` 和 `dv_asset_cut_segment` 添加素材，`dv_asset_place` 和 `dv_asset_unplace` 把素材放到画布上和从画布移除；角色、场景和风格组件的 `dv_character_*`、`dv_location_*` 和 `dv_style_*` 工具创建和更新各自的版本；分镜的 `dv_plan_create` 写入一个新分镜计划的版次 1，该计划得到一个 `PlanId`（`p1`、`p2`、…），`dv_plan_update` 写入 `plan` 参数所指计划的下一个版次；故事工作流的 `dv_story_preview` 报告批准一个版次会渲染什么、花费多少，`dv_story_approve` 批准它；镜头渲染的 `dv_shot_render` 按调用指定的[模型](#model-catalog)渲染镜头的一个版本，`duration_sec` 是该模型范围内的整秒数（默认为模型的最小值）；时间线的 `dv_timeline_*` 工具创建、更新、重命名和删除时间线，并插入、移动、移除、拆分、裁剪和替换片段，不创建文件，它的 `dv_timeline_export` 把一条时间线写成一个视频；检查器的 `dv_inspect_image` 和 `dv_inspect_asset` 读取素材，不写记录。项目组件自己的 `dv_proj_*` 工具创建和打开项目、读取状态和历史、撤销、接受过期记录，以及等待排定的记录。操作声明资源类别（`none`、`cpu`、`gpu`）和确认策略（`never`、`always`、`over_gpu_budget`；见[在对话中确认](#confirmation-in-the-conversation)）；项目组件的调度器按类别并发上限运行排定的记录。
 
 分镜计划的批准属于工作流插件，例如 [`@dv/workflow-story`](../../packages/dv/workflow-story/README.zh.md) 的 `story.approve`。它以 `system` 发起者为所批准版次中每个不沿用版本的镜头运行一次 `shot.render`，带该镜头的 `modality`、`task`、`provider` 和 `model`；它写下的每条记录都带 `started_by`，指向该批准记录，渲染记录还以镜头从 1 起的位置作为 `slot`。镜头沿用参数和输入都相同、且所在链始于同一工作流对同一计划的批准的最新 done 版本。随后 `dvTimeline.layout` 按镜头顺序把每个镜头的版本排进一条时间线；渲染尚未完成的镜头先显示为占位片段，直到渲染完成。批准在 `report.scheduled` 中列出排定的记录。片段有一个 `ClipId`（`cl1`、`cl2`、…），由插入它的时间线操作分配并存入记录的 `report.clips`；该 ID 在项目内唯一、从不复用，每个片段操作都用 `clip` 参数按它指定片段。
 
@@ -62,7 +63,7 @@ bundle         @dv/bundle                 the cordis.patch.yml rows of every pac
 这些规则说明哪些修改是步骤。这些规则也说明撤销、重做和"回到某一步"做什么。这些规则适用于用户、智能体和系统。这个模型和图片编辑软件的历史面板相同。
 
 1. **修改项目内容是一步。**
-   - 项目内容是素材、画布上的素材、设定库、分镜计划、渲染、时间线和导出。
+   - 项目内容是素材、画布上的素材、角色、场景、风格、分镜计划、渲染、时间线和导出。
    - 用户的步骤和智能体的步骤在同一个历史列表中，按时间顺序排列。
    - 修改视图不是一步。视图是平移、缩放、节点位置、选中项、所显示的视图和打开的面板。
    - 修改项目名称不是一步。删除项目不是一步。
@@ -103,7 +104,7 @@ bundle         @dv/bundle                 the cordis.patch.yml rows of every pac
 
 ## 项目状态
 
-归约函数读取记录并计算状态；它不写记录。运行器和记录存储是仅有的写入者。当前状态是把以当前位置结尾的链交给归约函数折叠的结果：项目组件从这条记录沿 `parents[0]` 往回走，再把这些记录按从旧到新的顺序交给每个已注册的归约函数。每个组件的归约函数把自己的记录变成 `ProjectState.components` 中自己的切片（设定库 `bible`、分镜 `plan`、时间线 `timeline`），项目组件自己的归约函数维护 `proj` 切片：这条链上的记录、过期和被替代的记录，以及创建每个素材的记录。归约函数的 `agentSummary` 把该组件的字段加入 `dv_proj_*` 工具和 `dv:project` 提示词段交给智能体的项目摘要。
+归约函数读取记录并计算状态；它不写记录。运行器和记录存储是仅有的写入者。当前状态是把以当前位置结尾的链交给归约函数折叠的结果：项目组件从这条记录沿 `parents[0]` 往回走，再把这些记录按从旧到新的顺序交给每个已注册的归约函数。每个组件的归约函数把自己的记录变成 `ProjectState.components` 中自己的切片（角色 `character`、场景 `location`、风格 `style`、分镜 `plan`、时间线 `timeline`），项目组件自己的归约函数维护 `proj` 切片：这条链上的记录、过期和被替代的记录，以及创建每个素材的记录。归约函数的 `agentSummary` 把该组件的字段加入 `dv_proj_*` 工具和 `dv:project` 提示词段交给智能体的项目摘要。
 
 视图显示的要么是记录，要么是状态。历史面板列出记录：历史列表中的步骤，最新的在前；被丢弃的记录不显示。画布、时间线编辑器和素材库面板显示状态：当前状态，因此撤销、重做或移到某一步会改变它们画出的内容。素材库面板列出当前状态中的每个素材，以及项目中每个导入的素材，包括被丢弃的步骤导入的素材（[历史规则](#history-rules)第 4 条）。没有视图持有项目状态：每个视图获取当前状态，并在实时事件流的每个事件后重新获取。
 
@@ -121,7 +122,9 @@ skill 承载工作流程和模型专属的规则，各由其主人注册：
 | ---------------------------------------------------- | ------------------------------------------------------------------------------- | --------------------- | --------------------------------------------------------------------------- |
 | `video-directing`                                    | [`@dv/bundle`](../../packages/bundle/dv/README.zh.md)（`skills/video-directing`） | `skill-filesystem` 目录 | 跨组件的做计划流程：故事及其镜头、每个镜头的模型和输入、按该模型和生成任务的提示词 skill 写提示词、重拍和过时镜头                |
 | `timeline-editing`                                   | [`@dv/timeline`](../../packages/dv/timeline/README.zh.md)                       | `ctx.skills`          | 编辑时间线和片段                                                                    |
-| `story-bible`                                        | [`@dv/story-bible`](../../packages/dv/story-bible/README.zh.md)                 | `ctx.skills`          | 创建和更新角色、场景、风格，以及每个工具的参数                                                     |
+| `character`                                          | [`@dv/character`](../../packages/dv/character/README.zh.md)                     | `ctx.skills`          | 创建和更新角色，以及每个工具的参数                                                           |
+| `location`                                           | [`@dv/location`](../../packages/dv/location/README.zh.md)                       | `ctx.skills`          | 创建和更新场景，以及每个工具的参数                                                           |
+| `style`                                              | [`@dv/style`](../../packages/dv/style/README.zh.md)                             | `ctx.skills`          | 创建和更新风格，以及每个工具的参数                                                           |
 | `story-directing`                                    | [`@dv/workflow-story`](../../packages/dv/workflow-story/README.zh.md)           | `ctx.skills`          | 从已规划的镜头到渲染好的镜头的调用顺序：新建或更新计划、预览、询问用户、批准、等待                                   |
 | `video-model-selection`                              | [`@dv/models`](../../packages/dv/models/README.zh.md)                           | `ctx.skills`          | 用 `dv_models_list` 和 `dv_models_get` 为每个镜头选择模型，以及何时询问用户                     |
 | `fasth3-reference-prompting`、`fasth3-text-prompting` | 模型的提供方插件（[`@dv/fastvideo`](../../packages/dv/fastvideo/README.zh.md)）           | `ctx.skills`          | 该生成任务下模型的限制和提示词规则                                                           |
@@ -138,7 +141,7 @@ skill 承载工作流程和模型专属的规则，各由其主人注册：
 
 ## 过期
 
-项目组件的归约函数标记过期记录，不重跑任何东西。当一条记录在 `supersedes` 中列出记录 X 时，每条读取了 X 的输出的记录，以及这类记录下游的每条记录，都变为过期；之后读取的输入若其产生者已被替代或已过期，该记录也过期。输入的产生者是创建其素材的记录；对角色、场景或风格的版本，是写入该版本的记录。调用替代哪些记录由所属操作通过 `OperationSpec.supersedes` 决定：`bible.character_update`、`bible.location_update` 和 `bible.style_update` 替代创建上一版本的记录，因此读取了上一版本的每条记录都过期。调用方也可以在 `supersedes` 中指定记录，智能体为替换某个镜头的重拍就这样做。过期记录只在智能体或人决定时重跑；`proj.stale_accept` 清除一条记录的标记，并使其消费者不再因它而过期。
+项目组件的归约函数标记过期记录，不重跑任何东西。当一条记录在 `supersedes` 中列出记录 X 时，每条读取了 X 的输出的记录，以及这类记录下游的每条记录，都变为过期；之后读取的输入若其产生者已被替代或已过期，该记录也过期。输入的产生者是创建其素材的记录；对角色、场景或风格的版本，是写入该版本的记录。调用替代哪些记录由所属操作通过 `OperationSpec.supersedes` 决定：`character.update`、`location.update` 和 `style.update` 替代创建上一版本的记录，因此读取了上一版本的每条记录都过期。调用方也可以在 `supersedes` 中指定记录，智能体为替换某个镜头的重拍就这样做。过期记录只在智能体或人决定时重跑；`proj.stale_accept` 清除一条记录的标记，并使其消费者不再因它而过期。
 
 ## 确定性复用
 
@@ -237,9 +240,9 @@ DreamVerse 的新行为挂在某个包已拥有的扩展点上，就像 DeepSeek
 | turn      | —                    | `TurnId`                          | 项目   | 轮次 / Turn                                         |
 | asset     | `Asset`              | `AssetId`                         | 素材库  | 素材 / Asset                                        |
 | still     | `Asset`              | `AssetId`                         | 素材库  | 静帧 / Still                                        |
-| character | `Character`          | `CharacterId`，版本 `<id>@<version>` | 设定库  | 角色 / Character                                    |
-| location  | `Location`           | `LocationId`，版本 `<id>@<version>`  | 设定库  | 场景 / Location                                     |
-| style     | `Style`              | `StyleId`，版本 `<id>@<version>`     | 设定库  | 风格 / Style                                        |
+| character | `Character`          | `CharacterId`，版本 `<id>@<version>` | 角色   | 角色 / Character                                    |
+| location  | `Location`           | `LocationId`，版本 `<id>@<version>`  | 场景   | 场景 / Location                                     |
+| style     | `Style`              | `StyleId`，版本 `<id>@<version>`     | 风格   | 风格 / Style                                        |
 | plan      | `Plan`、`PlanVersion` | `PlanId`（`p1`、`p2`、…），版次 `p1@2`   | 分镜   | 分镜计划 / Plan；分镜计划的版本叫版次                            |
 | shot      | `Shot`               | 它在计划中从 1 起的位置                     | 分镜   | 镜头 / Shot                                         |
 | take      | `Take`               | `TakeId`                          | 镜头渲染 | 版本 / Take                                         |
@@ -254,7 +257,9 @@ DreamVerse 的新行为挂在某个包已拥有的扩展点上，就像 DeepSeek
 | -------------------- | ---------- | -------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Project 项目           | `proj`     | `@dv/project`        | `dvProject`    | `proj.create` `proj.stale_accept`；历史工具 `dv_proj_undo` `dv_proj_redo`；读取工具 `dv_proj_open` `dv_proj_state` `dv_proj_history_list` `dv_proj_wait`                                                                                  |
 | Asset pool 素材库       | `asset`    | `@dv/asset-pool`     | `dvAssetPool`  | `asset.import` `asset.grab_still` `asset.cut_segment` `asset.place` `asset.unplace`                                                                                                                                             |
-| Story bible 设定库      | `bible`    | `@dv/story-bible`    | `dvStoryBible` | `bible.character_create` `bible.character_update` `bible.location_create` `bible.location_update` `bible.style_create` `bible.style_update`                                                                                     |
+| Character 角色         | `character` | `@dv/character`      | `dvCharacter`  | `character.create` `character.update`                                                                                                                                                                                           |
+| Location 场景          | `location` | `@dv/location`       | `dvLocation`   | `location.create` `location.update`                                                                                                                                                                                             |
+| Style 风格             | `style`    | `@dv/style`          | `dvStyle`      | `style.create` `style.update`                                                                                                                                                                                                   |
 | Shot plan 分镜         | `plan`     | `@dv/shot-plan`      | `dvShotPlan`   | `plan.create` `plan.update`                                                                                                                                                                                                     |
 | Story workflow 故事工作流 | `story`    | `@dv/workflow-story` | `dvStory`      | `story.approve`；读取 `story.preview`                                                                                                                                                                                              |
 | Shot render 镜头渲染     | `shot`     | `@dv/shot-render`    | `dvShotRender` | `shot.render`（模型目录中有 `t2v` 或 `ref2v` 条目时）                                                                                                                                                                                       |
@@ -293,7 +298,8 @@ DreamVerse 的新行为挂在某个包已拥有的扩展点上，就像 DeepSeek
 | 渲染结果                             | Rendered                                                       | 版本的素材筛选。                                                       |
 | 导入                               | Imported                                                       | 导入文件的素材筛选。                                                     |
 | 参考图                              | Reference images                                               | 角色、场景、风格或镜头据以渲染的图片。                                            |
-| 场景和风格                            | Locations and styles                                           | 设定库中 角色 / Characters 之后的部分。                                    |
+| 场景                               | Locations                                                      | `@` 菜单中 角色 / Characters 之后的部分。                                 |
+| 风格                               | Styles                                                         | `@` 菜单中 场景 / Locations 之后的部分。                                  |
 | 新建时间线 / 修改时间线                    | Create timeline / Update timeline                              | 添加时间线或替换其片段的时间线操作。                                             |
 | 插入片段 / 移动片段 / 移除片段 / 拆分片段 / 裁剪片段 | Insert clip / Move clip / Remove clip / Split clip / Trim clip | 片段操作；文案中片段显示为 片段 N / Clip N。                                   |
 | 仍然保留                             | Keep anyway                                                    | `proj.stale_accept` 唯一的标签。                                     |

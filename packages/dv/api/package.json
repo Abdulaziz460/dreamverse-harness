@@ -15,7 +15,6 @@
     "@dv/project": "workspace:*",
     "@dv/shot-plan": "workspace:*",
     "@dv/shot-render": "workspace:*",
-    "@dv/story-bible": "workspace:*",
     "@dv/timeline": "workspace:*"
   },
   "peerDependencies": {
@@ -30,7 +29,10 @@
     "@deepseek-ai/dsh-system-prompt": "workspace:*",
     "@deepseek-ai/dsh-tools": "workspace:*",
     "@deepseek-ai/schemastery": "workspace:~",
+    "@dv/character": "workspace:*",
     "@dv/ffmpeg": "workspace:*",
+    "@dv/location": "workspace:*",
+    "@dv/style": "workspace:*",
     "@types/node": "^22.20.0"
   }
 }

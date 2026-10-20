@@ -68,8 +68,14 @@
     - id: dv-shot-render
       name: '@dv/shot-render'
 
-    - id: dv-story-bible
-      name: '@dv/story-bible'
+    - id: dv-character
+      name: '@dv/character'
+
+    - id: dv-location
+      name: '@dv/location'
+
+    - id: dv-style
+      name: '@dv/style'
 
     - id: dv-timeline
       name: '@dv/timeline'
@@ -113,8 +119,14 @@
     - id: dv-ui-workflow-story
       name: '@dv/ui-workflow-story'
 
-    - id: dv-ui-story-bible
-      name: '@dv/ui-story-bible'
+    - id: dv-ui-character
+      name: '@dv/ui-character'
+
+    - id: dv-ui-location
+      name: '@dv/ui-location'
+
+    - id: dv-ui-style
+      name: '@dv/ui-style'
 
     - id: dv-ui-shot-plan
       name: '@dv/ui-shot-plan'
@@ -130,7 +142,7 @@
       name: '@dv/ui-skills'
 
 # The video-directing skill ships in this bundle's skills directory; skill-filesystem discovers it beside the user's own.
-# The model, story bible, timeline and story skills are registered by their plugins through ctx.skills.
+# The model, character, location, style, timeline and story skills are registered by their plugins through ctx.skills.
 - id: skill-filesystem
   config:
     customSkillDirs:

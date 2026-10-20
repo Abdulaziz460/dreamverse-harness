@@ -32,7 +32,7 @@ describe('storyApprovalAnchor', () => {
     }
     expect(storyApprovalAnchor.approvedVersions?.(state, 'plan:p1')).toEqual([1, 3])
     expect(storyApprovalAnchor.approvedVersions?.(state, 'plan:p9')).toEqual([])
-    expect(storyApprovalAnchor.approvedVersions?.(state, 'bible:p1')).toEqual([])
+    expect(storyApprovalAnchor.approvedVersions?.(state, 'character:p1')).toEqual([])
   })
 })
 

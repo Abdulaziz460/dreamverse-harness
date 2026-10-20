@@ -28,7 +28,7 @@ const declared = (name: string, zh: string, en: string): WireOperation => ({
 const DECLARED: WireOperation[] = [
   declared('plan.create', '新建分镜计划', 'Create plan'), declared('plan.update', '修改分镜计划', 'Update plan'),
   declared('timeline.create', '新建时间线', 'Create timeline'), declared('timeline.update', '修改时间线', 'Update timeline'),
-  declared('bible.character_create', '新建角色', 'Create character'), declared('shot.render', '渲染镜头', 'Render shot'),
+  declared('character.create', '新建角色', 'Create character'), declared('shot.render', '渲染镜头', 'Render shot'),
 ]
 
 /**
@@ -71,7 +71,7 @@ describe('labels, thumbnails and times', () => {
       .toEqual(['plan.approve', 'plan.approve'])
     expect(actionLabel(record({ id: 'tc', operation: 'timeline.create', params: { timeline: 't2' } }), labels())).toEqual(['新建时间线', 'Create timeline'])
     expect(actionLabel(record({ id: 'tu', operation: 'timeline.update', params: { timeline: 't2' } }), labels())).toEqual(['修改时间线', 'Update timeline'])
-    expect(actionLabel(record({ id: 'g', component: 'bible', operation: 'bible.character_create', params: { character: 'c1', name: '阿明' } }), labels()))
+    expect(actionLabel(record({ id: 'g', component: 'character', operation: 'character.create', params: { character: 'c1', name: '阿明' } }), labels()))
       .toEqual(['新建角色', 'Create character'])
   })
 

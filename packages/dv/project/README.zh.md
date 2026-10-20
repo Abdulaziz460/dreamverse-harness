@@ -90,7 +90,7 @@ kind: "package-reference"
 
 #### 模型看到什么
 
-八个工具：`dv_proj_create`、`dv_proj_open`、`dv_proj_state`、`dv_proj_history_list`、`dv_proj_undo`、`dv_proj_redo`、`dv_proj_stale_accept` 和 `dv_proj_wait`。`dv_proj_history_list` 按从新到旧返回步骤（默认 20 条），每条带 `place`（`current`、`before` 或 `after`）、操作、状态、发起者、意图和输出；其他工具以缩进 JSON 返回当前状态的项目摘要：`record`（只在写记录的工具之后出现：该调用写下的最新记录）、`project_id`、`head`、`records`（数量），然后按组件键的字母顺序是各组件的 `agentSummary` 字段（设定库 `characters`、`locations`、`styles`；分镜 `plans`；时间线 `timelines`），最后是 `stale` 和 `recent`（最多十二条记录，带摘要和输出 URL）。`dv_proj_undo` 不带 `to` 时往回移一步，带 `to`（`dv_proj_history_list` 里的记录 ID）时移到那一步，可在当前一步之前或之后；`dv_proj_redo` 往前移一步。这些移动不加一步；之后的修改会丢弃当前一步之后的步骤。
+八个工具：`dv_proj_create`、`dv_proj_open`、`dv_proj_state`、`dv_proj_history_list`、`dv_proj_undo`、`dv_proj_redo`、`dv_proj_stale_accept` 和 `dv_proj_wait`。`dv_proj_history_list` 按从新到旧返回步骤（默认 20 条），每条带 `place`（`current`、`before` 或 `after`）、操作、状态、发起者、意图和输出；其他工具以缩进 JSON 返回当前状态的项目摘要：`record`（只在写记录的工具之后出现：该调用写下的最新记录）、`project_id`、`head`、`records`（数量），然后按组件键的字母顺序是各组件的 `agentSummary` 字段（角色 `characters`、场景 `locations`、分镜 `plans`、风格 `styles`、时间线 `timelines`），最后是 `stale` 和 `recent`（最多十二条记录，带摘要和输出 URL）。`dv_proj_undo` 不带 `to` 时往回移一步，带 `to`（`dv_proj_history_list` 里的记录 ID）时移到那一步，可在当前一步之前或之后；`dv_proj_redo` 往前移一步。这些移动不加一步；之后的修改会丢弃当前一步之后的步骤。
 
 #### Token 影响
 

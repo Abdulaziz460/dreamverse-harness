@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-使用本包让 DSH 对话输入框适配 DreamVerse 项目。输入 `@`，或在输入框的 ＋ 菜单里选 引用，会把插件 UI 半边在 `dvMentions` 中注册的提及类型的条目（`@dv/ui-timeline` 的片段，以及 `@dv/ui-story-bible` 的角色、场景和风格）和所打开项目的素材列为引用标签。对话里的 DreamVerse 工具行显示面向创作者的名称，在历史中查看 链接选中调用的记录。画布和素材库面板通过 `dv:compose` 预填输入框。智能体在对话里征求用户同意。
+使用本包让 DSH 对话输入框适配 DreamVerse 项目。输入 `@`，或在输入框的 ＋ 菜单里选 引用，会把插件 UI 半边在 `dvMentions` 中注册的提及类型的条目（`@dv/ui-timeline` 的片段，以及 `@dv/ui-character`、`@dv/ui-location` 和 `@dv/ui-style` 的角色、场景和风格）和所打开项目的素材列为引用标签。对话里的 DreamVerse 工具行显示面向创作者的名称，在历史中查看 链接选中调用的记录。画布和素材库面板通过 `dv:compose` 预填输入框。智能体在对话里征求用户同意。
 
 ## 目录
 
