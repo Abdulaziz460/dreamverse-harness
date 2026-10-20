@@ -471,7 +471,6 @@
     { "path": "./packages/dv/character" },
     { "path": "./packages/dv/location" },
     { "path": "./packages/dv/style" },
-    { "path": "./packages/dv/story-bible" },
     { "path": "./packages/dv/workflow-kit" },
     { "path": "./packages/dv/workflow-story" },
     { "path": "./apps/cli" },
