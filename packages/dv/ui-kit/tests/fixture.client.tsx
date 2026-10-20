@@ -7,8 +7,12 @@ import type { AssetId, RecordId } from '@dv/project/types'
 import type { PlanId } from '@dv/shot-plan/types'
 import type { CharacterId } from '@dv/story-bible/types'
 import type { ClipId, TimelineId } from '@dv/timeline/types'
+import type { WireReferenceVersion } from '../src/client/reference-kit.tsx'
 import type { WireTaskLabels } from '../src/client/tool-labels.ts'
 import type { OperationRequest, ProjectAsset, ProjectRecord, WireOperation, WireProject, WireState } from '../src/client/types.ts'
+
+// The slice of the test-only reference noun `test_ref`; optional, so every other state literal stays valid.
+declare module '../src/client/types.ts' { interface ComponentStates { test_ref?: Record<string, WireReferenceVersion[]> } }
 
 /**
  * A record with defaults for everything a test does not set.
@@ -124,6 +128,25 @@ export function fixtureState(): WireState {
       asset('export.mp4', 'video/mp4', 'c1', 3, 'timeline.export'),
       asset('export-last.png', 'image/png', 'x1', null, 'asset.grab_still'),
     ],
+  }
+}
+
+/**
+ * A copy of a state that holds the test-only reference noun `test_ref`: its slice holds the versions of `hero`, and the
+ * record `e1` that wrote them is the one record `test_ref.create`.
+ * @param state - a state such as {@link fixtureState}.
+ * @returns the copy.
+ */
+export function withTestRef(state: WireState): WireState {
+  const proj = state.components.proj
+  const create = record({ id: 'e1', operation: 'test_ref.create', params: { test_ref: 'hero', name: 'Hero' } })
+  return {
+    ...state,
+    components: {
+      ...state.components,
+      proj: { ...proj, records: proj.records.map(entry => entry.id === create.id ? create : entry) },
+      test_ref: { hero: [{ id: 'hero', version: 1, name: 'Hero', description: 'A tired detective.', references: ['ref.png'], created_by: create.id }] },
+    },
   }
 }
 

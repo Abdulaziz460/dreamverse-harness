@@ -5,19 +5,24 @@ import type { ChainAnchor, NodeType, TakesInUse } from '@dv/ui-kit/registries.ts
 import type { DvLanguage } from '@dv/ui-kit/locale.ts'
 import type { AssetId, RecordId } from '@dv/project/types'
 import type { PlanId, PlanVersion } from '@dv/shot-plan/types'
-import type { CharacterId } from '@dv/story-bible/types'
 import type { ClipId, TimelineId } from '@dv/timeline/types'
 import type { ProjectRecord, WireOperation, WireState } from '@dv/ui-kit/types.ts'
 import { formatInputRef } from '@dv/ui-kit/references.ts'
-import { bibleNodeType, bibleReferencesInUse, bibleVersionKinds } from '@dv/ui-story-bible/src/client/index.ts'
-import { asset, fixtureState, OPERATIONS, record } from '../../ui-kit/tests/fixture.client.tsx'
+import { defineReferenceUi } from '@dv/ui-kit/reference-kit.tsx'
+import { asset, fixtureState, OPERATIONS, record, withTestRef } from '../../ui-kit/tests/fixture.client.tsx'
 import { planNodeType } from '../../ui-shot-plan/src/client/index.ts'
 import { buildCanvasGraph, freePositions, NODE_WIDTH, ROW, slotFrames } from '../src/client/graph.ts'
 import type { CanvasGraph, CanvasNode } from '../src/client/graph.ts'
 
+/** The reference noun `test_ref` of the fixture, declared as the UI package of a noun declares it. */
+const testRef = defineReferenceUi({
+  id: '@dv/ui-test-ref', key: 'test_ref', slice: state => state.components.test_ref ?? {},
+  label: ['参考', 'Reference'], mention: { section: ['参考', 'References'], order: 1 },
+})
+
 /**
- * The canvas graph with the story bible's node type, references in use and version kinds registered, as the bundle
- * mounts `@dv/ui-story-bible`.
+ * The canvas graph with the node type, references in use and version kind of `test_ref` registered, as the bundle
+ * mounts the UI package of a noun.
  * @param state - the state.
  * @param placed - the assets on the canvas.
  * @param operations - the operation declarations.
@@ -27,12 +32,12 @@ import type { CanvasGraph, CanvasNode } from '../src/client/graph.ts'
  * @param nodeTypes - other node types, such as the plan's.
  * @returns the graph.
  */
-function bibleGraph(
+function refGraph(
   state: WireState, placed?: ReadonlySet<string>, operations: readonly WireOperation[] = [], language: DvLanguage = 'zh',
   anchors: readonly ChainAnchor[] = [], inUse: readonly TakesInUse[] = [], nodeTypes: readonly NodeType[] = [],
 ): CanvasGraph {
-  const uses = [bibleReferencesInUse, ...inUse]
-  return buildCanvasGraph(state, placed, operations, language, anchors, uses, [bibleNodeType, ...nodeTypes], bibleVersionKinds)
+  const uses = [testRef.referencesInUse, ...inUse]
+  return buildCanvasGraph(state, placed, operations, language, anchors, uses, [testRef.nodeType, ...nodeTypes], [testRef.versionKind])
 }
 
 /**
@@ -71,7 +76,7 @@ const PROMPTS = ['rain', 'alley', 'door', 'stairs', 'roof', 'dawn']
  * @returns the state.
  */
 function rollbackProject(until?: string): WireState {
-  const hero = { role: 'reference', ref: { character: 'hero', version: 1 }, resolved_asset: 'ref.png' }
+  const hero = { role: 'reference', ref: { test_ref: 'hero', version: 1 }, resolved_asset: 'ref.png' }
   // The approval of version n is a<n>: it starts each render, with its shot as slot, and its timeline record; a retake
   // has no started_by of its own.
   const render = (id: string, version: number, shot: number, basedOn: string | null = null): ProjectRecord => record({
@@ -88,7 +93,7 @@ function rollbackProject(until?: string): WireState {
   const v1 = ['r1', 'r2', 'r3', 'r4', 'r5', 'r6']
   const all = [
     record({ id: 'u1', operation: 'asset.import', params: { name: 'ref.png' }, outputs: ['ref.png'] }),
-    record({ id: 'e1', operation: 'bible.character_create', params: { character: 'hero', name: 'Hero' } }),
+    record({ id: 'e1', operation: 'test_ref.create', params: { test_ref: 'hero', name: 'Hero' } }),
     record({ id: 'q1', operation: 'plan.create', report: { plan: 'p1', version: 1 } }),
     approve('a1', 1, [...v1, 'l1']), ...v1.map((id, index) => render(id, 1, index + 1)), layout('l1', 'timeline.create', v1),
     record({ id: 'q2', operation: 'plan.update', params: { plan: 'p1' }, report: { plan: 'p1', version: 2 } }),
@@ -114,7 +119,7 @@ function rollbackProject(until?: string): WireState {
     .map((input, index) => ({ id: `cl${String(index + 1)}` as ClipId, asset: input.resolved_asset as AssetId | null, source: null, in_sec: null, out_sec: null }))
   if (ids.has('k1') && !ids.has('l4')) clips[2] = { id: 'cl3' as ClipId, asset: 'r3.mp4' as AssetId, source: null, in_sec: null, out_sec: null }
   const renders = kept.filter(entry => entry.operation === 'shot.render')
-  const state = fixtureState()
+  const state = withTestRef(fixtureState())
   state.components.proj = {
     records: kept, stale: {}, superseded: {},
     created_by: Object.fromEntries([['ref.png', 'u1'], ...renders.flatMap(entry => entry.outputs.map(output => [output, entry.id]))]),
@@ -142,19 +147,19 @@ function byRecordOrder(a: string | string[], b: string | string[]): number {
  * @returns the pairs, in node order.
  */
 function drawn(state: WireState): string[][] {
-  return bibleGraph(state, undefined, [], 'zh', [APPROVAL], [CLIPS], [planNodeType]).nodes.map(node => [node.id, typeOf(node)])
+  return refGraph(state, undefined, [], 'zh', [APPROVAL], [CLIPS], [planNodeType]).nodes.map(node => [node.id, typeOf(node)])
 }
 
 describe('buildCanvasGraph', () => {
-  it('draws the story bible\'s entries, plans, and takes, and hides reference imports, exports, still grabs, and timeline records', () => {
-    const graph = bibleGraph(fixtureState(), undefined, OPERATIONS, 'zh', [], [CLIPS], [planNodeType])
+  it('draws the reference entries, plans, and takes, and hides reference imports, exports, still grabs, and timeline records', () => {
+    const graph = refGraph(withTestRef(fixtureState()), undefined, OPERATIONS, 'zh', [], [CLIPS], [planNodeType])
     expect(graph.nodes.map(node => [node.id, typeOf(node)])).toEqual([
-      ['bible:hero', 'bible'], ['plan:p1', 'plan'], ['g1', 'take'], ['g2', 'take'], ['g3', 'take'],
+      ['test_ref:hero', 'test_ref'], ['plan:p1', 'plan'], ['g1', 'take'], ['g2', 'take'], ['g3', 'take'],
     ])
     // The plan node is an entry of the node type of plans; without that type the core draws no plan node.
     expect(buildCanvasGraph(fixtureState(), undefined, OPERATIONS).nodes.map(node => node.id)).not.toContain('plan:p1')
     const byId = new Map(graph.nodes.map(node => [node.id, node]))
-    expect(byId.get('bible:hero')).toMatchObject({ type: 'entry', nodeType: bibleNodeType, thumb: null, references: ['ref.png'], x: 0 })
+    expect(byId.get('test_ref:hero')).toMatchObject({ type: 'entry', nodeType: testRef.nodeType, thumb: null, references: ['ref.png'], x: 0 })
     expect(byId.get('g1')).toMatchObject({ thumb: 'shot1-last.png', video: 'shot1.mp4', durationSec: 4 })
     expect(byId.get('g2')?.flags.stale).toBe(true)
     expect(byId.get('g2')?.badges).toEqual(['trim'])
@@ -162,44 +167,43 @@ describe('buildCanvasGraph', () => {
     expect(buildCanvasGraph(fixtureState(), undefined, OPERATIONS).nodes.find(node => node.id === 'g2')?.badges).toEqual([])
     expect(byId.get('g3')?.flags).toMatchObject({ rendering: true })
     expect(graph.edges).toEqual([
-      { from: 'bible:hero', to: 'g1', kind: 'reference' },
-      { from: 'bible:hero', to: 'g2', kind: 'reference' },
+      { from: 'test_ref:hero', to: 'g1', kind: 'reference' },
+      { from: 'test_ref:hero', to: 'g2', kind: 'reference' },
       { from: 'g1', to: 'g2', kind: 'first_frame' },
-      { from: 'bible:hero', to: 'g3', kind: 'reference' },
+      { from: 'test_ref:hero', to: 'g3', kind: 'reference' },
       { from: 'g1', to: 'g3', kind: 'take' },
     ])
     expect(byId.get('g2')?.x).toBeGreaterThan(byId.get('g1')?.x ?? Infinity)
     expect(byId.get('g3')?.x).toBe(byId.get('g1')?.x)
     // The original take and its retake are numbered; a shot with one take has no number.
     expect([byId.get('g1')?.take, byId.get('g3')?.take, byId.get('g2')?.take]).toEqual([1, 2, null])
-    // Reference images map to their character, location or style; derived assets map up the producer chain to a drawn take.
-    expect(graph.assetNodes).toMatchObject({ 'ref.png': 'bible:hero', 'shot1.mp4': 'g1', 'export.mp4': 'g2' })
+    // Reference images map to their item; derived assets map up the producer chain to a drawn take.
+    expect(graph.assetNodes).toMatchObject({ 'ref.png': 'test_ref:hero', 'shot1.mp4': 'g1', 'export.mp4': 'g2' })
   })
 
-  it('draws an imported asset only while it is on the canvas list, and never a story bible reference image', () => {
-    const state = fixtureState()
+  it('draws an imported asset only while it is on the canvas list, and never a reference image of an item', () => {
+    const state = withTestRef(fixtureState())
     const proj = state.components.proj
     const names = ['pool.png', 'used.png', 'listed.png', 'side.png']
     state.assets.push(...names.map((name, index) => asset(name, 'image/png', `u${String(index + 2)}`)))
     proj.records.push(...names.map((name, index) => record({ id: `u${String(index + 2)}`, operation: 'asset.import', params: { name }, outputs: [name] })))
     names.forEach((name, index) => { proj.created_by[name] = `u${String(index + 2)}` })
-    // A second reference image of Hero, written by a character update, is part of Hero's node.
+    // A second reference image of Hero, written by an update of its item, is part of Hero's node.
     proj.records.push(record({
-      id: 'e2', operation: 'bible.character_update', params: { character: 'hero' },
+      id: 'e2', operation: 'test_ref.update', params: { test_ref: 'hero' },
       inputs: [{ role: 'reference', ref: { asset: 'side.png' }, resolved_asset: 'side.png' }],
     }))
-    const hero = state.components.bible.characters['hero' as CharacterId] ?? []
-    hero.push({ ...hero[0], id: 'hero' as CharacterId, version: 2, name: 'Hero', description: '', references: ['ref.png' as AssetId, 'side.png' as AssetId], created_by: 'e2' as RecordId })
+    state.components.test_ref?.['hero']?.push({ id: 'hero', version: 2, name: 'Hero', description: '', references: ['ref.png', 'side.png'], created_by: 'e2' })
     // A take reads used.png, which is off the list: no node and no edge for it.
     proj.records.push(record({
       id: 'g9', operation: 'shot.render', deterministic: false, params: { prompt: 'alone' },
       inputs: [{ role: 'reference', ref: { asset: 'used.png' }, resolved_asset: 'used.png' }],
     }))
-    const graph = bibleGraph(state, new Set(['listed.png', 'side.png', 'ref.png']), OPERATIONS)
+    const graph = refGraph(state, new Set(['listed.png', 'side.png', 'ref.png']), OPERATIONS)
     expect(graph.nodes.filter(node => node.type === 'asset').map(node => node.id)).toEqual(['u4'])
-    expect(graph.nodes.find(node => node.id === 'bible:hero')?.references).toEqual(['ref.png', 'side.png'])
+    expect(graph.nodes.find(node => node.id === 'test_ref:hero')?.references).toEqual(['ref.png', 'side.png'])
     expect(graph.edges.filter(edge => edge.to === 'g9')).toEqual([])
-    expect(graph.assetNodes).toMatchObject({ 'listed.png': 'u4', 'side.png': 'bible:hero' })
+    expect(graph.assetNodes).toMatchObject({ 'listed.png': 'u4', 'side.png': 'test_ref:hero' })
     expect([graph.assetNodes['pool.png'], graph.assetNodes['used.png']]).toEqual([undefined, undefined])
     // On the list, used.png is drawn with an edge to the take that reads it.
     const listed = buildCanvasGraph(state, new Set(['listed.png', 'used.png']), OPERATIONS)
@@ -207,17 +211,17 @@ describe('buildCanvasGraph', () => {
   })
 
   it('gives an earlier version\'s assets to the node of its item, and links a version input from that node, through the version kinds', () => {
-    const state = fixtureState()
+    const state = withTestRef(fixtureState())
     state.assets.push(asset('side.png', 'image/png', null))
     // Version 2 of Hero replaced ref.png with side.png; ref.png stays on the canvas.
-    state.components.bible.characters['hero' as CharacterId]?.push({ id: 'hero' as CharacterId, version: 2, name: 'Hero', description: '', references: ['side.png' as AssetId], created_by: 'e2' as RecordId })
+    state.components.test_ref?.['hero']?.push({ id: 'hero', version: 2, name: 'Hero', description: '', references: ['side.png'], created_by: 'e2' })
     const placed = new Set(['ref.png'])
-    const graph = bibleGraph(state, placed, OPERATIONS)
+    const graph = refGraph(state, placed, OPERATIONS)
     expect(graph.nodes.filter(node => node.type === 'asset')).toEqual([])
-    expect(graph.assetNodes['ref.png']).toBe('bible:hero')
-    expect(graph.edges).toContainEqual({ from: 'bible:hero', to: 'g1', kind: 'reference' })
+    expect(graph.assetNodes['ref.png']).toBe('test_ref:hero')
+    expect(graph.edges).toContainEqual({ from: 'test_ref:hero', to: 'g1', kind: 'reference' })
     // With the node type alone, the import of ref.png is an asset node, and g1 reads hero@1 from it.
-    const entriesOnly = buildCanvasGraph(state, placed, OPERATIONS, 'zh', [], [], [bibleNodeType])
+    const entriesOnly = buildCanvasGraph(state, placed, OPERATIONS, 'zh', [], [], [testRef.nodeType])
     expect(entriesOnly.nodes.filter(node => node.type === 'asset').map(node => node.id)).toEqual(['u1'])
     expect(entriesOnly.edges).toContainEqual({ from: 'u1', to: 'g1', kind: 'reference' })
   })
@@ -265,10 +269,10 @@ describe('buildCanvasGraph', () => {
   })
 
   it('shows the latest plan version and the current take of each of its shots, not every take ever rendered', () => {
-    const graph = bibleGraph(rollbackProject(), undefined, [], 'zh', [APPROVAL], [CLIPS], [planNodeType])
+    const graph = refGraph(rollbackProject(), undefined, [], 'zh', [APPROVAL], [CLIPS], [planNodeType])
     // v4 has 6 shots and its approval reused every v1 take: no shot 7, no v2 or v3 take, no retake of the removed shot.
     expect(graph.nodes.map(node => [node.id, typeOf(node)])).toEqual([
-      ['bible:hero', 'bible'], ['plan:p1', 'plan'], ...['r1', 'r2', 'r3', 'r4', 'r5', 'r6'].map(id => [id, 'take']),
+      ['test_ref:hero', 'test_ref'], ['plan:p1', 'plan'], ...['r1', 'r2', 'r3', 'r4', 'r5', 'r6'].map(id => [id, 'take']),
     ])
     const plan = graph.nodes.find(node => node.id === 'plan:p1')
     expect([plan?.type === 'entry' ? plan.entry.slots : undefined, plan?.record?.id]).toEqual([6, 'q4'])
@@ -283,14 +287,14 @@ describe('buildCanvasGraph', () => {
   it('a jump back to an earlier step changes the canvas to that step\'s plan version and takes', () => {
     // Back to just after the v3 approval: plan v3 with 7 shots, the takes its timeline plays.
     expect(drawn(rollbackProject('l3'))).toEqual([
-      ['bible:hero', 'bible'], ['plan:p1', 'plan'], ...['r1', 'r2', 's3', 'r4', 's7', 'x7', 'w5', 'r6'].map(id => [id, 'take']).sort(byRecordOrder),
+      ['test_ref:hero', 'test_ref'], ['plan:p1', 'plan'], ...['r1', 'r2', 's3', 'r4', 's7', 'x7', 'w5', 'r6'].map(id => [id, 'take']).sort(byRecordOrder),
     ])
     // Back to just after the v1 approval: v1 and its 6 takes only.
     expect(drawn(rollbackProject('l1'))).toEqual([
-      ['bible:hero', 'bible'], ['plan:p1', 'plan'], ...['r1', 'r2', 'r3', 'r4', 'r5', 'r6'].map(id => [id, 'take']),
+      ['test_ref:hero', 'test_ref'], ['plan:p1', 'plan'], ...['r1', 'r2', 'r3', 'r4', 'r5', 'r6'].map(id => [id, 'take']),
     ])
     // Back to before the plan: the character and its reference only.
-    expect(drawn(rollbackProject('e1'))).toEqual([['bible:hero', 'bible']])
+    expect(drawn(rollbackProject('e1'))).toEqual([['test_ref:hero', 'test_ref']])
   })
 
   it('a take a timeline clip plays is the current take of its shot, and an unapproved latest version keeps the played takes', () => {
@@ -453,7 +457,7 @@ describe('T1c: the canvas writes a reference of any kind', () => {
    * @returns the state.
    */
   function unknownKindState(): WireState {
-    const state = fixtureState()
+    const state = withTestRef(fixtureState())
     state.assets.push(asset('zz.png', 'image/png', 'u9'))
     state.components.proj.created_by['zz.png'] = 'u9'
     state.components.proj.records.push(
@@ -474,10 +478,10 @@ describe('T1c: the canvas writes a reference of any kind', () => {
     expect(chips?.join(' ')).not.toContain('undefined')
   })
 
-  it('T1c.2: a version of a kind without a version kind links from the node of its asset; a character version links from its bible node', () => {
-    const graph = bibleGraph(unknownKindState(), new Set(['zz.png']), OPERATIONS)
+  it('T1c.2: a version of a kind without a version kind links from the node of its asset; a test_ref version links from its entry node', () => {
+    const graph = refGraph(unknownKindState(), new Set(['zz.png']), OPERATIONS)
     expect(graph.edges).toContainEqual({ from: 'u9', to: 'g9', kind: 'reference' })
-    expect(graph.edges).toContainEqual({ from: 'bible:hero', to: 'g1', kind: 'reference' })
+    expect(graph.edges).toContainEqual({ from: 'test_ref:hero', to: 'g1', kind: 'reference' })
   })
 })
 

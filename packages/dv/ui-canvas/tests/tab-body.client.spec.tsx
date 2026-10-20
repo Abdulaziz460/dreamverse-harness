@@ -7,18 +7,22 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/react'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
-import type { AssetId, RecordId } from '@dv/project/types'
-import type { LocationId } from '@dv/story-bible/types'
 import { DvClient } from '@dv/ui-kit/api.ts'
+import { defineReferenceUi } from '@dv/ui-kit/reference-kit.tsx'
 import type { NodeType } from '@dv/ui-kit/registries.ts'
-import { bibleVersionKinds } from '@dv/ui-story-bible/src/client/index.ts'
-import { fixtureState, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
+import { fixtureState, scriptedFetch, withTestRef } from '../../ui-kit/tests/fixture.client.tsx'
 import { CanvasBody } from '../src/client/CanvasBody.tsx'
 import type { CanvasBodyProps } from '../src/client/CanvasBody.tsx'
 import { createDvCanvas } from '../src/client/dv-canvas.ts'
 import { EDITOR_RECT_KEY } from '../src/client/NodeEditor.tsx'
 import type { CanvasTranslate } from '../src/client/NodeCard.tsx'
 import { zh } from '../src/client/locales.ts'
+
+/** The reference noun `test_ref` of the fixture, declared as the UI package of a noun declares it. */
+const testRef = defineReferenceUi({
+  id: '@dv/ui-test-ref', key: 'test_ref', slice: state => state.components.test_ref ?? {},
+  label: ['参考', 'Reference'], mention: { section: ['参考', 'References'], order: 1 },
+})
 
 /** A node type as a plugin's UI half registers it: one entry. */
 const PROPS: NodeType = {
@@ -57,15 +61,16 @@ describe('canvas tab body', () => {
 
   it('opens the asset picker with only the versioned items, and an asset chip with no preview, without an error', async () => {
     const errors = vi.spyOn(console, 'error')
-    // The first take also references an asset, so its editor shows an asset chip beside the character chip; a location
+    // The first take also references an asset, so its editor shows an asset chip beside the chip of hero; an item
     // that the take does not reference is a versioned item of the picker.
-    const state = fixtureState()
+    const state = withTestRef(fixtureState())
     state.components.proj.records = state.components.proj.records.map(entry => entry.id === 'g1'
       ? { ...entry, inputs: [...entry.inputs, { role: 'reference', ref: { asset: 'shot2-last.png' }, resolved_asset: 'shot2-last.png' }] }
       : entry)
-    state.components.bible.locations['alley' as LocationId] = [{ id: 'alley' as LocationId, version: 1, name: 'Alley', description: '', references: ['ref.png' as AssetId], created_by: 'e1' as RecordId }]
+    state.components.test_ref = { ...state.components.test_ref, alley: [{ id: 'alley', version: 1, name: 'Alley', description: '', references: ['ref.png'], created_by: 'e1' }] }
     const canvas = createDvCanvas()
-    for (const kind of bibleVersionKinds) canvas.versionKinds.register(kind)
+    canvas.versionKinds.register(testRef.versionKind)
+
     const t: CanvasTranslate = makeTranslate(zh)
     const props = { client: new DvClient(scriptedFetch({ state }).fetch), canvas, t } as CanvasBodyProps
     const view = render(<CanvasBody {...props} />)

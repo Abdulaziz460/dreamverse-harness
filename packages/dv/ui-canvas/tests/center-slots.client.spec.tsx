@@ -11,9 +11,9 @@ import type { PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-
 import { SidebarRightTabRegistry } from '@deepseek-ai/dsh-client-ui-sidebar-right/src/client/tab-registry.ts'
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import { apply as assetPoolApply, inject as assetPoolInject } from '@dv/ui-asset-pool/src/client/index.ts'
+import { defineReferenceUi } from '@dv/ui-kit/reference-kit.tsx'
 import type { NodeType } from '@dv/ui-kit/registries.ts'
-import { apply as storyBibleApply } from '@dv/ui-story-bible/src/client/index.ts'
-import { scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
+import { fixtureState, scriptedFetch, withTestRef } from '../../ui-kit/tests/fixture.client.tsx'
 import { apply as shotPlanApply } from '../../ui-shot-plan/src/client/index.ts'
 import { apply, inject } from '../src/client/index.ts'
 import { EDITOR_RECT_KEY } from '../src/client/NodeEditor.tsx'
@@ -24,6 +24,12 @@ const PROPS: NodeType = {
   id: '@dv/ui-prop', type: 'prop', label: () => '道具', color: 'rgb(1, 2, 3)', column: 1,
   entries: state => [{ id: 'prop:p1', record: null, title: `红伞 · ${state.project.id}`, media: [] }],
 }
+
+/** The reference noun `test_ref` of the fixture, declared as the UI package of a noun declares it. */
+const testRef = defineReferenceUi({
+  id: '@dv/ui-test-ref', key: 'test_ref', slice: state => state.components.test_ref ?? {},
+  label: ['参考', 'Reference'], mention: { section: ['参考', 'References'], order: 1 },
+})
 
 /**
  * The `dv.canvas.editor` entry of the node type.
@@ -44,12 +50,12 @@ afterEach(() => {
 
 /**
  * A slot runtime whose root frame declares the center slot and shows its canvas entry, as the shell's workspace center
- * does, with the ui-canvas plugin mounted on the fixture project.
+ * does, with the ui-canvas plugin mounted on the fixture project and its reference noun `test_ref`.
  * @returns the runtime, the rendered root, and the mounted ui-canvas plugin.
  */
 async function centerCanvas() {
   // The plugin's own client calls the global fetch.
-  vi.stubGlobal('fetch', scriptedFetch().fetch)
+  vi.stubGlobal('fetch', scriptedFetch({ state: () => withTestRef(fixtureState()) }).fetch)
   const runtime = await SlotTestRuntime.create()
   runtime.ctx.provide('locale', { bind: () => (key: string) => key, register: () => () => {} } as never)
   runtime.ctx.provide('sidebarRightTabs', new SidebarRightTabRegistry(runtime.ctx) as never)
@@ -100,13 +106,14 @@ describe('canvas slots in the workspace center', () => {
     await runtime.dispose()
   })
 
-  it('shows the story bible editor body in the center canvas', async () => {
+  it('shows the editor body of a reference noun in the center canvas', async () => {
     document.documentElement.lang = 'zh-CN'
     const { runtime, view: { container } } = await centerCanvas()
-    await runtime.mount({ apply: storyBibleApply })
+    await runtime.mount({ apply: (ctx: Context) => { testRef.apply(ctx) } })
 
-    const editor = await openEditor(container, 'bible:hero')
-    // The body of the ui-story-bible entry: the reference of the newest version, the description and 添加素材.
+    const editor = await openEditor(container, 'test_ref:hero')
+    // The body of the noun's entry: the reference of the newest version, the description and 添加素材.
+
     expect(within(editor).getByRole('button', { name: '查看 ref.png' })).toBeTruthy()
     expect(within(editor).getByText('A tired detective.')).toBeTruthy()
     expect(within(editor).getByText('＋ 添加素材')).toBeTruthy()

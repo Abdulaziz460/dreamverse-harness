@@ -102,12 +102,12 @@ export interface ChainAnchor {
 export interface NodeType {
   /** Package name; also the key of its 'dv.canvas.editor' slot entry. */
   id: string
-  /** The data-node-type value, such as 'bible' or 'plan'. */
+  /** The data-node-type value, such as 'character' or 'plan'. */
   type: string
   /** The type label of the default card. */
   label(): string
   color: string
-  /** Default layout column: bible 0, plan 1; takes start at 2. */
+  /** Default layout column: character 0, plan 1; takes start at 2. */
   column: number
   /** Reads only its own slice. */
   entries(state: WireState): NodeEntry[]
@@ -131,7 +131,7 @@ export interface NodeEntry {
 /** The generation records whose outputs a plugin's data uses. */
 export interface TakesInUse {
   id: string
-  /** Record IDs whose outputs the plugin's data uses (timeline clips, bible and plan references). */
+  /** Record IDs whose outputs the plugin's data uses (timeline clips, character and plan references). */
   uses(state: WireState): string[]
   /** Labels on the node of an asset, such as the trim badge of a clip. */
   badges?(state: WireState): Array<{ asset: string; label: string }>
@@ -143,7 +143,7 @@ export interface VersionKind {
   kind: string
   /** The section title of the kind's items in the asset picker, such as 角色. */
   label(): string
-  /** The canvas node ID of an item, such as 'bible:c1'. */
+  /** The canvas node ID of an item, such as 'character:c1'. */
   node(id: string): string
   /** Every item at its newest version. */
   latest(state: WireState): Array<{ id: string; version: number }>

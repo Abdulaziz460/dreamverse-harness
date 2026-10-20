@@ -14,9 +14,9 @@ import { makeTranslate, SlotTestRuntime } from '@deepseek-ai/dsh-client-test-run
 import { SidebarRightTabRegistry } from '@deepseek-ai/dsh-client-ui-sidebar-right/src/client/tab-registry.ts'
 import { apply as assetPoolApply, inject as assetPoolInject } from '@dv/ui-asset-pool/src/client/index.ts'
 import { DvClient } from '@dv/ui-kit/api.ts'
+import { defineReferenceUi } from '@dv/ui-kit/reference-kit.tsx'
 import type { NodeType } from '@dv/ui-kit/registries.ts'
-import { apply as storyBibleApply, bibleNodeType } from '@dv/ui-story-bible/src/client/index.ts'
-import { asset, fixtureState, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
+import { asset, fixtureState, scriptedFetch, withTestRef } from '../../ui-kit/tests/fixture.client.tsx'
 import { planNodeType } from '../../ui-shot-plan/src/client/index.ts'
 import { CanvasView } from '../src/client/CanvasView.tsx'
 import { createDvCanvas } from '../src/client/dv-canvas.ts'
@@ -34,6 +34,12 @@ const PROPS: NodeType = {
     ]
     : [],
 }
+
+/** The reference noun `test_ref` of the fixture, declared as the UI package of a noun declares it. */
+const testRef = defineReferenceUi({
+  id: '@dv/ui-test-ref', key: 'test_ref', slice: state => state.components.test_ref ?? {},
+  label: ['参考', 'Reference'], mention: { section: ['参考', 'References'], order: 1 },
+})
 
 /** The slots that the canvas center view declares for its editors. */
 type CanvasSlot = 'dv.canvas.editor' | 'dv.canvas.picker' | 'dv.canvas.preview'
@@ -63,11 +69,12 @@ describe('node types', () => {
   it('draws each entry with the default card, shows the type\'s editor entry, and removes both on disposal', async () => {
     const runtime = await SlotTestRuntime.create()
     const canvas = createDvCanvas()
-    // The story bible's entries hold column 0, as in the bundle, so the plan stays in the column it had before the type came.
-    canvas.nodeTypes.register(bibleNodeType)
+    // The entries of `test_ref` hold column 0, as a noun's do in the bundle, so the plan stays in the column it had before
+    // the type came.
+    canvas.nodeTypes.register(testRef.nodeType)
     canvas.nodeTypes.register(planNodeType)
     runtime.ctx.provide('dvCanvas', canvas)
-    const state = fixtureState()
+    const state = withTestRef(fixtureState())
     state.assets.push(asset('umbrella.png', 'image/png', null), asset('umbrella-back.png', 'image/png', null))
     state.components.asset.placed = ['umbrella.png']
     const client = new DvClient(scriptedFetch({ state }).fetch)
@@ -117,31 +124,31 @@ describe('node types', () => {
     expect(within(editor).getByRole('heading').textContent).toBe('红伞')
 
     await types.dispose()
-    expect(canvas.nodeTypes.list()).toEqual([bibleNodeType, planNodeType])
+    expect(canvas.nodeTypes.list()).toEqual([testRef.nodeType, planNodeType])
     await waitFor(() => { expect(card('prop:p1')).toBeNull() })
     expect(card('prop:p2')).toBeNull()
     await runtime.dispose()
   })
 
-  it('lends the editor entry its writes, picker and preview: the story bible entry previews a reference and appends picked assets', async () => {
+  it('lends the editor entry its writes, picker and preview: the entry of a reference noun previews a reference and appends picked assets', async () => {
     document.documentElement.lang = 'zh-CN'
     const runtime = await SlotTestRuntime.create()
     const canvas = createDvCanvas()
     runtime.ctx.provide('dvCanvas', canvas)
-    const scripted = scriptedFetch()
+    const scripted = scriptedFetch({ state: () => withTestRef(fixtureState()) })
     const client = new DvClient(scripted.fetch)
     const t: CanvasTranslate = makeTranslate(zh)
     // The asset pool fills the picker and the preview slots.
     const Frame = ({ renderSlot }: PropsRenderSlots<CanvasSlot>): ReactNode =>
       <CanvasView projectId="p1" client={client} session="s5" t={t} canvas={canvas} renderSlot={renderSlot} />
     await runtime.root.declare(CANVAS_SLOTS, Frame)
-    await runtime.mount({ apply: storyBibleApply })
+    await runtime.mount({ apply: (ctx: Context) => { testRef.apply(ctx) } })
     runtime.ctx.provide('sidebarRightTabs', new SidebarRightTabRegistry(runtime.ctx) as never)
     await runtime.mount({ inject: [...assetPoolInject], apply: assetPoolApply })
     const { container } = runtime.renderRoot()
     const hero = await waitFor(() => {
-      const found = container.querySelector('[data-node-id="bible:hero"]')
-      if (!(found instanceof HTMLElement)) throw new Error('no bible:hero node')
+      const found = container.querySelector('[data-node-id="test_ref:hero"]')
+      if (!(found instanceof HTMLElement)) throw new Error('no test_ref:hero node')
       return found
     })
     fireEvent.pointerDown(hero, { button: 0, clientX: 5, clientY: 5, pointerId: 1 })
@@ -156,7 +163,7 @@ describe('node types', () => {
     // 添加素材 opens the canvas's picker of assets only; the write carries the canvas's project, session and surface.
     fireEvent.click(within(editor).getByText('＋ 添加素材'))
     const picker = await view.findByTestId('dv-canvas-asset-picker')
-    expect(picker.textContent).not.toContain('角色')
+    expect(picker.textContent).not.toContain('参考')
     const tile = await waitFor(() => {
       const found = picker.querySelector('[data-asset-id="shot1.mp4"]')
       if (!(found instanceof HTMLElement)) throw new Error('no shot1.mp4 tile')
@@ -167,7 +174,8 @@ describe('node types', () => {
     expect(view.queryByTestId('dv-canvas-asset-picker')).toBeNull()
     await waitFor(() => { expect(scripted.writes.some(write => write.path === '/api/dv/operation')).toBe(true) })
     expect(scripted.writes.find(write => write.path === '/api/dv/operation')?.body).toEqual({
-      project: 'p1', operation: 'bible.character_update', params: { character: 'hero' },
+      project: 'p1', operation: 'test_ref.update', params: { test_ref: 'hero' },
+
       inputs: [{ role: 'reference', ref: 'ref.png' }, { role: 'reference', ref: 'shot1.mp4' }], intent: '在画布上给 Hero 添加参考',
       surface: 'canvas', session: 's5',
     })

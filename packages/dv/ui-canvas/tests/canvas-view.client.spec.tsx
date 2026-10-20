@@ -7,9 +7,8 @@ import type { ReactNode } from 'react'
 import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import { makeTranslate, SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import { SidebarRightTabRegistry } from '@deepseek-ai/dsh-client-ui-sidebar-right/src/client/tab-registry.ts'
-import type { AssetId, RecordId } from '@dv/project/types'
+import type { RecordId } from '@dv/project/types'
 import type { PlanId } from '@dv/shot-plan/types'
-import type { CharacterId, LocationId } from '@dv/story-bible/types'
 import { apply as assetPoolApply, inject as assetPoolInject } from '@dv/ui-asset-pool/src/client/index.ts'
 import { assetUrl, DvClient } from '@dv/ui-kit/api.ts'
 import { DV_COMPOSE_EVENT } from '@dv/ui-kit/compose.ts'
@@ -17,8 +16,8 @@ import type { DvComposeDetail } from '@dv/ui-kit/compose.ts'
 import type { ChainAnchor, DvCanvas } from '@dv/ui-kit/registries.ts'
 import type { WireOperation, WireState } from '@dv/ui-kit/types.ts'
 import { DV_ASSET_DRAG_TYPE, DV_CANVAS_FOCUS_EVENT } from '@dv/ui-kit/workspace-events.ts'
-import { bibleNodeType, bibleReferencesInUse, bibleVersionKinds } from '@dv/ui-story-bible/src/client/index.ts'
-import { asset, fixtureState, OPERATIONS, record, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
+import { defineReferenceUi } from '@dv/ui-kit/reference-kit.tsx'
+import { asset, fixtureState, OPERATIONS, record, scriptedFetch, withTestRef } from '../../ui-kit/tests/fixture.client.tsx'
 import { planNodeType } from '../../ui-shot-plan/src/client/index.ts'
 import { CanvasView } from '../src/client/CanvasView.tsx'
 import { createDvCanvas } from '../src/client/dv-canvas.ts'
@@ -33,16 +32,22 @@ const APPROVAL: ChainAnchor = {
   approvedVersions: (_state, anchorId) => anchorId === 'plan:p1' ? [1] : [],
 }
 
+/** The reference noun `test_ref` of the fixture, declared as the UI package of a noun declares it. */
+const testRef = defineReferenceUi({
+  id: '@dv/ui-test-ref', key: 'test_ref', slice: state => state.components.test_ref ?? {},
+  label: ['参考', 'Reference'], mention: { section: ['参考', 'References'], order: 1 },
+})
+
 /**
- * Canvas registries that hold the story bible's node type, references in use and version kinds, as the bundle mounts
- * `@dv/ui-story-bible`.
- * @returns the registries and the disposer of the story bible's descriptors.
+ * Canvas registries that hold the node type, references in use and version kind of `test_ref`, as the bundle mounts the
+ * UI package of a noun.
+ * @returns the registries and the disposer of the descriptors of `test_ref`.
  */
-function bibleCanvas(): { canvas: DvCanvas; dispose: () => void } {
+function refCanvas(): { canvas: DvCanvas; dispose: () => void } {
   const canvas = createDvCanvas()
   const disposers = [
-    canvas.nodeTypes.register(bibleNodeType), canvas.takesInUse.register(bibleReferencesInUse),
-    ...bibleVersionKinds.map(kind => canvas.versionKinds.register(kind)),
+    canvas.nodeTypes.register(testRef.nodeType), canvas.takesInUse.register(testRef.referencesInUse),
+    canvas.versionKinds.register(testRef.versionKind),
   ]
   return { canvas, dispose: () => { for (const dispose of disposers) dispose() } }
 }
@@ -76,7 +81,7 @@ afterEach(() => {
 function scriptedClient(edit: (state: WireState) => void, holdOperations: boolean, operations: WireOperation[]) {
   const scripted = scriptedFetch({
     state: () => {
-      const state = fixtureState()
+      const state = withTestRef(fixtureState())
       edit(state)
       return state
     },
@@ -116,13 +121,13 @@ function nodeLookup(view: RenderResult): (id: string) => HTMLElement {
  * @param edit - changes to the fixture state, applied to every state the route serves.
  * @param holdOperations - whether `POST /api/dv/operation` stays unanswered, as a render does until it ends.
  * @param operations - the operation declarations the route serves; the fixture's by default.
- * @param canvas - the `dvCanvas` registries the view reads; the story bible's descriptors and the node type of plans by
+ * @param canvas - the `dvCanvas` registries the view reads; the descriptors of `test_ref` and the node type of plans by
  *   default.
  * @returns the rendered view, the recorded writes, and a node lookup.
  */
 function mount(
   withTranslate = true, edit: (state: WireState) => void = () => undefined, holdOperations = false, operations = OPERATIONS,
-  canvas: DvCanvas = planCanvas(bibleCanvas().canvas),
+  canvas: DvCanvas = planCanvas(refCanvas().canvas),
 ) {
   const { client, writes, layoutWrites } = scriptedClient(edit, holdOperations, operations)
   const t: CanvasTranslate = makeTranslate(zh)
@@ -139,7 +144,7 @@ function mount(
 async function mountWithAssetPool(edit: (state: WireState) => void) {
   const { client, writes } = scriptedClient(edit, false, OPERATIONS)
   const t: CanvasTranslate = makeTranslate(zh)
-  const canvas = bibleCanvas().canvas
+  const canvas = refCanvas().canvas
   const runtime = await SlotTestRuntime.create()
   const Frame = ({ renderSlot }: PropsRenderSlots<'dv.canvas.editor' | 'dv.canvas.picker' | 'dv.canvas.preview'>): ReactNode =>
     <CanvasView projectId="p1" client={client} session="s5" t={t} canvas={canvas} renderSlot={renderSlot} />
@@ -156,7 +161,7 @@ async function mountWithAssetPool(edit: (state: WireState) => void) {
 
 describe('CanvasView', () => {
   it('draws the project\'s current state with nodes at stored positions, stores the others\' spots, and stores a dragged position', async () => {
-    const canvas = planCanvas(bibleCanvas().canvas)
+    const canvas = planCanvas(refCanvas().canvas)
     canvas.takesInUse.register({ id: 'clips', uses: () => [], badges: () => [{ asset: 'shot2.mp4', label: '已裁剪' }] })
     const { view, node, layoutWrites } = mount(true, undefined, false, OPERATIONS, canvas)
     await waitFor(() => { node('g3') })
@@ -275,37 +280,37 @@ describe('CanvasView', () => {
     const references = ['ref.png', 'r2.png', 'r3.png', 'r4.png', 'r5.png', 'r6.png']
     const { node } = mount(true, (state) => {
       state.assets.push(...references.slice(1).map(id => asset(id, 'image/png', 'u1')))
-      const hero = state.components.bible.characters['hero' as CharacterId]?.[0]
-      if (hero !== undefined) hero.references = references as AssetId[]
+      const hero = state.components.test_ref?.['hero']?.[0]
+      if (hero !== undefined) hero.references = references
     })
-    await waitFor(() => { node('bible:hero') })
-    const card = node('bible:hero')
+    await waitFor(() => { node('test_ref:hero') })
+    const card = node('test_ref:hero')
     expect([...card.querySelectorAll('img')].map(image => image.getAttribute('src'))).toEqual([assetUrl('ref.png')])
-    // The card carries the label of the story bible's node type.
-    expect(card.textContent).toContain('故事设定')
+    // The card carries the label of the node type of `test_ref`.
+    expect(card.textContent).toContain('参考')
     expect(card.textContent).toContain('Hero')
     expect(card.textContent).toContain('+5')
   })
 
-  it('draws the story bible\'s items and links their version inputs from them only while its descriptors are registered', async () => {
-    const bible = bibleCanvas()
-    const { view, node } = mount(true, undefined, false, OPERATIONS, bible.canvas)
-    const edge = (): Element | null => view.container.querySelector('path[data-edge="bible:hero>g1"]')
+  it('draws the items of a reference noun and links their version inputs from them only while its descriptors are registered', async () => {
+    const noun = refCanvas()
+    const { view, node } = mount(true, undefined, false, OPERATIONS, noun.canvas)
+    const edge = (): Element | null => view.container.querySelector('path[data-edge="test_ref:hero>g1"]')
     await waitFor(() => { expect(edge()).not.toBeNull() })
-    expect(node('bible:hero').getAttribute('data-node-type')).toBe('bible')
-    act(() => { bible.dispose() })
-    await waitFor(() => { expect(view.container.querySelector('[data-node-id="bible:hero"]')).toBeNull() })
+    expect(node('test_ref:hero').getAttribute('data-node-type')).toBe('test_ref')
+    act(() => { noun.dispose() })
+    await waitFor(() => { expect(view.container.querySelector('[data-node-id="test_ref:hero"]')).toBeNull() })
     expect(edge()).toBeNull()
   })
 
   it('draws a character whose first reference is a video as the video\'s first frame', async () => {
     const { node } = mount(true, (state) => {
-      const hero = state.components.bible.characters['hero' as CharacterId]?.[0]
-      if (hero !== undefined) hero.references = ['shot1.mp4' as AssetId, 'ref.png' as AssetId]
+      const hero = state.components.test_ref?.['hero']?.[0]
+      if (hero !== undefined) hero.references = ['shot1.mp4', 'ref.png']
     })
-    await waitFor(() => { node('bible:hero') })
-    expect([...node('bible:hero').querySelectorAll('video')].map(video => video.getAttribute('src'))).toEqual([`${assetUrl('shot1.mp4')}#t=0.1`])
-    expect(node('bible:hero').textContent).toContain('+1')
+    await waitFor(() => { node('test_ref:hero') })
+    expect([...node('test_ref:hero').querySelectorAll('video')].map(video => video.getAttribute('src'))).toEqual([`${assetUrl('shot1.mp4')}#t=0.1`])
+    expect(node('test_ref:hero').textContent).toContain('+1')
   })
 
   it('puts a dropped 素材 tile on the canvas under the pointer with asset.place, and 从画布移除 takes it off with asset.unplace', async () => {
@@ -382,14 +387,14 @@ describe('CanvasView', () => {
       project: 'p1', operation: 'shot.render', surface: 'canvas', based_on: 'g1', params: { modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', prompt: 'hero runs' },
       inputs: [{ role: 'reference', ref: 'hero@1' }],
     })
-    fireEvent.pointerDown(node('bible:hero'), { button: 0, clientX: 5, clientY: 5, pointerId: 1 })
+    fireEvent.pointerDown(node('test_ref:hero'), { button: 0, clientX: 5, clientY: 5, pointerId: 1 })
     fireEvent.pointerUp(view.getByTestId('dv-canvas-view'), { pointerId: 1 })
     const composed: DvComposeDetail[] = []
     const listener = (event: Event): void => { composed.push((event as CustomEvent<DvComposeDetail>).detail) }
     window.addEventListener(DV_COMPOSE_EVENT, listener)
     fireEvent.click(await view.findByText(zh['editor.askAgent']))
     window.removeEventListener(DV_COMPOSE_EVENT, listener)
-    expect(composed).toEqual([{ text: '修改 Hero：', refs: [{ kind: 'character', id: 'hero', label: 'Hero', assetId: 'ref.png' }] }])
+    expect(composed).toEqual([{ text: '修改 Hero：', refs: [{ kind: 'test_ref', id: 'hero', label: 'Hero', assetId: 'ref.png' }] }])
     expect(view.queryByTestId('dv-canvas-node-editor')).toBeNull()
     // Choosing a node is a view gesture: it writes nothing.
     expect(writes.map(write => write.path)).toEqual(['/api/dv/operation'])
@@ -398,10 +403,13 @@ describe('CanvasView', () => {
   it('添加素材 adds the characters, locations and assets picked in the picker as references of the take, and an asset chip opens its preview', async () => {
     document.documentElement.lang = 'zh-CN'
     const { runtime, view, node, writes } = await mountWithAssetPool((state) => {
-      const bible = state.components.bible
-      bible.characters['villain' as CharacterId] = [{ id: 'villain' as CharacterId, version: 2, name: 'Villain', description: '', references: [], created_by: 'e1' as RecordId }]
-      bible.characters['ghost' as CharacterId] = []
-      bible.locations['studio' as LocationId] = [{ id: 'studio' as LocationId, version: 1, name: '', description: '', references: ['plan.json' as AssetId], created_by: 'e1' as RecordId }]
+      state.components.test_ref = {
+        ...state.components.test_ref,
+        villain: [{ id: 'villain', version: 2, name: 'Villain', description: '', references: [], created_by: 'e1' }],
+        ghost: [],
+        studio: [{ id: 'studio', version: 1, name: '', description: '', references: ['plan.json'], created_by: 'e1' }],
+      }
+
       state.assets.push(asset('plan.json', 'application/json', null))
     })
     await waitFor(() => { node('g1') })
@@ -421,8 +429,8 @@ describe('CanvasView', () => {
     fireEvent.keyDown(window, { key: 'a' })
     const villain = within(picker).getByRole('button', { name: 'Villain' })
     // Each item sits in the section of its version kind, titled with the kind's label.
-    expect(villain.closest('section')?.querySelector('h3')?.textContent).toBe('角色')
-    expect(within(picker).getByRole('button', { name: 'studio' }).closest('section')?.querySelector('h3')?.textContent).toBe('场景')
+    expect(villain.closest('section')?.querySelector('h3')?.textContent).toBe('参考')
+    expect(within(picker).getByRole('button', { name: 'studio' }).closest('section')?.querySelector('h3')?.textContent).toBe('参考')
     fireEvent.click(within(picker).getByRole('button', { name: 'studio' }))
     fireEvent.click(within(picker).getByRole('button', { name: 'studio' }))
     expect(within(picker).getByRole('button', { name: 'studio' }).getAttribute('aria-pressed')).toBe('false')
