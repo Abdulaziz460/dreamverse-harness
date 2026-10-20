@@ -133,6 +133,7 @@
     { "path": "./packages/context/file-reference" },
     { "path": "./packages/dv/project/tsconfig.client.json" },
     { "path": "./packages/dv/models/tsconfig.client.json" },
+    { "path": "./packages/dv/reference-kit/tsconfig.client.json" },
     { "path": "./packages/dv/story-bible/tsconfig.client.json" },
     { "path": "./packages/dv/shot-plan/tsconfig.client.json" },
     { "path": "./packages/dv/timeline/tsconfig.client.json" },

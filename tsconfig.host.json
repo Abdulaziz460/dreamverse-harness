@@ -467,6 +467,7 @@
     { "path": "./packages/dv/fastvideo-generation-client" },
     { "path": "./packages/dv/fastvideo" },
     { "path": "./packages/dv/timeline" },
+    { "path": "./packages/dv/reference-kit" },
     { "path": "./packages/dv/story-bible" },
     { "path": "./packages/dv/workflow-kit" },
     { "path": "./packages/dv/workflow-story" },
