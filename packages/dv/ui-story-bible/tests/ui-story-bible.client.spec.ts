@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * The story bible's canvas node kind, version kinds, references in use, `@` menu kinds and History row, and their
+ * The story bible's canvas node type, version kinds, references in use, `@` menu kinds and History row, and their
  * registration and removal.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -10,12 +10,12 @@ import type { CharacterId, LocationId, StyleId } from '@dv/story-bible/types'
 import { projectItems } from '@dv/ui-composer/src/client/mention.ts'
 import { createRegistry } from '@dv/ui-kit/registries.ts'
 import type {
-  ChainAnchor, DvCanvas, DvHistory, DvMentions, HistoryRow, MentionKind, NodeKind, TakesInUse, VersionKind,
+  ChainAnchor, DvCanvas, DvHistory, DvMentions, HistoryRow, MentionKind, NodeType, TakesInUse, VersionKind,
 } from '@dv/ui-kit/registries.ts'
 import type { WireState } from '@dv/ui-kit/types.ts'
 import { fixtureState, record } from '../../ui-kit/tests/fixture.client.tsx'
 import {
-  apply, bibleHistoryRow, bibleMentionKinds, bibleNodeKind, bibleReferencesInUse, bibleVersionKinds,
+  apply, bibleHistoryRow, bibleMentionKinds, bibleNodeType, bibleReferencesInUse, bibleVersionKinds,
 } from '../src/client/index.ts'
 import { apply as hostApply } from '../src/index.ts'
 
@@ -24,7 +24,7 @@ afterEach(() => { document.documentElement.lang = '' })
 /** @returns empty canvas registries keyed as `DvCanvas` documents. */
 function canvasRegistries(): DvCanvas {
   return {
-    nodeKinds: createRegistry<NodeKind>(kind => [kind.id]),
+    nodeTypes: createRegistry<NodeType>(kind => [kind.id]),
     chainAnchors: createRegistry<ChainAnchor>(anchor => [anchor.starter]),
     takesInUse: createRegistry<TakesInUse>(uses => [uses.id]),
     versionKinds: createRegistry<VersionKind>(kind => [kind.kind]),
@@ -47,19 +47,19 @@ function bibleState(): WireState {
   return state
 }
 
-describe('bibleNodeKind', () => {
-  it('draws one seed per character, location and style at its newest version, labeled with its kind in the interface language', () => {
+describe('bibleNodeType', () => {
+  it('draws one entry per character, location and style at its newest version, under the node type label in the interface language', () => {
     document.documentElement.lang = 'zh-CN'
-    const seeds = bibleNodeKind.nodes(bibleState())
-    expect(seeds.map(seed => [seed.id, seed.label, seed.title, seed.media, seed.record?.id ?? null, seed.records])).toEqual([
-      ['bible:hero', '角色', 'Hero', ['shot1-last.png', 'ref.png'], 'e2', ['e1']],
-      ['bible:alley', '场景', 'alley', ['alley.png'], null, []],
-      ['bible:noir', '风格', 'Noir', [], null, []],
+    const entries = bibleNodeType.entries(bibleState())
+    expect(entries.map(entry => [entry.id, entry.title, entry.media, entry.record?.id ?? null, entry.records])).toEqual([
+      ['bible:hero', 'Hero', ['shot1-last.png', 'ref.png'], 'e2', ['e1']],
+      ['bible:alley', 'alley', ['alley.png'], null, []],
+      ['bible:noir', 'Noir', [], null, []],
     ])
-    expect(seeds.every(seed => seed.subtitle === undefined && seed.slots === undefined)).toBe(true)
-    expect([bibleNodeKind.kind, bibleNodeKind.column, bibleNodeKind.label()]).toEqual(['bible', 0, '故事设定'])
+    expect(entries.every(entry => entry.subtitle === undefined && entry.slots === undefined)).toBe(true)
+    expect([bibleNodeType.type, bibleNodeType.column, bibleNodeType.label()]).toEqual(['bible', 0, '故事设定'])
     document.documentElement.lang = 'en'
-    expect(bibleNodeKind.nodes(bibleState()).map(seed => seed.label)).toEqual(['Character', 'Location', 'Style'])
+    expect(bibleNodeType.label()).toBe('Story bible')
   })
 })
 
@@ -132,13 +132,13 @@ describe('ui-story-bible apply', () => {
     const canvas = canvasRegistries()
     const fiber = ctx.plugin({ apply })
     await fiber.await()
-    expect(canvas.nodeKinds.list()).toEqual([])
+    expect(canvas.nodeTypes.list()).toEqual([])
     ctx.provide('dvCanvas', canvas)
-    await vi.waitFor(() => { expect(canvas.nodeKinds.list()).toEqual([bibleNodeKind]) })
+    await vi.waitFor(() => { expect(canvas.nodeTypes.list()).toEqual([bibleNodeType]) })
     expect(canvas.takesInUse.list()).toEqual([bibleReferencesInUse])
     expect(canvas.versionKinds.list()).toEqual(bibleVersionKinds)
     await fiber.dispose()
-    expect([canvas.nodeKinds.list(), canvas.takesInUse.list(), canvas.versionKinds.list()]).toEqual([[], [], []])
+    expect([canvas.nodeTypes.list(), canvas.takesInUse.list(), canvas.versionKinds.list()]).toEqual([[], [], []])
   })
 
   it('registers its mention kinds once dvMentions is present, and the plugin disposal removes them', async () => {

@@ -2,7 +2,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { createRegistry } from '@dv/ui-kit/registries.ts'
-import type { ChainAnchor, DvCanvas, DvHistory, HistoryRow, NodeKind, TakesInUse, VersionKind } from '@dv/ui-kit/registries.ts'
+import type { ChainAnchor, DvCanvas, DvHistory, HistoryRow, NodeType, TakesInUse, VersionKind } from '@dv/ui-kit/registries.ts'
 import { fixtureState, record } from '../../ui-kit/tests/fixture.client.tsx'
 import { apply, storyApprovalAnchor, storyApprovalRow } from '../src/client/index.ts'
 import { apply as hostApply } from '../src/index.ts'
@@ -10,7 +10,7 @@ import { apply as hostApply } from '../src/index.ts'
 /** @returns empty canvas registries keyed as `DvCanvas` documents. */
 function canvasRegistries(): DvCanvas {
   return {
-    nodeKinds: createRegistry<NodeKind>(kind => [kind.id]),
+    nodeTypes: createRegistry<NodeType>(kind => [kind.id]),
     chainAnchors: createRegistry<ChainAnchor>(anchor => [anchor.starter]),
     takesInUse: createRegistry<TakesInUse>(uses => [uses.id]),
     versionKinds: createRegistry<VersionKind>(kind => [kind.kind]),

@@ -1,7 +1,7 @@
 /**
  * Canvas nodes and edges derived from a project state. The canvas shows the project's current state only: a
  * node is an item a creator works with now: an imported asset on the project's canvas list (see
- * {@link buildCanvasGraph}), each node that a registered `NodeKind` draws from its own slice, and the generation records
+ * {@link buildCanvasGraph}), each node that a registered `NodeType` draws from its own slice, and the generation records
  * that make up the current state: the takes of the
  * newest chain on each anchor node, every take without an anchored chain, and every take whose outputs are in use.
  * Deterministic edits (still grabs, timeline records) do not become nodes; a badge that a `TakesInUse` reports for an
@@ -9,13 +9,13 @@
  */
 import { chainOf } from '@dv/ui-kit/chain.ts'
 import type { DvLanguage } from '@dv/ui-kit/locale.ts'
-import type { ChainAnchor, NodeKind, NodeSeed, TakesInUse, VersionKind } from '@dv/ui-kit/registries.ts'
+import type { ChainAnchor, NodeEntry, NodeType, TakesInUse, VersionKind } from '@dv/ui-kit/registries.ts'
 import type { NodePosition, ProjectRecord, RecordInput, WireState, WireOperation } from '@dv/ui-kit/types.ts'
 import { versionRefOf } from '@dv/ui-kit/references.ts'
 import { isGenerationOperation, isGenerationRecord } from '@dv/ui-kit/state.ts'
 
-/** What a node represents; the canvas colors nodes by it. A `seed` node is a node that a registered `NodeKind` drew. */
-export type CanvasNodeKind = 'asset' | 'take' | 'seed'
+/** What a node represents; the canvas colors nodes by it. An `entry` node is a node that a registered `NodeType` drew. */
+export type CanvasNodeType = 'asset' | 'take' | 'entry'
 
 /** Display states of a node. */
 export interface CanvasNodeFlags {
@@ -28,20 +28,20 @@ export interface CanvasNodeFlags {
 
 /** The fields of every canvas node. */
 interface CanvasNodeFields {
-  /** The seed's ID for a seed, else the record ID. */
+  /** The entry's ID for an entry node, else the record ID. */
   id: string
   /** For a take, its operation's label in `/api/dv/operations`, else the operation name; shown when `title` is empty. */
   label?: string
   title: string
   subtitle: string
-  /** An image asset shown as the thumbnail; null for seed nodes, which show {@link CanvasNode.references}. */
+  /** An image asset shown as the thumbnail; null for entry nodes, which show {@link CanvasNode.references}. */
   thumb: string | null
-  /** For seed nodes, the images and videos the node shows, in order; empty for other nodes. */
+  /** For entry nodes, the images and videos the node shows, in order; empty for other nodes. */
   references: string[]
-  /** A video or audio asset the editor plays; for a seed node, its first reference when it is a video. */
+  /** A video or audio asset the editor plays; for an entry node, its first reference when it is a video. */
   video: string | null
   durationSec: number | null
-  /** The record behind the node; for a seed node, the record that wrote the shown version. */
+  /** The record behind the node; for an entry node, the record that wrote the shown version. */
   record: ProjectRecord | null
   flags: CanvasNodeFlags
   /** The labels that the registered `TakesInUse` descriptors report for the node's assets, such as 已裁剪. */
@@ -55,10 +55,10 @@ interface CanvasNodeFields {
   y: number
 }
 
-/** One canvas node; a `seed` node carries the registered `NodeKind` that drew it and the seed it drew. */
+/** One canvas node; an `entry` node carries the registered `NodeType` that drew it and the entry it drew. */
 export type CanvasNode = CanvasNodeFields & (
-  | { kind: Exclude<CanvasNodeKind, 'seed'> }
-  | { kind: 'seed'; nodeKind: NodeKind; seed: NodeSeed }
+  | { type: Exclude<CanvasNodeType, 'entry'> }
+  | { type: 'entry'; nodeType: NodeType; entry: NodeEntry }
 )
 
 /** The anchored chain of a take: the record that started it, the node that record hangs it off, its slot and lane. */
@@ -84,7 +84,7 @@ export interface CanvasEdge {
 export interface CanvasGraph {
   nodes: CanvasNode[]
   edges: CanvasEdge[]
-  /** The node that shows each asset: its seed node, its import node, or the nearest drawn record up its producer chain. */
+  /** The node that shows each asset: its entry node, its import node, or the nearest drawn record up its producer chain. */
   assetNodes: Record<string, string>
 }
 
@@ -208,11 +208,11 @@ function drawnTakes(
 }
 
 /**
- * The canvas graph of a project state, with a default layout: assets in column 0, the seeds of each registered
- * `NodeKind` in its `column`, takes from column 2 rightwards by first-frame chain depth, retakes in their source take's
- * column. A seed's media belong to its node, and so do the assets of every version of the item that a `VersionKind`
+ * The canvas graph of a project state, with a default layout: assets in column 0, the entries of each registered
+ * `NodeType` in its `column`, takes from column 2 rightwards by first-frame chain depth, retakes in their source take's
+ * column. An entry's media belong to its node, and so do the assets of every version of the item that a `VersionKind`
  * draws as that node. A take reads a version of such an item from the item's node.
- * Every image or video on the project's canvas (`placed`) gets one node, unless a seed node (such as a reference image)
+ * Every image or video on the project's canvas (`placed`) gets one node, unless an entry node (such as a reference image)
  * or a take node (a take output) already shows it: drawn from its first `asset.import` record of the current state when
  * there is one, else as `asset:<id>` with no record (an import that an undo went back past, a still, an export). A take that
  * reads an asset off the canvas has no edge from it. A take is a generation record ({@link isGenerationRecord}), titled by
@@ -225,14 +225,14 @@ function drawnTakes(
  * @param anchors - the registered chain anchors; none by default, so every take is a free take.
  * @param inUse - the registered `TakesInUse` descriptors, whose records are drawn and whose badges label the nodes of their
  *   assets.
- * @param nodeKinds - the registered node kinds, whose seeds are drawn.
+ * @param nodeTypes - the registered node types, whose entries are drawn.
  * @param versionKinds - the registered version kinds, which name the node of each versioned item.
  * @returns the nodes and edges.
  */
 export function buildCanvasGraph(
   state: WireState, placed: ReadonlySet<string> = new Set(state.components.asset.placed),
   operations: readonly WireOperation[] = [], language: DvLanguage = 'zh',
-  anchors: readonly ChainAnchor[] = [], inUse: readonly TakesInUse[] = [], nodeKinds: readonly NodeKind[] = [],
+  anchors: readonly ChainAnchor[] = [], inUse: readonly TakesInUse[] = [], nodeTypes: readonly NodeType[] = [],
   versionKinds: readonly VersionKind[] = [],
 ): CanvasGraph {
   const proj = state.components.proj
@@ -257,27 +257,27 @@ export function buildCanvasGraph(
   const takes = drawnTakes(state, isRender, chains, used)
   // The import node of each drawn imported asset.
   const importNodes = new Map<string, string>()
-  // A seed's media, and the assets of an earlier version of a versioned item that a seed shows, belong to that node, so
+  // An entry's media, and the assets of an earlier version of a versioned item that an entry shows, belong to that node, so
   // their import is not drawn twice.
   const mediaNode = new Map<string, string>()
-  // One node per seed of each registered node kind, drawn by the core with the default card.
-  for (const nodeKind of nodeKinds) {
-    for (const seed of nodeKind.nodes(state)) {
-      for (const media of seed.media) mediaNode.set(media, seed.id)
-      const references = seed.media.filter(media => isImage(media) || isVideo(media))
+  // One node per entry of each registered node type, drawn by the core with the default card.
+  for (const nodeType of nodeTypes) {
+    for (const entry of nodeType.entries(state)) {
+      for (const media of entry.media) mediaNode.set(media, entry.id)
+      const references = entry.media.filter(media => isImage(media) || isVideo(media))
       const first = references[0]
       nodes.push({
-        id: seed.id, kind: 'seed', nodeKind, seed, title: seed.title, subtitle: seed.subtitle ?? '', thumb: null, references,
-        video: first !== undefined && isVideo(first) ? first : null, durationSec: null, record: seed.record,
-        flags: flagsOf(seed.record), badges: [], take: null, x: 0, y: 0,
+        id: entry.id, type: 'entry', nodeType, entry, title: entry.title, subtitle: entry.subtitle ?? '', thumb: null, references,
+        video: first !== undefined && isVideo(first) ? first : null, durationSec: null, record: entry.record,
+        flags: flagsOf(entry.record), badges: [], take: null, x: 0, y: 0,
       })
     }
   }
-  const seeds = new Set(nodes.map(node => node.id))
+  const entries = new Set(nodes.map(node => node.id))
   for (const kind of versionKinds) {
     for (const { id, version } of kind.latest(state)) {
       const node = kind.node(id)
-      if (!seeds.has(node)) continue
+      if (!entries.has(node)) continue
       for (let earlier = 1; earlier < version; earlier++) {
         for (const media of kind.assets(state, id, earlier)) if (!mediaNode.has(media)) mediaNode.set(media, node)
       }
@@ -291,7 +291,7 @@ export function buildCanvasGraph(
       if (imported === undefined || !placed.has(imported) || mediaNode.has(imported) || importNodes.has(imported)) continue
       importNodes.set(imported, record.id)
       nodes.push({
-        id: record.id, kind: 'asset', title: assets.get(imported)?.name ?? imported, subtitle: '', thumb: isImage(imported) ? imported : null, references: [],
+        id: record.id, type: 'asset', title: assets.get(imported)?.name ?? imported, subtitle: '', thumb: isImage(imported) ? imported : null, references: [],
         video: isVideo(imported) ? imported : null, durationSec: assets.get(imported)?.duration_sec ?? null,
         record, flags: flagsOf(record), badges: [], take: null, x: 0, y: 0,
       })
@@ -301,7 +301,7 @@ export function buildCanvasGraph(
       const slot = chain?.slot ?? null
       const title = slot === null ? '' : chain?.lane === undefined ? String(slot) : `${String(slot)} · ${chain.lane}`
       nodes.push({
-        id: record.id, kind: 'take', title, ...label === undefined ? {} : { label }, ...chain === null ? {} : { chain },
+        id: record.id, type: 'take', title, ...label === undefined ? {} : { label }, ...chain === null ? {} : { chain },
         subtitle: typeof record.params['prompt'] === 'string' ? record.params['prompt'] : '',
         thumb: record.outputs.find(id => isImage(id)) ?? null, references: [], video,
         durationSec: video === null ? null : assets.get(video)?.duration_sec ?? null,
@@ -312,20 +312,20 @@ export function buildCanvasGraph(
   }
   // A placed asset that no node shows yet (an import that an undo went back past, a still, an export, or another take
   // output) gets its own node, `asset:<id>`, with no record.
-  const shownByTake = new Set(nodes.flatMap(node => node.kind === 'take' ? node.record?.outputs ?? [] : []))
+  const shownByTake = new Set(nodes.flatMap(node => node.type === 'take' ? node.record?.outputs ?? [] : []))
   for (const assetId of placed) {
     const shown = mediaNode.has(assetId) || importNodes.has(assetId) || shownByTake.has(assetId)
     if (!(isImage(assetId) || isVideo(assetId)) || shown) continue
     const id = `asset:${assetId}`
     importNodes.set(assetId, id)
     nodes.push({
-      id, kind: 'asset', title: assets.get(assetId)?.name ?? assetId, subtitle: '', thumb: isImage(assetId) ? assetId : null, references: [],
+      id, type: 'asset', title: assets.get(assetId)?.name ?? assetId, subtitle: '', thumb: isImage(assetId) ? assetId : null, references: [],
       video: isVideo(assetId) ? assetId : null, durationSec: assets.get(assetId)?.duration_sec ?? null,
       record: null, flags: flagsOf(null), badges: [], take: null, x: 0, y: 0,
     })
   }
   const nodeIds = new Set(nodes.map(node => node.id))
-  /** The node an asset comes from: its seed node, its import node, or the nearest drawn record up its producer chain. */
+  /** The node an asset comes from: its entry node, its import node, or the nearest drawn record up its producer chain. */
   const nodeOfAsset = (assetId: string | null, depth = 0): string | null => {
     if (assetId === null) return null
     const own = mediaNode.get(assetId) ?? importNodes.get(assetId)
@@ -350,7 +350,7 @@ export function buildCanvasGraph(
   }
   for (const node of nodes) {
     const record = node.record
-    if (record === null || node.kind === 'seed') continue
+    if (record === null || node.type === 'entry') continue
     for (const input of record.inputs) {
       const named = versionRefOf(input.ref)
       const item = named === null ? undefined : versionKinds.find(kind => kind.kind === named.kind)?.node(named.id)
@@ -390,7 +390,7 @@ function numberTakes(nodes: CanvasNode[], edges: CanvasEdge[]): void {
   }
   const groups = new Map<string, CanvasNode[]>()
   for (const node of nodes) {
-    if (node.kind !== 'take') continue
+    if (node.type !== 'take') continue
     const key = groupOf(node)
     groups.set(key, [...groups.get(key) ?? [], node])
   }
@@ -407,7 +407,7 @@ function numberTakes(nodes: CanvasNode[], edges: CanvasEdge[]): void {
  * @returns a copy of the nodes with the takes in that order; every other node keeps its place.
  */
 function inTakeOrder(nodes: readonly CanvasNode[]): CanvasNode[] {
-  const takes = nodes.filter(node => node.kind === 'take')
+  const takes = nodes.filter(node => node.type === 'take')
   // The position of the first take with each key, among the takes in record order.
   const firstOf = (key: (node: CanvasNode) => string): ((node: CanvasNode) => number) => {
     const first = new Map<string, number>()
@@ -419,7 +419,7 @@ function inTakeOrder(nodes: readonly CanvasNode[]): CanvasNode[] {
   const slot = (node: CanvasNode): number => node.chain?.slot ?? Number.MAX_SAFE_INTEGER
   // The sort is stable, so takes with equal keys keep their record order.
   const ordered = takes.toSorted((a, b) => anchor(a) - anchor(b) || slot(a) - slot(b) || lane(a) - lane(b)).values()
-  return nodes.map(node => node.kind === 'take' ? ordered.next().value ?? node : node)
+  return nodes.map(node => node.type === 'take' ? ordered.next().value ?? node : node)
 }
 
 /**
@@ -441,7 +441,7 @@ function addBadges(
 }
 
 /**
- * Assign default positions in place. Each column (assets, seeds by their `NodeKind.column`, takes by first-frame
+ * Assign default positions in place. Each column (assets, entries by their `NodeType.column`, takes by first-frame
  * depth) wraps into several sub-columns once it holds more nodes than the shared row count, so a long shot list forms a
  * block that fits the screen. A retake sits right after its source take in the same column.
  * @param nodes - the nodes.
@@ -454,15 +454,15 @@ function layout(nodes: CanvasNode[], edges: CanvasEdge[]): void {
   const columnOf = (node: CanvasNode, depth = 0): number => {
     const known = column.get(node.id)
     if (known !== undefined) return known
-    let value = node.kind === 'seed' ? node.nodeKind.column : node.kind === 'take' ? 2 : 0
-    if (node.kind === 'take' && depth < 64) {
+    let value = node.type === 'entry' ? node.nodeType.column : node.type === 'take' ? 2 : 0
+    if (node.type === 'take' && depth < 64) {
       const base = incoming(node.id, 'take')[0]
       const baseNode = base === undefined ? undefined : nodes.find(candidate => candidate.id === base)
       if (baseNode !== undefined) value = columnOf(baseNode, depth + 1)
       else {
         for (const from of incoming(node.id, 'first_frame')) {
           const source = nodes.find(candidate => candidate.id === from)
-          if (source?.kind === 'take') value = Math.max(value, columnOf(source, depth + 1) + 1)
+          if (source?.type === 'take') value = Math.max(value, columnOf(source, depth + 1) + 1)
         }
       }
     }
@@ -513,7 +513,7 @@ export interface SlotFrame {
  */
 export function slotFrames(nodes: readonly CanvasNode[], nodeId: string, slots: number): Array<SlotFrame | null> {
   return Array.from({ length: slots }, (_unused, index) => {
-    const take = nodes.findLast(node => node.kind === 'take' && node.record?.status === 'done' && node.chain?.anchor === nodeId
+    const take = nodes.findLast(node => node.type === 'take' && node.record?.status === 'done' && node.chain?.anchor === nodeId
       && node.chain.slot === index + 1 && (node.thumb !== null || node.video !== null))
     return take === undefined ? null : { thumb: take.thumb, video: take.video }
   })

@@ -11,7 +11,7 @@ import type { PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-
 import { SidebarRightTabRegistry } from '@deepseek-ai/dsh-client-ui-sidebar-right/src/client/tab-registry.ts'
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import { apply as assetPoolApply, inject as assetPoolInject } from '@dv/ui-asset-pool/src/client/index.ts'
-import type { NodeKind } from '@dv/ui-kit/registries.ts'
+import type { NodeType } from '@dv/ui-kit/registries.ts'
 import { apply as storyBibleApply } from '@dv/ui-story-bible/src/client/index.ts'
 import { scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
 import { apply as shotPlanApply } from '../../ui-shot-plan/src/client/index.ts'
@@ -19,15 +19,15 @@ import { apply, inject } from '../src/client/index.ts'
 import { EDITOR_RECT_KEY } from '../src/client/NodeEditor.tsx'
 import { zh } from '../src/client/locales.ts'
 
-/** A node kind as a plugin's UI half registers it: one seed per project. */
-const PROPS: NodeKind = {
-  id: '@dv/ui-prop', kind: 'prop', label: () => '道具', color: 'rgb(1, 2, 3)', column: 1,
-  nodes: state => [{ id: 'prop:p1', record: null, title: `红伞 · ${state.project.id}`, media: [] }],
+/** A node type as a plugin's UI half registers it: one entry per project. */
+const PROPS: NodeType = {
+  id: '@dv/ui-prop', type: 'prop', label: () => '道具', color: 'rgb(1, 2, 3)', column: 1,
+  entries: state => [{ id: 'prop:p1', record: null, title: `红伞 · ${state.project.id}`, media: [] }],
 }
 
 /**
- * The `dv.canvas.editor` entry of the node kind.
- * @param props - the seed.
+ * The `dv.canvas.editor` entry of the node type.
+ * @param props - the entry.
  * @returns the element.
  */
 function PropEditor({ node }: PropsRuntime<'dv.canvas.editor'>): ReactNode {
@@ -79,12 +79,12 @@ async function openEditor(container: HTMLElement, id: string): Promise<HTMLEleme
 }
 
 describe('canvas slots in the workspace center', () => {
-  it('shows the editor entry of a seed in the center canvas, and leaves the center slot on disposal', async () => {
+  it('shows the editor entry of a node entry in the center canvas, and leaves the center slot on disposal', async () => {
     const { runtime, view: { container, getByTestId }, canvas } = await centerCanvas()
     const prop = await runtime.mount({
       inject: ['dvCanvas', 'slots'],
       apply: (ctx: Context) => {
-        ctx.effect(() => ctx.dvCanvas.nodeKinds.register(PROPS), 'test: node kind')
+        ctx.effect(() => ctx.dvCanvas.nodeTypes.register(PROPS), 'test: node type')
         ctx.effect(() => ctx.slots.inject('dv.canvas.editor', () => ctx.slots.register(
           { name: 'dv.canvas.editor', key: PROPS.id }, PropEditor,
         )), 'test: editor entry')

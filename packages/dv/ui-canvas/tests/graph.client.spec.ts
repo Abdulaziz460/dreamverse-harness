@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /** Canvas nodes and edges derived from the shared project state. */
 import { describe, expect, it } from 'vitest'
-import type { ChainAnchor, NodeKind, TakesInUse } from '@dv/ui-kit/registries.ts'
+import type { ChainAnchor, NodeType, TakesInUse } from '@dv/ui-kit/registries.ts'
 import type { DvLanguage } from '@dv/ui-kit/locale.ts'
 import type { AssetId, RecordId } from '@dv/project/types'
 import type { PlanId, PlanVersion } from '@dv/shot-plan/types'
@@ -9,14 +9,14 @@ import type { CharacterId } from '@dv/story-bible/types'
 import type { ClipId, TimelineId } from '@dv/timeline/types'
 import type { ProjectRecord, WireOperation, WireState } from '@dv/ui-kit/types.ts'
 import { formatInputRef } from '@dv/ui-kit/references.ts'
-import { bibleNodeKind, bibleReferencesInUse, bibleVersionKinds } from '@dv/ui-story-bible/src/client/index.ts'
+import { bibleNodeType, bibleReferencesInUse, bibleVersionKinds } from '@dv/ui-story-bible/src/client/index.ts'
 import { asset, fixtureState, OPERATIONS, record } from '../../ui-kit/tests/fixture.client.tsx'
-import { planNodeKind } from '../../ui-shot-plan/src/client/index.ts'
+import { planNodeType } from '../../ui-shot-plan/src/client/index.ts'
 import { buildCanvasGraph, freePositions, NODE_WIDTH, ROW, slotFrames } from '../src/client/graph.ts'
 import type { CanvasGraph, CanvasNode } from '../src/client/graph.ts'
 
 /**
- * The canvas graph with the story bible's node kind, references in use and version kinds registered, as the bundle
+ * The canvas graph with the story bible's node type, references in use and version kinds registered, as the bundle
  * mounts `@dv/ui-story-bible`.
  * @param state - the state.
  * @param placed - the assets on the canvas.
@@ -24,23 +24,23 @@ import type { CanvasGraph, CanvasNode } from '../src/client/graph.ts'
  * @param language - the label language.
  * @param anchors - the chain anchors.
  * @param inUse - other `TakesInUse` descriptors, such as the timeline clips.
- * @param nodeKinds - other node kinds, such as the plan's.
+ * @param nodeTypes - other node types, such as the plan's.
  * @returns the graph.
  */
 function bibleGraph(
   state: WireState, placed?: ReadonlySet<string>, operations: readonly WireOperation[] = [], language: DvLanguage = 'zh',
-  anchors: readonly ChainAnchor[] = [], inUse: readonly TakesInUse[] = [], nodeKinds: readonly NodeKind[] = [],
+  anchors: readonly ChainAnchor[] = [], inUse: readonly TakesInUse[] = [], nodeTypes: readonly NodeType[] = [],
 ): CanvasGraph {
   const uses = [bibleReferencesInUse, ...inUse]
-  return buildCanvasGraph(state, placed, operations, language, anchors, uses, [bibleNodeKind, ...nodeKinds], bibleVersionKinds)
+  return buildCanvasGraph(state, placed, operations, language, anchors, uses, [bibleNodeType, ...nodeTypes], bibleVersionKinds)
 }
 
 /**
  * @param node - a drawn node.
- * @returns its `data-node-kind`: the `NodeKind.kind` of a seed, else the core kind.
+ * @returns its `data-node-type`: the `NodeType.type` of an entry, else the core type.
  */
-function kindOf(node: CanvasNode): string {
-  return node.kind === 'seed' ? node.nodeKind.kind : node.kind
+function typeOf(node: CanvasNode): string {
+  return node.type === 'entry' ? node.nodeType.type : node.type
 }
 
 /** A chain anchor of each approval operation: the records an approval started hang off the node of its plan. */
@@ -137,24 +137,24 @@ function byRecordOrder(a: string | string[], b: string | string[]): number {
 }
 
 /**
- * The drawn nodes of a state as `[id, kind]` pairs.
+ * The drawn nodes of a state as `[id, type]` pairs.
  * @param state - the state.
  * @returns the pairs, in node order.
  */
 function drawn(state: WireState): string[][] {
-  return bibleGraph(state, undefined, [], 'zh', [APPROVAL], [CLIPS], [planNodeKind]).nodes.map(node => [node.id, kindOf(node)])
+  return bibleGraph(state, undefined, [], 'zh', [APPROVAL], [CLIPS], [planNodeType]).nodes.map(node => [node.id, typeOf(node)])
 }
 
 describe('buildCanvasGraph', () => {
-  it('draws the story bible\'s seeds, plans, and takes, and hides reference imports, exports, still grabs, and timeline records', () => {
-    const graph = bibleGraph(fixtureState(), undefined, OPERATIONS, 'zh', [], [CLIPS], [planNodeKind])
-    expect(graph.nodes.map(node => [node.id, kindOf(node)])).toEqual([
+  it('draws the story bible\'s entries, plans, and takes, and hides reference imports, exports, still grabs, and timeline records', () => {
+    const graph = bibleGraph(fixtureState(), undefined, OPERATIONS, 'zh', [], [CLIPS], [planNodeType])
+    expect(graph.nodes.map(node => [node.id, typeOf(node)])).toEqual([
       ['bible:hero', 'bible'], ['plan:p1', 'plan'], ['g1', 'take'], ['g2', 'take'], ['g3', 'take'],
     ])
-    // The plan node is a seed of the node kind of plans; without that kind the core draws no plan node.
+    // The plan node is an entry of the node type of plans; without that type the core draws no plan node.
     expect(buildCanvasGraph(fixtureState(), undefined, OPERATIONS).nodes.map(node => node.id)).not.toContain('plan:p1')
     const byId = new Map(graph.nodes.map(node => [node.id, node]))
-    expect(byId.get('bible:hero')).toMatchObject({ kind: 'seed', nodeKind: bibleNodeKind, thumb: null, references: ['ref.png'], x: 0 })
+    expect(byId.get('bible:hero')).toMatchObject({ type: 'entry', nodeType: bibleNodeType, thumb: null, references: ['ref.png'], x: 0 })
     expect(byId.get('g1')).toMatchObject({ thumb: 'shot1-last.png', video: 'shot1.mp4', durationSec: 4 })
     expect(byId.get('g2')?.flags.stale).toBe(true)
     expect(byId.get('g2')?.badges).toEqual(['trim'])
@@ -196,7 +196,7 @@ describe('buildCanvasGraph', () => {
       inputs: [{ role: 'reference', ref: { asset: 'used.png' }, resolved_asset: 'used.png' }],
     }))
     const graph = bibleGraph(state, new Set(['listed.png', 'side.png', 'ref.png']), OPERATIONS)
-    expect(graph.nodes.filter(node => node.kind === 'asset').map(node => node.id)).toEqual(['u4'])
+    expect(graph.nodes.filter(node => node.type === 'asset').map(node => node.id)).toEqual(['u4'])
     expect(graph.nodes.find(node => node.id === 'bible:hero')?.references).toEqual(['ref.png', 'side.png'])
     expect(graph.edges.filter(edge => edge.to === 'g9')).toEqual([])
     expect(graph.assetNodes).toMatchObject({ 'listed.png': 'u4', 'side.png': 'bible:hero' })
@@ -213,13 +213,13 @@ describe('buildCanvasGraph', () => {
     state.components.bible.characters['hero' as CharacterId]?.push({ id: 'hero' as CharacterId, version: 2, name: 'Hero', description: '', references: ['side.png' as AssetId], created_by: 'e2' as RecordId })
     const placed = new Set(['ref.png'])
     const graph = bibleGraph(state, placed, OPERATIONS)
-    expect(graph.nodes.filter(node => node.kind === 'asset')).toEqual([])
+    expect(graph.nodes.filter(node => node.type === 'asset')).toEqual([])
     expect(graph.assetNodes['ref.png']).toBe('bible:hero')
     expect(graph.edges).toContainEqual({ from: 'bible:hero', to: 'g1', kind: 'reference' })
-    // With the node kind alone, the import of ref.png is an asset node, and g1 reads hero@1 from it.
-    const seedsOnly = buildCanvasGraph(state, placed, OPERATIONS, 'zh', [], [], [bibleNodeKind])
-    expect(seedsOnly.nodes.filter(node => node.kind === 'asset').map(node => node.id)).toEqual(['u1'])
-    expect(seedsOnly.edges).toContainEqual({ from: 'u1', to: 'g1', kind: 'reference' })
+    // With the node type alone, the import of ref.png is an asset node, and g1 reads hero@1 from it.
+    const entriesOnly = buildCanvasGraph(state, placed, OPERATIONS, 'zh', [], [], [bibleNodeType])
+    expect(entriesOnly.nodes.filter(node => node.type === 'asset').map(node => node.id)).toEqual(['u1'])
+    expect(entriesOnly.edges).toContainEqual({ from: 'u1', to: 'g1', kind: 'reference' })
   })
 
   it('draws a placed asset that no record of the current state imported as asset:<id>, and no second node for a take output', () => {
@@ -228,9 +228,9 @@ describe('buildCanvasGraph', () => {
     state.assets.push(asset('undone.png', 'image/png', 'u9', null, 'asset.import'))
     const graph = buildCanvasGraph(state, new Set(['undone.png', 'shot1-last.png', 'export-last.png']))
     const node = graph.nodes.find(candidate => candidate.id === 'asset:undone.png')
-    expect(node).toMatchObject({ kind: 'asset', title: 'undone.png', thumb: 'undone.png', video: null, record: null })
+    expect(node).toMatchObject({ type: 'asset', title: 'undone.png', thumb: 'undone.png', video: null, record: null })
     // The take g1 already shows its still; the grabbed still of the export has no other node, so it gets one.
-    expect(graph.nodes.filter(candidate => candidate.kind === 'asset').map(candidate => candidate.id).sort())
+    expect(graph.nodes.filter(candidate => candidate.type === 'asset').map(candidate => candidate.id).sort())
       .toEqual(['asset:export-last.png', 'asset:undone.png'])
     expect(graph.assetNodes['undone.png']).toBe('asset:undone.png')
   })
@@ -244,7 +244,7 @@ describe('buildCanvasGraph', () => {
     )
     state.components.proj.created_by['twice.png'] = 'u3'
     const graph = buildCanvasGraph(state, new Set(['twice.png']))
-    expect(graph.nodes.filter(node => node.kind === 'asset').map(node => node.id)).toEqual(['u2'])
+    expect(graph.nodes.filter(node => node.type === 'asset').map(node => node.id)).toEqual(['u2'])
     expect(graph.assetNodes['twice.png']).toBe('u2')
   })
 
@@ -256,7 +256,7 @@ describe('buildCanvasGraph', () => {
     const shots = Array.from({ length: 22 }, (_, index) => ({ ...g2, id: `s${String(index)}`, inputs: [], params: { prompt: 'p', shot: index + 1 }, outputs: [] }))
     full.components.proj.records = [...records.filter(record => record.operation !== 'shot.render'), ...shots]
     const graph = buildCanvasGraph(full, undefined, OPERATIONS)
-    const takes = graph.nodes.filter(node => node.kind === 'take')
+    const takes = graph.nodes.filter(node => node.type === 'take')
     expect(new Set(takes.map(node => `${String(node.x)},${String(node.y)}`)).size).toBe(22)
     const width = Math.max(...takes.map(node => node.x)) - Math.min(...takes.map(node => node.x))
     const height = Math.max(...takes.map(node => node.y))
@@ -265,14 +265,14 @@ describe('buildCanvasGraph', () => {
   })
 
   it('shows the latest plan version and the current take of each of its shots, not every take ever rendered', () => {
-    const graph = bibleGraph(rollbackProject(), undefined, [], 'zh', [APPROVAL], [CLIPS], [planNodeKind])
+    const graph = bibleGraph(rollbackProject(), undefined, [], 'zh', [APPROVAL], [CLIPS], [planNodeType])
     // v4 has 6 shots and its approval reused every v1 take: no shot 7, no v2 or v3 take, no retake of the removed shot.
-    expect(graph.nodes.map(node => [node.id, kindOf(node)])).toEqual([
+    expect(graph.nodes.map(node => [node.id, typeOf(node)])).toEqual([
       ['bible:hero', 'bible'], ['plan:p1', 'plan'], ...['r1', 'r2', 'r3', 'r4', 'r5', 'r6'].map(id => [id, 'take']),
     ])
     const plan = graph.nodes.find(node => node.id === 'plan:p1')
-    expect([plan?.kind === 'seed' ? plan.seed.slots : undefined, plan?.record?.id]).toEqual([6, 'q4'])
-    expect(graph.nodes.filter(node => node.kind === 'take').map(node => [node.title, node.take]))
+    expect([plan?.type === 'entry' ? plan.entry.slots : undefined, plan?.record?.id]).toEqual([6, 'q4'])
+    expect(graph.nodes.filter(node => node.type === 'take').map(node => [node.title, node.take]))
       .toEqual(['1', '2', '3', '4', '5', '6'].map(shot => [shot, null]))
     expect(graph.edges.filter(edge => edge.kind === 'chain').map(edge => [edge.from, edge.to])).toEqual(['r1', 'r2', 'r3', 'r4', 'r5', 'r6'].map(id => ['plan:p1', id]))
     // Assets of takes the canvas leaves out have no node, so dropping one on the canvas finds none.
@@ -302,7 +302,7 @@ describe('buildCanvasGraph', () => {
     // s7; v4 has no takes of its own.
     const pending = rollbackProject('q4')
     expect(pending.components.proj.records.some(entry => entry.id === 'a4')).toBe(false)
-    expect(drawn(pending).filter(([, kind]) => kind === 'take').map(([id]) => id)).toEqual(['r1', 'r2', 'r3', 'r4', 's7', 'x7', 'w5', 'r6'].sort(byRecordOrder))
+    expect(drawn(pending).filter(([, type]) => type === 'take').map(([id]) => id)).toEqual(['r1', 'r2', 'r3', 'r4', 's7', 'x7', 'w5', 'r6'].sort(byRecordOrder))
   })
 
   it('draws each generation record as a take, titled by its operation label without an anchored chain; off the wire its own facts decide', () => {
@@ -325,16 +325,16 @@ describe('buildCanvasGraph', () => {
     Object.assign(proj.created_by, { 'cat.png': 'i1', 'cat2.png': 'i2', 'line.wav': 'v1', 'cut.mp4': 'c9' })
     const graph = buildCanvasGraph(state, new Set(['cat.png']), operations, 'en')
     const byId = new Map(graph.nodes.map(node => [node.id, node]))
-    expect(byId.get('i1')).toMatchObject({ kind: 'take', title: '', label: 'Generate image', subtitle: 'a cat', thumb: 'cat.png', video: null, take: 1 })
+    expect(byId.get('i1')).toMatchObject({ type: 'take', title: '', label: 'Generate image', subtitle: 'a cat', thumb: 'cat.png', video: null, take: 1 })
     // The starter w1 of i2's chain is not loaded, so the chain has no anchor and i2 is a free take.
-    expect(byId.get('i2')).toMatchObject({ kind: 'take', title: '', label: 'Generate image', thumb: 'cat2.png', take: 2 })
+    expect(byId.get('i2')).toMatchObject({ type: 'take', title: '', label: 'Generate image', thumb: 'cat2.png', take: 2 })
     expect(byId.get('i2')?.chain).toBeUndefined()
-    expect(byId.get('v1')).toMatchObject({ kind: 'take', title: '', label: 'audio.generate', thumb: null, video: 'line.wav', durationSec: 2 })
+    expect(byId.get('v1')).toMatchObject({ type: 'take', title: '', label: 'audio.generate', thumb: null, video: 'line.wav', durationSec: 2 })
     expect(graph.edges).toContainEqual({ from: 'i1', to: 'i2', kind: 'take' })
     // The CPU export is no take; a render take reads its operation label by the same rule; the placed take output gets no node.
     expect(byId.has('c9')).toBe(false)
-    expect(byId.get('g1')).toMatchObject({ kind: 'take', title: '', label: 'shot.render', take: 1 })
-    expect(graph.nodes.filter(node => node.kind === 'asset')).toEqual([])
+    expect(byId.get('g1')).toMatchObject({ type: 'take', title: '', label: 'shot.render', take: 1 })
+    expect(graph.nodes.filter(node => node.type === 'asset')).toEqual([])
     expect(graph.assetNodes).toMatchObject({ 'cat.png': 'i1', 'line.wav': 'v1' })
     // Without the declarations, a record that is not deterministic and output media is a take, so the old export is one;
     // the running retake g3 has no output yet and is none.
@@ -374,7 +374,7 @@ describe('chain grouping', () => {
 
   it('draws the chain of the newest starter of each operation on a node, every free take, and the records a TakesInUse uses', () => {
     const takes = (inUse: TakesInUse[] = []): string[] => buildCanvasGraph(chainState(), undefined, OPERATIONS, 'zh', ANCHORS, inUse)
-      .nodes.filter(node => node.kind === 'take').map(node => node.id)
+      .nodes.filter(node => node.type === 'take').map(node => node.id)
     // st1 replaced st0 on plan:p1, so n1 is left out; the story chain and the ad chain both show; o1, g1, g2 and g3 are free takes.
     expect(takes()).toEqual(['g1', 'g2', 'g3', 'h1', 'h2', 'v9', 'v16', 'o1'])
     expect(takes([{ id: 'test-uses', uses: () => ['n1'] }])).toEqual(['g1', 'g2', 'g3', 'n1', 'h1', 'h2', 'v9', 'v16', 'o1'])
@@ -383,7 +383,7 @@ describe('chain grouping', () => {
   })
 
   it('titles a take by the slot and lane of its anchored chain, numbers takes by anchor, slot and lane, and fills slot frames', () => {
-    const graph = buildCanvasGraph(chainState(), undefined, OPERATIONS, 'en', ANCHORS, [], [planNodeKind])
+    const graph = buildCanvasGraph(chainState(), undefined, OPERATIONS, 'en', ANCHORS, [], [planNodeType])
     const byId = new Map(graph.nodes.map(node => [node.id, node]))
     // The retake h2 has no started_by and keeps the slot of its root h1; two lanes of one slot are two groups.
     expect(['h1', 'h2', 'v9', 'v16', 'o1'].map(id => [byId.get(id)?.title, byId.get(id)?.take])).toEqual([
@@ -412,12 +412,12 @@ describe('chain grouping', () => {
       .sort((a, b) => a.x - b.x || a.y - b.y).map(node => node.id)
     expect(placed).toEqual(['g1', 'g3', 'm1', 'w1', 'm2', 'w2', 'm0', 'w0'])
     // The nodes keep record order, so take numbers and slot frames read it.
-    expect(graph.nodes.filter(node => node.kind === 'take').map(node => node.id)).toEqual(['g1', 'g2', 'g3', 'm0', 'm2', 'm1', 'w2', 'w0', 'w1'])
+    expect(graph.nodes.filter(node => node.type === 'take').map(node => node.id)).toEqual(['g1', 'g2', 'g3', 'm0', 'm2', 'm1', 'w2', 'w0', 'w1'])
   })
 })
 
-describe('node kinds', () => {
-  it('draws each seed of a registered NodeKind in its column, and a take that reads a seed\'s media links from the seed', () => {
+describe('node types', () => {
+  it('draws each entry of a registered NodeType in its column, and a take that reads an entry\'s media links from the entry', () => {
     const state = fixtureState()
     const reads = (asset: string): ProjectRecord['inputs'] => [{ role: 'reference', ref: { asset }, resolved_asset: asset }]
     const m1 = record({ id: 'm1', operation: 'prop.create', inputs: reads('ref.png') })
@@ -427,20 +427,20 @@ describe('node kinds', () => {
     )
     state.assets.push(asset('umbrella.png', 'image/png', 'u2'), asset('g4.png', 'image/png', 'g4'))
     Object.assign(state.components.proj.created_by, { 'umbrella.png': 'u2', 'g4.png': 'g4' })
-    const kind: NodeKind = {
-      id: '@dv/ui-prop', kind: 'prop', label: () => '道具', color: '#888', column: 1,
-      nodes: () => [{ id: 'prop:m1', record: m1, title: 'Red umbrella', media: ['umbrella.png'] }],
+    const type: NodeType = {
+      id: '@dv/ui-prop', type: 'prop', label: () => '道具', color: '#888', column: 1,
+      entries: () => [{ id: 'prop:m1', record: m1, title: 'Red umbrella', media: ['umbrella.png'] }],
     }
     const placed = new Set(['umbrella.png'])
-    // Without the kind, the import of the placed umbrella image is an asset node.
+    // Without the type, the import of the placed umbrella image is an asset node.
     expect(buildCanvasGraph(state, placed, OPERATIONS).nodes.some(node => node.id === 'u2')).toBe(true)
-    const graph = buildCanvasGraph(state, placed, OPERATIONS, 'zh', [], [], [kind, planNodeKind])
+    const graph = buildCanvasGraph(state, placed, OPERATIONS, 'zh', [], [], [type, planNodeType])
     const byId = new Map(graph.nodes.map(node => [node.id, node]))
-    expect(byId.get('prop:m1')).toMatchObject({ kind: 'seed', nodeKind: kind, title: 'Red umbrella', subtitle: '', references: ['umbrella.png'], record: m1 })
+    expect(byId.get('prop:m1')).toMatchObject({ type: 'entry', nodeType: type, title: 'Red umbrella', subtitle: '', references: ['umbrella.png'], record: m1 })
     expect(byId.has('u2')).toBe(false)
     expect(graph.assetNodes['umbrella.png']).toBe('prop:m1')
     expect(graph.edges).toContainEqual({ from: 'prop:m1', to: 'g4', kind: 'reference' })
-    // The seed's own record draws no input edge (m1 read the hero's reference image), and column 1 holds plan:p1 too.
+    // The entry's own record draws no input edge (m1 read the hero's reference image), and column 1 holds plan:p1 too.
     expect(graph.edges.some(edge => edge.to === 'prop:m1')).toBe(false)
     expect(byId.get('prop:m1')?.x).toBe(byId.get('plan:p1')?.x)
   })

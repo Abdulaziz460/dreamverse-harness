@@ -1,8 +1,8 @@
 /**
- * Browser half of the shot plan: the canvas node kind of plans, the takes that plans use, and the History row of plan
+ * Browser half of the shot plan: the canvas node type of plans, the takes that plans use, and the History row of plan
  * records. The canvas core draws each plan as one node `plan:<PlanId>` at its latest version with the default card and
  * a frame grid of one slot per shot, and keeps the records that produced the reference assets of the latest version on
- * the canvas. The node's editor shows the plan editor, the `dv.canvas.editor` entry of the node kind. The History row
+ * the canvas. The node's editor shows the plan editor, the `dv.canvas.editor` entry of the node type. The History row
  * names the plan of a `plan.create` or `plan.update` record.
  *
  * @module @dv/ui-shot-plan/client
@@ -13,7 +13,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-slots'
 import type { PlanState, PlanVersion } from '@dv/shot-plan/types'
 import { DvClient } from '@dv/ui-kit/api.ts'
 import { pickText } from '@dv/ui-kit/locale.ts'
-import type { HistoryRow, NodeKind, NodeSeed, TakesInUse } from '@dv/ui-kit/registries.ts'
+import type { HistoryRow, NodeEntry, NodeType, TakesInUse } from '@dv/ui-kit/registries.ts'
 import { clockText } from '@dv/ui-kit/timeline.ts'
 import type { WireState } from '@dv/ui-kit/types.ts'
 import { PlanEditor, totalSec } from './PlanEditor.tsx'
@@ -21,7 +21,7 @@ import type { PlanEditorInjected } from './PlanEditor.tsx'
 
 declare module '@dv/ui-kit/types.ts' { interface ComponentStates { plan: PlanState } }
 
-/** The package name: the key of the node kind, of the takes in use, and of the editor entry. */
+/** The package name: the key of the node type, of the takes in use, and of the editor entry. */
 const ID = '@dv/ui-shot-plan'
 
 /**
@@ -37,19 +37,19 @@ function latestPlans(state: WireState): Array<{ id: string; versions: PlanVersio
 }
 
 /**
- * The canvas node kind of plans: one seed `plan:<PlanId>` per plan in column 1 that shows its latest version (subtitle
- * `第 N 版`, title `N 个镜头 · <total duration>`) with one slot per shot. The seed's record wrote the latest version, and
+ * The canvas node type of plans: one entry `plan:<PlanId>` per plan in column 1 that shows its latest version (subtitle
+ * `第 N 版`, title `N 个镜头 · <total duration>`) with one slot per shot. The entry's record wrote the latest version, and
  * its `records` wrote the earlier versions.
  */
-export const planNodeKind: NodeKind = {
+export const planNodeType: NodeType = {
   id: ID,
-  kind: 'plan',
+  type: 'plan',
   label: () => pickText('分镜计划', 'Plan'),
   color: 'var(--dv-kind-plan)',
   column: 1,
-  nodes(state) {
+  entries(state) {
     const records = new Map(state.components.proj.records.map(record => [record.id, record]))
-    return latestPlans(state).map(({ id, versions, latest }): NodeSeed => {
+    return latestPlans(state).map(({ id, versions, latest }): NodeEntry => {
       const count = String(latest.shots.length)
       const total = totalSec(latest)
       return {
@@ -113,14 +113,14 @@ export const planHistoryRow: HistoryRow = {
 }
 
 /**
- * Client plugin body: while `dvCanvas` is present, register the node kind of plans and the takes that plans use, and
+ * Client plugin body: while `dvCanvas` is present, register the node type of plans and the takes that plans use, and
  * with the slot registry the plan editor once a host declares `dv.canvas.editor`; while `dvHistory` is present,
  * register the History row of plan records. Each registration leaves with the service or with the plugin.
  * @param ctx - client root context.
  */
 export function apply(ctx: ClientContext): void {
   ctx.inject(['dvCanvas'], (scope) => {
-    scope.effect(() => scope.dvCanvas.nodeKinds.register(planNodeKind), 'ui-shot-plan: node kind')
+    scope.effect(() => scope.dvCanvas.nodeTypes.register(planNodeType), 'ui-shot-plan: node type')
     scope.effect(() => scope.dvCanvas.takesInUse.register(planReferencesInUse), 'ui-shot-plan: takes in use')
   })
   ctx.inject(['dvCanvas', 'slots'], (scope) => {

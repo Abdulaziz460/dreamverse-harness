@@ -1,5 +1,5 @@
 /**
- * Host half of the story bible UI plugin: nothing. The browser half in `src/client/` registers the canvas node kind, the
+ * Host half of the story bible UI plugin: nothing. The browser half in `src/client/` registers the canvas node type, the
  * version kinds and the references in use of the story bible.
  *
  * @module @dv/ui-story-bible

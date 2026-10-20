@@ -17,9 +17,9 @@ import type { DvComposeDetail } from '@dv/ui-kit/compose.ts'
 import type { ChainAnchor, DvCanvas } from '@dv/ui-kit/registries.ts'
 import type { WireOperation, WireState } from '@dv/ui-kit/types.ts'
 import { DV_ASSET_DRAG_TYPE, DV_CANVAS_FOCUS_EVENT } from '@dv/ui-kit/workspace-events.ts'
-import { bibleNodeKind, bibleReferencesInUse, bibleVersionKinds } from '@dv/ui-story-bible/src/client/index.ts'
+import { bibleNodeType, bibleReferencesInUse, bibleVersionKinds } from '@dv/ui-story-bible/src/client/index.ts'
 import { asset, fixtureState, OPERATIONS, record, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
-import { planNodeKind } from '../../ui-shot-plan/src/client/index.ts'
+import { planNodeType } from '../../ui-shot-plan/src/client/index.ts'
 import { CanvasView } from '../src/client/CanvasView.tsx'
 import { createDvCanvas } from '../src/client/dv-canvas.ts'
 import { NODE_WIDTH } from '../src/client/graph.ts'
@@ -34,25 +34,25 @@ const APPROVAL: ChainAnchor = {
 }
 
 /**
- * Canvas registries that hold the story bible's node kind, references in use and version kinds, as the bundle mounts
+ * Canvas registries that hold the story bible's node type, references in use and version kinds, as the bundle mounts
  * `@dv/ui-story-bible`.
  * @returns the registries and the disposer of the story bible's descriptors.
  */
 function bibleCanvas(): { canvas: DvCanvas; dispose: () => void } {
   const canvas = createDvCanvas()
   const disposers = [
-    canvas.nodeKinds.register(bibleNodeKind), canvas.takesInUse.register(bibleReferencesInUse),
+    canvas.nodeTypes.register(bibleNodeType), canvas.takesInUse.register(bibleReferencesInUse),
     ...bibleVersionKinds.map(kind => canvas.versionKinds.register(kind)),
   ]
   return { canvas, dispose: () => { for (const dispose of disposers) dispose() } }
 }
 
 /**
- * @param canvas - the registries that get the node kind of plans; empty ones by default.
- * @returns the registries with the node kind of plans, as `@dv/ui-shot-plan` registers it.
+ * @param canvas - the registries that get the node type of plans; empty ones by default.
+ * @returns the registries with the node type of plans, as `@dv/ui-shot-plan` registers it.
  */
 function planCanvas(canvas: DvCanvas = createDvCanvas()): DvCanvas {
-  canvas.nodeKinds.register(planNodeKind)
+  canvas.nodeTypes.register(planNodeType)
   return canvas
 }
 
@@ -116,7 +116,7 @@ function nodeLookup(view: RenderResult): (id: string) => HTMLElement {
  * @param edit - changes to the fixture state, applied to every state the route serves.
  * @param holdOperations - whether `POST /api/dv/operation` stays unanswered, as a render does until it ends.
  * @param operations - the operation declarations the route serves; the fixture's by default.
- * @param canvas - the `dvCanvas` registries the view reads; the story bible's descriptors and the node kind of plans by
+ * @param canvas - the `dvCanvas` registries the view reads; the story bible's descriptors and the node type of plans by
  *   default.
  * @returns the rendered view, the recorded writes, and a node lookup.
  */
@@ -244,7 +244,7 @@ describe('CanvasView', () => {
         state.components.proj.created_by['cat.png'] = 'i1'
       }, false, [...OPERATIONS, generate])
       await waitFor(() => { node('i1') })
-      expect(node('i1').getAttribute('data-node-kind')).toBe('take')
+      expect(node('i1').getAttribute('data-node-type')).toBe('take')
       expect(node('i1').getAttribute('aria-label')).toBe('生成图像')
       expect(node('i1').querySelector('img')?.getAttribute('src')).toBe(assetUrl('cat.png'))
     } finally {
@@ -281,8 +281,8 @@ describe('CanvasView', () => {
     await waitFor(() => { node('bible:hero') })
     const card = node('bible:hero')
     expect([...card.querySelectorAll('img')].map(image => image.getAttribute('src'))).toEqual([assetUrl('ref.png')])
-    // The story bible labels the card with the item's kind in the interface language.
-    expect(card.textContent).toContain('角色')
+    // The card carries the label of the story bible's node type.
+    expect(card.textContent).toContain('故事设定')
     expect(card.textContent).toContain('Hero')
     expect(card.textContent).toContain('+5')
   })
@@ -292,7 +292,7 @@ describe('CanvasView', () => {
     const { view, node } = mount(true, undefined, false, OPERATIONS, bible.canvas)
     const edge = (): Element | null => view.container.querySelector('path[data-edge="bible:hero>g1"]')
     await waitFor(() => { expect(edge()).not.toBeNull() })
-    expect(node('bible:hero').getAttribute('data-node-kind')).toBe('bible')
+    expect(node('bible:hero').getAttribute('data-node-type')).toBe('bible')
     act(() => { bible.dispose() })
     await waitFor(() => { expect(view.container.querySelector('[data-node-id="bible:hero"]')).toBeNull() })
     expect(edge()).toBeNull()

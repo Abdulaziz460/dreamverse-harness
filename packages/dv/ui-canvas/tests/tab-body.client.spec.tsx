@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * The canvas as a right-Sidebar tab body: the body declares no canvas slot and passes no slot renderer, so a seed editor
+ * The canvas as a right-Sidebar tab body: the body declares no canvas slot and passes no slot renderer, so an entry editor
  * there opens with only its header, the asset picker lists only the versioned items, and an asset chip opens no preview,
  * each with no error.
  */
@@ -10,7 +10,7 @@ import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import type { AssetId, RecordId } from '@dv/project/types'
 import type { LocationId } from '@dv/story-bible/types'
 import { DvClient } from '@dv/ui-kit/api.ts'
-import type { NodeKind } from '@dv/ui-kit/registries.ts'
+import type { NodeType } from '@dv/ui-kit/registries.ts'
 import { bibleVersionKinds } from '@dv/ui-story-bible/src/client/index.ts'
 import { fixtureState, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
 import { CanvasBody } from '../src/client/CanvasBody.tsx'
@@ -20,10 +20,10 @@ import { EDITOR_RECT_KEY } from '../src/client/NodeEditor.tsx'
 import type { CanvasTranslate } from '../src/client/NodeCard.tsx'
 import { zh } from '../src/client/locales.ts'
 
-/** A node kind as a plugin's UI half registers it: one seed. */
-const PROPS: NodeKind = {
-  id: '@dv/ui-prop', kind: 'prop', label: () => '道具', color: 'rgb(1, 2, 3)', column: 1,
-  nodes: () => [{ id: 'prop:p1', record: null, title: '红伞', media: [] }],
+/** A node type as a plugin's UI half registers it: one entry. */
+const PROPS: NodeType = {
+  id: '@dv/ui-prop', type: 'prop', label: () => '道具', color: 'rgb(1, 2, 3)', column: 1,
+  entries: () => [{ id: 'prop:p1', record: null, title: '红伞', media: [] }],
 }
 
 afterEach(() => {
@@ -34,9 +34,9 @@ afterEach(() => {
 })
 
 describe('canvas tab body', () => {
-  it('opens a seed editor with its header and no slot body, without an error', async () => {
+  it('opens an entry editor with its header and no slot body, without an error', async () => {
     const canvas = createDvCanvas()
-    canvas.nodeKinds.register(PROPS)
+    canvas.nodeTypes.register(PROPS)
     const t: CanvasTranslate = makeTranslate(zh)
     // The slot runtime hands `renderSlot` only to an entry that declares children, so the body gets none in the right
     // Sidebar either; it reads only its client, its registries and its copy.

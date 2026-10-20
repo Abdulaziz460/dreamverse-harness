@@ -4,7 +4,7 @@
  * @module @dv/ui-canvas/dv-canvas
  */
 import { createRegistry } from '@dv/ui-kit/registries.ts'
-import type { ChainAnchor, DvCanvas, NodeKind, TakesInUse, VersionKind } from '@dv/ui-kit/registries.ts'
+import type { ChainAnchor, DvCanvas, NodeType, TakesInUse, VersionKind } from '@dv/ui-kit/registries.ts'
 
 /**
  * Create empty canvas registries.
@@ -12,7 +12,7 @@ import type { ChainAnchor, DvCanvas, NodeKind, TakesInUse, VersionKind } from '@
  */
 export function createDvCanvas(): DvCanvas {
   return {
-    nodeKinds: createRegistry<NodeKind>(kind => [kind.id]),
+    nodeTypes: createRegistry<NodeType>(type => [type.id]),
     chainAnchors: createRegistry<ChainAnchor>(anchor => [anchor.starter]),
     takesInUse: createRegistry<TakesInUse>(uses => [uses.id]),
     versionKinds: createRegistry<VersionKind>(kind => [kind.kind]),

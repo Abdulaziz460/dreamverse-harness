@@ -424,7 +424,7 @@ describe('chat with the agent', () => {
     await send(page, '做两个镜头的广告')
     await waitChat(page, '两个镜头已渲染', 60_000)
     const workspace = page.locator('[data-dv-workspace]')
-    await workspace.locator('[data-node-kind="plan"]').first().waitFor({ timeout: 15_000 })
+    await workspace.locator('[data-node-type="plan"]').first().waitFor({ timeout: 15_000 })
     expect(await workspace.getByRole('button', { name: '接受', exact: true }).count()).toBe(0)
     await send(page, '只回复八')
     await waitChat(page, '收到八')
@@ -489,7 +489,7 @@ describe('chat with the agent', () => {
     const editor = page.locator('[data-testid="dv-canvas-node-editor"]')
     await waitFor(async () => {
       // The canvas fits its view after the nodes load; a click during that move can miss, so click until it opens.
-      await page.locator('[data-dv-workspace] [data-node-kind="plan"]').first().click({ timeout: 10_000 })
+      await page.locator('[data-dv-workspace] [data-node-type="plan"]').first().click({ timeout: 10_000 })
       return await editor.isVisible()
     }, 'the plan editor', 30_000)
     expect(await editor.getByText('待批准').count()).toBe(1)
@@ -537,7 +537,7 @@ describe('chat with the agent', () => {
     const imageId = state?.assets.find(asset => asset.mime.startsWith('image/'))?.id
     await expect.poll(async () => (await harness.api.get(`/api/dv/state?project=${projectId}`) as WireState).components.asset.placed, { timeout: 10_000 })
       .toEqual([imageId])
-    await page.locator('[data-dv-workspace] [data-node-kind="asset"]').first().waitFor({ timeout: 15_000 })
+    await page.locator('[data-dv-workspace] [data-node-type="asset"]').first().waitFor({ timeout: 15_000 })
     expect(errors).toEqual([])
   })
 
@@ -612,7 +612,7 @@ describe('chat with the agent', () => {
     const editor = page.locator('[data-testid="dv-canvas-node-editor"]')
     await waitFor(async () => {
       // The canvas fits its view after the nodes load; a click during that move can miss, so click until it opens.
-      await page.locator('[data-dv-workspace] [data-node-kind="take"]').first().click({ timeout: 10_000 })
+      await page.locator('[data-dv-workspace] [data-node-type="take"]').first().click({ timeout: 10_000 })
       return await editor.isVisible()
     }, 'the take editor', 30_000)
     await editor.getByRole('button', { name: '问 agent', exact: true }).click()
@@ -634,14 +634,14 @@ describe('chat with the agent', () => {
     await send(page, '加人物')
     await waitChat(page, '人物小橘已登记')
     const first = locationOf(page).session
-    await page.locator('[data-dv-workspace] [data-node-kind="bible"]').first().waitFor({ timeout: 15_000 })
+    await page.locator('[data-dv-workspace] [data-node-type="bible"]').first().waitFor({ timeout: 15_000 })
     // The character is in the project's current state, which every chat session of the project reads.
     // 新建会话 in the session switcher starts a second chat session in the same project.
     await pickFromSwitcher(page, '新建会话')
     await waitFor(() => Promise.resolve(locationOf(page).session !== first && locationOf(page).session !== null), 'a second session', 15_000)
     expect(locationOf(page).project).toBe(projectId)
     expect(await userMessages(page)).toEqual([])
-    expect(await page.locator('[data-dv-workspace] [data-node-kind="bible"]').count()).toBeGreaterThan(0)
+    expect(await page.locator('[data-dv-workspace] [data-node-type="bible"]').count()).toBeGreaterThan(0)
     await send(page, '只回复十三')
     await waitChat(page, '收到十三')
     expect(promptOf(requestFor('只回复十三') as ChatRequest)).toContain('小橘')

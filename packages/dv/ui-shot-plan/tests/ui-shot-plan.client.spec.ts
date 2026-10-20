@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * The canvas node kind of plans, the takes that plans use and the History row of plan records, and their registration
+ * The canvas node type of plans, the takes that plans use and the History row of plan records, and their registration
  * and removal with the plugin.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -8,10 +8,10 @@ import { Context } from '@deepseek-ai/cordis'
 import type { RecordId } from '@dv/project/types'
 import type { PlanId } from '@dv/shot-plan/types'
 import { createRegistry } from '@dv/ui-kit/registries.ts'
-import type { ChainAnchor, DvCanvas, DvHistory, HistoryRow, NodeKind, TakesInUse, VersionKind } from '@dv/ui-kit/registries.ts'
+import type { ChainAnchor, DvCanvas, DvHistory, HistoryRow, NodeType, TakesInUse, VersionKind } from '@dv/ui-kit/registries.ts'
 import type { WireState } from '@dv/ui-kit/types.ts'
 import { fixtureState, record } from '../../ui-kit/tests/fixture.client.tsx'
-import { apply, planHistoryRow, planNodeKind, planReferencesInUse } from '../src/client/index.ts'
+import { apply, planHistoryRow, planNodeType, planReferencesInUse } from '../src/client/index.ts'
 import { apply as hostApply } from '../src/index.ts'
 
 afterEach(() => { document.documentElement.lang = '' })
@@ -19,7 +19,7 @@ afterEach(() => { document.documentElement.lang = '' })
 /** @returns empty canvas registries keyed as `DvCanvas` documents. */
 function canvasRegistries(): DvCanvas {
   return {
-    nodeKinds: createRegistry<NodeKind>(kind => [kind.id]),
+    nodeTypes: createRegistry<NodeType>(kind => [kind.id]),
     chainAnchors: createRegistry<ChainAnchor>(anchor => [anchor.starter]),
     takesInUse: createRegistry<TakesInUse>(uses => [uses.id]),
     versionKinds: createRegistry<VersionKind>(kind => [kind.kind]),
@@ -42,21 +42,21 @@ function secondVersion(): WireState {
   return state
 }
 
-describe('planNodeKind', () => {
-  it('draws each plan as one seed at its latest version in column 1, with one slot per shot', () => {
+describe('planNodeType', () => {
+  it('draws each plan as one entry at its latest version in column 1, with one slot per shot', () => {
     document.documentElement.lang = 'zh-CN'
-    expect([planNodeKind.id, planNodeKind.kind, planNodeKind.column, planNodeKind.label()]).toEqual(['@dv/ui-shot-plan', 'plan', 1, '分镜计划'])
-    const [seed, ...rest] = planNodeKind.nodes(secondVersion())
+    expect([planNodeType.id, planNodeType.type, planNodeType.column, planNodeType.label()]).toEqual(['@dv/ui-shot-plan', 'plan', 1, '分镜计划'])
+    const [entry, ...rest] = planNodeType.entries(secondVersion())
     expect(rest).toEqual([])
-    expect(seed).toMatchObject({ id: 'plan:p1', records: ['p1'], subtitle: '第 2 版', title: '3 个镜头 · 0:06', media: [], slots: 3 })
-    // The seed's record wrote the shown version; a history focus on the record of v1 centers the seed through `records`.
-    expect(seed?.record?.id).toBe('q2')
+    expect(entry).toMatchObject({ id: 'plan:p1', records: ['p1'], subtitle: '第 2 版', title: '3 个镜头 · 0:06', media: [], slots: 3 })
+    // The entry's record wrote the shown version; a history focus on the record of v1 centers the entry through `records`.
+    expect(entry?.record?.id).toBe('q2')
   })
 
   it('titles a version with a shot without duration by its shot count, in the interface language', () => {
     document.documentElement.lang = 'en'
-    expect(planNodeKind.label()).toBe('Plan')
-    expect(planNodeKind.nodes(fixtureState())).toMatchObject([{ id: 'plan:p1', records: [], subtitle: 'v1', title: '2 shots', slots: 2 }])
+    expect(planNodeType.label()).toBe('Plan')
+    expect(planNodeType.entries(fixtureState())).toMatchObject([{ id: 'plan:p1', records: [], subtitle: 'v1', title: '2 shots', slots: 2 }])
   })
 })
 
@@ -87,17 +87,17 @@ describe('ui-shot-plan apply', () => {
     expect(hostApply).not.toThrow()
   })
 
-  it('registers the node kind and the takes in use once dvCanvas is present, and the plugin disposal removes both', async () => {
+  it('registers the node type and the takes in use once dvCanvas is present, and the plugin disposal removes both', async () => {
     const ctx = new Context()
     const canvas = canvasRegistries()
     const fiber = ctx.plugin({ apply })
     await fiber.await()
-    expect(canvas.nodeKinds.list()).toEqual([])
+    expect(canvas.nodeTypes.list()).toEqual([])
     ctx.provide('dvCanvas', canvas)
-    await vi.waitFor(() => { expect(canvas.nodeKinds.list()).toEqual([planNodeKind]) })
+    await vi.waitFor(() => { expect(canvas.nodeTypes.list()).toEqual([planNodeType]) })
     expect(canvas.takesInUse.list()).toEqual([planReferencesInUse])
     await fiber.dispose()
-    expect(canvas.nodeKinds.list()).toEqual([])
+    expect(canvas.nodeTypes.list()).toEqual([])
     expect(canvas.takesInUse.list()).toEqual([])
   })
 

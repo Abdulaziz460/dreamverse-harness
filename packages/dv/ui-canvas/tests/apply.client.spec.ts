@@ -73,7 +73,7 @@ describe('ui-canvas apply', () => {
     // The center view comes first in the workspace's view control, under the tab type's label, with the body's client.
     expect([registered[1]?.order, registered[1]?.label?.()]).toEqual([0, 'type.label'])
     expect(registered[1]?.inject()).toBe(registered[0]?.inject())
-    // The center view declares the slot of the seed editors, which plugin UI halves fill by `NodeKind.id`, and the asset
+    // The center view declares the slot of the entry editors, which plugin UI halves fill by `NodeType.id`, and the asset
     // pool's slots of the picker and the preview; the body declares none.
     expect(registered[1]?.children).toEqual({
       'dv.canvas.editor': { kind: 'keyed', scope: 'root' },

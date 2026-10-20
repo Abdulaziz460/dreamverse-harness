@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Browser half of the DreamVerse story bible: the canvas node kind that draws each character, location and style at its newest version, the version kinds of the reference kinds character, location and style, the records whose outputs the newest versions use as references, the editor body of a story bible node, and the mention kinds of the composer's @ menu.",
+  "description": "Browser half of the DreamVerse story bible: the canvas node type that draws each character, location and style at its newest version, the version kinds of the reference kinds character, location and style, the records whose outputs the newest versions use as references, the editor body of a story bible node, and the mention kinds of the composer's @ menu.",
   "exports": {
     ".": "./src/index.ts",
     "./client": {

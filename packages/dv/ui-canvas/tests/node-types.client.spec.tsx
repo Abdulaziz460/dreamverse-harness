@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /**
- * Node kinds in `dvCanvas`: the canvas draws each seed of a registered `NodeKind` with the default card, its editor shows
- * the `dv.canvas.editor` entry keyed by the kind's `id` and lends it the canvas's writes, asset picker and asset preview
+ * Node types in `dvCanvas`: the canvas draws each entry of a registered `NodeType` with the default card, its editor shows
+ * the `dv.canvas.editor` entry keyed by the type's `id` and lends it the canvas's writes, asset picker and asset preview
  * (the asset pool's `dv.canvas.picker` and `dv.canvas.preview` entries), and both leave when the registering plugin is
  * disposed.
  */
@@ -14,23 +14,23 @@ import { makeTranslate, SlotTestRuntime } from '@deepseek-ai/dsh-client-test-run
 import { SidebarRightTabRegistry } from '@deepseek-ai/dsh-client-ui-sidebar-right/src/client/tab-registry.ts'
 import { apply as assetPoolApply, inject as assetPoolInject } from '@dv/ui-asset-pool/src/client/index.ts'
 import { DvClient } from '@dv/ui-kit/api.ts'
-import type { NodeKind } from '@dv/ui-kit/registries.ts'
-import { apply as storyBibleApply, bibleNodeKind } from '@dv/ui-story-bible/src/client/index.ts'
+import type { NodeType } from '@dv/ui-kit/registries.ts'
+import { apply as storyBibleApply, bibleNodeType } from '@dv/ui-story-bible/src/client/index.ts'
 import { asset, fixtureState, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
-import { planNodeKind } from '../../ui-shot-plan/src/client/index.ts'
+import { planNodeType } from '../../ui-shot-plan/src/client/index.ts'
 import { CanvasView } from '../src/client/CanvasView.tsx'
 import { createDvCanvas } from '../src/client/dv-canvas.ts'
 import { EDITOR_RECT_KEY } from '../src/client/NodeEditor.tsx'
 import type { CanvasTranslate } from '../src/client/NodeCard.tsx'
 import { zh } from '../src/client/locales.ts'
 
-/** A node kind as a plugin's UI half registers it: one seed with media, one seed with a frame grid. */
-const PROPS: NodeKind = {
-  id: '@dv/ui-prop', kind: 'prop', label: () => '道具', color: 'rgb(1, 2, 3)', column: 1,
-  nodes: state => state.project.id === 'p1'
+/** A node type as a plugin's UI half registers it: one entry with media, one entry with a frame grid. */
+const PROPS: NodeType = {
+  id: '@dv/ui-prop', type: 'prop', label: () => '道具', color: 'rgb(1, 2, 3)', column: 1,
+  entries: state => state.project.id === 'p1'
     ? [
       { id: 'prop:p1', record: null, title: '红伞', subtitle: '第 1 版', media: ['umbrella.png', 'umbrella-back.png'] },
-      { id: 'prop:p2', record: null, label: '分镜板', title: '2 格', media: [], slots: 2 },
+      { id: 'prop:p2', record: null, title: '2 格', media: [], slots: 2 },
     ]
     : [],
 }
@@ -44,8 +44,8 @@ const CANVAS_SLOTS = {
 } as const
 
 /**
- * The `dv.canvas.editor` entry of the node kind.
- * @param props - the seed and the state.
+ * The `dv.canvas.editor` entry of the node type.
+ * @param props - the entry and the state.
  * @returns the element.
  */
 function PropEditor({ node, state }: PropsRuntime<'dv.canvas.editor'>): ReactNode {
@@ -59,13 +59,13 @@ afterEach(() => {
   document.documentElement.lang = ''
 })
 
-describe('node kinds', () => {
-  it('draws each seed with the default card, shows the kind\'s editor entry, and removes both on disposal', async () => {
+describe('node types', () => {
+  it('draws each entry with the default card, shows the type\'s editor entry, and removes both on disposal', async () => {
     const runtime = await SlotTestRuntime.create()
     const canvas = createDvCanvas()
-    // The story bible's seeds hold column 0, as in the bundle, so the plan stays in the column it had before the kind came.
-    canvas.nodeKinds.register(bibleNodeKind)
-    canvas.nodeKinds.register(planNodeKind)
+    // The story bible's entries hold column 0, as in the bundle, so the plan stays in the column it had before the type came.
+    canvas.nodeTypes.register(bibleNodeType)
+    canvas.nodeTypes.register(planNodeType)
     runtime.ctx.provide('dvCanvas', canvas)
     const state = fixtureState()
     state.assets.push(asset('umbrella.png', 'image/png', null), asset('umbrella-back.png', 'image/png', null))
@@ -81,9 +81,9 @@ describe('node kinds', () => {
     await waitFor(() => { expect(card('g1')).not.toBeNull() })
     expect(card('prop:p1')).toBeNull()
 
-    const kinds = await runtime.mount({
+    const types = await runtime.mount({
       inject: ['dvCanvas'],
-      apply: (ctx: Context) => { ctx.effect(() => ctx.dvCanvas.nodeKinds.register(PROPS), 'test: node kind') },
+      apply: (ctx: Context) => { ctx.effect(() => ctx.dvCanvas.nodeTypes.register(PROPS), 'test: node type') },
     })
     const editors = await runtime.mount({
       inject: ['slots'],
@@ -95,15 +95,15 @@ describe('node kinds', () => {
     })
     await waitFor(() => { expect(card('prop:p1')).not.toBeNull() })
     const media = card('prop:p1')
-    expect(media?.getAttribute('data-node-kind')).toBe('prop')
+    expect(media?.getAttribute('data-node-type')).toBe('prop')
     expect(media?.textContent).toBe('道具 · 第 1 版+1红伞')
     expect(media?.querySelector('img')?.getAttribute('src')).toContain('umbrella.png')
     expect(media?.innerHTML).toContain('background: rgb(1, 2, 3)')
-    // A seed with slots reads like a plan card: its label above its title, with no grid while no slot has a frame.
-    expect(card('prop:p2')?.textContent).toBe('分镜板2 格')
-    // The kind's column 1 is also the column of the plan kind, so the seeds sit under the plan node.
+    // An entry with slots reads like a plan card: its type label above its title, with no grid while no slot has a frame.
+    expect(card('prop:p2')?.textContent).toBe('道具2 格')
+    // The type's column 1 is also the column of the plan type, so the entries sit under the plan node.
     expect(card('prop:p1')?.style.left).toBe(card('plan:p1')?.style.left)
-    // The seed's media belong to its node, so the placed umbrella image has no asset node of its own.
+    // The entry's media belong to its node, so the placed umbrella image has no asset node of its own.
     expect(card('asset:umbrella.png')).toBeNull()
 
     fireEvent.pointerDown(card('prop:p1') as HTMLElement, { button: 0, clientX: 5, clientY: 5, pointerId: 1 })
@@ -116,8 +116,8 @@ describe('node kinds', () => {
     await waitFor(() => { expect(within(editor).queryByTestId('prop-editor')).toBeNull() })
     expect(within(editor).getByRole('heading').textContent).toBe('红伞')
 
-    await kinds.dispose()
-    expect(canvas.nodeKinds.list()).toEqual([bibleNodeKind, planNodeKind])
+    await types.dispose()
+    expect(canvas.nodeTypes.list()).toEqual([bibleNodeType, planNodeType])
     await waitFor(() => { expect(card('prop:p1')).toBeNull() })
     expect(card('prop:p2')).toBeNull()
     await runtime.dispose()

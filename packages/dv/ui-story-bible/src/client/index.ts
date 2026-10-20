@@ -1,5 +1,5 @@
 /**
- * Browser half of the story bible: the canvas node kind that draws each character, location and style at its newest
+ * Browser half of the story bible: the canvas node type that draws each character, location and style at its newest
  * version, one version kind per reference kind (`character`, `location`, `style`), the records whose outputs the
  * newest versions use as references, the editor body of a story bible node (the `dv.canvas.editor` entry), one mention
  * kind per reference kind for the composer's `@` menu, and the History row that names the item of a story bible record.
@@ -11,7 +11,7 @@ import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type { Character, Location, StoryBibleState, Style } from '@dv/story-bible/types'
 import { pickText } from '@dv/ui-kit/locale.ts'
-import type { HistoryRow, MentionKind, NodeKind, NodeSeed, TakesInUse, VersionKind } from '@dv/ui-kit/registries.ts'
+import type { HistoryRow, MentionKind, NodeEntry, NodeType, TakesInUse, VersionKind } from '@dv/ui-kit/registries.ts'
 import type { WireState } from '@dv/ui-kit/types.ts'
 import { BibleEditor } from './BibleEditor.tsx'
 import { bibleNode, itemsOf, KINDS } from './kinds.ts'
@@ -46,24 +46,24 @@ export const bibleVersionKinds: readonly VersionKind[] = KINDS.map(({ kind, fiel
 }))
 
 /**
- * The canvas node kind of the story bible: one seed per character, location and style, characters first, showing the
- * newest version (its name, else its ID, and its references) and labeled with its kind; the records of the earlier
- * versions center the seed on a history focus.
+ * The canvas node type of the story bible: one entry per character, location and style, characters first, showing the
+ * newest version (its name, else its ID, and its references); the records of the earlier
+ * versions center the entry on a history focus.
  */
-export const bibleNodeKind: NodeKind = {
+export const bibleNodeType: NodeType = {
   id: '@dv/ui-story-bible',
-  kind: 'bible',
+  type: 'bible',
   label: () => pickText('故事设定', 'Story bible'),
   color: 'var(--dv-kind-character)',
   column: 0,
-  nodes(state) {
+  entries(state) {
     const records = new Map(state.components.proj.records.map(record => [record.id, record]))
-    return KINDS.flatMap(({ field, label }) => Object.entries(itemsOf(state, field)).flatMap(([id, versions]): NodeSeed[] => {
+    return KINDS.flatMap(({ field }) => Object.entries(itemsOf(state, field)).flatMap(([id, versions]): NodeEntry[] => {
       const latest = versions.at(-1)
       if (latest === undefined) return []
       return [{
         id: bibleNode(id), record: records.get(latest.created_by) ?? null, records: versions.slice(0, -1).map(entry => entry.created_by),
-        label: label(), title: latest.name || id, media: latest.references,
+        title: latest.name || id, media: latest.references,
       }]
     }))
   },
@@ -85,7 +85,7 @@ export const bibleReferencesInUse: TakesInUse = {
  * reference as the thumbnail.
  */
 export const bibleMentionKinds: readonly MentionKind[] = KINDS.map(({ kind, field }, index) => ({
-  id: `${bibleNodeKind.id}:${kind}`,
+  id: `${bibleNodeType.id}:${kind}`,
   kind,
   order: index + 1,
   section: () => field === 'characters' ? pickText('角色', 'Characters') : pickText('场景和风格', 'Locations and styles'),
@@ -120,15 +120,15 @@ export const bibleHistoryRow: HistoryRow = {
 }
 
 /**
- * Client plugin body: while `dvCanvas` is present, register the node kind, the references in use and the three version
- * kinds; while the slot registry is present, register the editor body of the node kind as its `dv.canvas.editor`
+ * Client plugin body: while `dvCanvas` is present, register the node type, the references in use and the three version
+ * kinds; while the slot registry is present, register the editor body of the node type as its `dv.canvas.editor`
  * entry; while `dvMentions` is present, register the three mention kinds; while `dvHistory` is present, register the
  * History row. Each registration leaves with its service or with the plugin.
  * @param ctx - client root context.
  */
 export function apply(ctx: ClientContext): void {
   ctx.inject(['dvCanvas'], (scope) => {
-    scope.effect(() => scope.dvCanvas.nodeKinds.register(bibleNodeKind), 'ui-story-bible: node kind')
+    scope.effect(() => scope.dvCanvas.nodeTypes.register(bibleNodeType), 'ui-story-bible: node type')
     scope.effect(() => scope.dvCanvas.takesInUse.register(bibleReferencesInUse), 'ui-story-bible: references in use')
     for (const kind of bibleVersionKinds) {
       scope.effect(() => scope.dvCanvas.versionKinds.register(kind), `ui-story-bible: version kind ${kind.kind}`)
@@ -136,7 +136,7 @@ export function apply(ctx: ClientContext): void {
   })
   ctx.inject(['slots'], (scope) => {
     scope.effect(() => scope.slots.inject('dv.canvas.editor', () => scope.slots.register(
-      { name: 'dv.canvas.editor', key: bibleNodeKind.id }, BibleEditor,
+      { name: 'dv.canvas.editor', key: bibleNodeType.id }, BibleEditor,
     )), 'ui-story-bible: editor')
   })
   ctx.inject(['dvMentions'], (scope) => {

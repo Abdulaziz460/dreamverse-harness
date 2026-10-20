@@ -1,7 +1,7 @@
 /**
  * Browser half: provide `dvCanvas`, the registries that plugin UI halves fill; register `dv-canvas` as a right-Sidebar
  * tab type, its dictionaries, and its body; register the canvas as the 画布 view of the workspace center
- * (`dv.center.view`), which declares the slots of the editors: `dv.canvas.editor` of the seeds, and `dv.canvas.picker`
+ * (`dv.center.view`), which declares the slots of the editors: `dv.canvas.editor` of the entries, and `dv.canvas.picker`
  * and `dv.canvas.preview` of the asset pool.
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
@@ -27,7 +27,7 @@ export const inject = ['slots', 'locale', 'sidebarRightTabs']
 /**
  * Client plugin body: provide `dvCanvas`; register the type, its dictionaries, and its body under the type's id, and the
  * center view `canvas`, which draws the project and chat session that the workspace center passes and declares the slots
- * of the seed editors, the asset picker and the asset preview (one entry declares a slot, so the tab body declares none).
+ * of the entry editors, the asset picker and the asset preview (one entry declares a slot, so the tab body declares none).
  * @param ctx - client root context.
  */
 export function apply(ctx: ClientContext): void {

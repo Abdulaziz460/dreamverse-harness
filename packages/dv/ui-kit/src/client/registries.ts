@@ -1,7 +1,7 @@
 /**
  * The descriptor registries that plugin UI halves register into, as types and one factory. Each registry is a client
  * service that the UI-core package which reads it provides at its `apply` top level: `@dv/ui-history` provides
- * `dvHistory`, whose rows give the subject of a history row, and `@dv/ui-canvas` provides `dvCanvas`, whose node kinds,
+ * `dvHistory`, whose rows give the subject of a history row, and `@dv/ui-canvas` provides `dvCanvas`, whose node types,
  * chain anchors, takes in use and version kinds describe the canvas nodes of plugin data. A UI half registers inside
  * `ctx.inject([<service>], …)` of `dvHistory`, `dvCanvas` or `dvMentions` (`@dv/ui-composer`) and keeps its disposers.
  *
@@ -79,7 +79,7 @@ export type CenterFocus =
 /** The registries of the canvas, provided by `@dv/ui-canvas` as `ctx.dvCanvas`. */
 export interface DvCanvas {
   /** Keyed by `id`. */
-  nodeKinds: Registry<NodeKind>
+  nodeTypes: Registry<NodeType>
   /** Keyed by `starter`. */
   chainAnchors: Registry<ChainAnchor>
   /** Keyed by `id`. */
@@ -98,30 +98,28 @@ export interface ChainAnchor {
   approvedVersions?(state: WireState, anchorId: string): number[]
 }
 
-/** One kind of canvas node that a plugin draws from its own slice. */
-export interface NodeKind {
+/** One type of canvas node that a plugin draws from its own slice. */
+export interface NodeType {
   /** Package name; also the key of its 'dv.canvas.editor' slot entry. */
   id: string
-  /** The data-node-kind value, such as 'bible' or 'plan'. */
-  kind: string
-  /** The kind label of the default card, unless the seed has its own label. */
+  /** The data-node-type value, such as 'bible' or 'plan'. */
+  type: string
+  /** The type label of the default card. */
   label(): string
   color: string
   /** Default layout column: bible 0, plan 1; takes start at 2. */
   column: number
   /** Reads only its own slice. */
-  nodes(state: WireState): NodeSeed[]
+  entries(state: WireState): NodeEntry[]
 }
 
-/** One node that a `NodeKind` draws. */
-export interface NodeSeed {
+/** One node that a `NodeType` draws. */
+export interface NodeEntry {
   id: string
   /** The record that wrote the shown version. */
   record: ProjectRecord | null
   /** Records that wrote earlier versions; a history focus on one centers this node. */
   records?: readonly string[]
-  /** The kind label of this node, such as 角色 or 场景, when one NodeKind draws several kinds. */
-  label?: string
   title: string
   subtitle?: string
   /** Assets the node shows; no asset node draws them again. */
@@ -154,8 +152,8 @@ export interface VersionKind {
   assets(state: WireState, id: string, version: number): string[]
 }
 
-/** What the canvas lends the `dv.canvas.editor` entry of a seed: its writes, its asset picker and its asset preview. */
-export interface SeedEditorHost {
+/** What the canvas lends the `dv.canvas.editor` entry of a node entry: its writes, its asset picker and its asset preview. */
+export interface EntryEditorHost {
   /** Run an operation as a canvas write, with the canvas's project and chat session; the canvas shows a failure. */
   run(request: Omit<OperationRequest, 'project' | 'surface' | 'session'>): void
   /** Open the canvas's asset picker of assets only; `onConfirm` receives the picked asset IDs in pick order. */
@@ -187,8 +185,8 @@ declare module '@deepseek-ai/cordis' {
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
-    /** The editor body of the nodes of one `NodeKind`, keyed by its `id`; `@dv/ui-canvas` renders it in a node's editor. */
-    'dv.canvas.editor': { kind: 'keyed'; scope: 'root'; owner: { node: NodeSeed; state: WireState; host: SeedEditorHost } }
+    /** The editor body of the nodes of one `NodeType`, keyed by its `id`; `@dv/ui-canvas` renders it in a node's editor. */
+    'dv.canvas.editor': { kind: 'keyed'; scope: 'root'; owner: { node: NodeEntry; state: WireState; host: EntryEditorHost } }
     /** The asset pool panel in the canvas's asset picker, and the preview of one asset; `@dv/ui-canvas` renders both at key 'assets'. */
     'dv.canvas.picker': { kind: 'keyed'; scope: 'root'; owner: { projectId: string; session: string | null; client: DvClient; onOpen(asset: Asset): void } }
     'dv.canvas.preview': { kind: 'keyed'; scope: 'root'; owner: { asset: Asset; onClose(): void; zoom: ZoomPresence<Asset> } }

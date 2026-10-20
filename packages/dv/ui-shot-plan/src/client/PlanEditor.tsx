@@ -1,5 +1,5 @@
 /**
- * The plan editor: the `dv.canvas.editor` entry that the canvas shows under the editor header of a seed `plan:<PlanId>`.
+ * The plan editor: the `dv.canvas.editor` entry that the canvas shows under the editor header of an entry `plan:<PlanId>`.
  * Its texts follow the interface language of `<html lang>`.
  * @module @dv/ui-shot-plan/PlanEditor
  */
@@ -103,9 +103,9 @@ function ReferenceChip({ reference }: { reference: NamedReference }): ReactNode 
 }
 
 /**
- * The plan editor: the version row, then the shots of the chosen version. The seed ID `plan:<PlanId>` names the plan;
- * the seed of a plan without versions shows nothing.
- * @param props - the seed, the state, the canvas registries, and the API client.
+ * The plan editor: the version row, then the shots of the chosen version. The entry ID `plan:<PlanId>` names the plan;
+ * the entry of a plan without versions shows nothing.
+ * @param props - the entry, the state, the canvas registries, and the API client.
  * @returns the element.
  */
 export function PlanEditor({ node, state, canvas, client }: PropsRuntime<'dv.canvas.editor'> & PlanEditorInjected): ReactNode {

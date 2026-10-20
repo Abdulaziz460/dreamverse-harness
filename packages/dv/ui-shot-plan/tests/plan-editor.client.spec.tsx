@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * The plan editor, the `dv.canvas.editor` entry of the plan node kind, under the real slot runtime: its versions and
+ * The plan editor, the `dv.canvas.editor` entry of the plan node type, under the real slot runtime: its versions and
  * approval status, its shots and their reference assets, and its registration and removal with the plugin.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -12,10 +12,10 @@ import type { PlanId } from '@dv/shot-plan/types'
 import type { CharacterId } from '@dv/story-bible/types'
 import { assetUrl } from '@dv/ui-kit/api.ts'
 import { createRegistry } from '@dv/ui-kit/registries.ts'
-import type { ChainAnchor, DvCanvas, NodeKind, SeedEditorHost, TakesInUse, VersionKind } from '@dv/ui-kit/registries.ts'
+import type { ChainAnchor, DvCanvas, NodeType, EntryEditorHost, TakesInUse, VersionKind } from '@dv/ui-kit/registries.ts'
 import type { WireState } from '@dv/ui-kit/types.ts'
 import { asset, fixtureState, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
-import { apply, planNodeKind, planReferencesInUse } from '../src/client/index.ts'
+import { apply, planNodeType, planReferencesInUse } from '../src/client/index.ts'
 import { shotReferences } from '../src/client/PlanEditor.tsx'
 
 /** The chain anchor of the fixture's approval `a1`: it approved v1 of p1. */
@@ -37,7 +37,7 @@ const CHARACTERS: VersionKind = {
 }
 
 /** The canvas's writes, picker and preview, which the plan editor does not call. */
-const HOST: SeedEditorHost = { run: vi.fn(), pickAssets: vi.fn(), preview: vi.fn() }
+const HOST: EntryEditorHost = { run: vi.fn(), pickAssets: vi.fn(), preview: vi.fn() }
 
 afterEach(() => {
   cleanup()
@@ -48,7 +48,7 @@ afterEach(() => {
 /** @returns empty canvas registries keyed as `DvCanvas` documents. */
 function canvasRegistries(): DvCanvas {
   return {
-    nodeKinds: createRegistry<NodeKind>(kind => [kind.id]),
+    nodeTypes: createRegistry<NodeType>(kind => [kind.id]),
     chainAnchors: createRegistry<ChainAnchor>(anchor => [anchor.starter]),
     takesInUse: createRegistry<TakesInUse>(uses => [uses.id]),
     versionKinds: createRegistry<VersionKind>(kind => [kind.kind]),
@@ -56,9 +56,9 @@ function canvasRegistries(): DvCanvas {
 }
 
 /**
- * Mount the plugin under a root frame that declares `dv.canvas.editor` and renders the entry of the plan kind for the
- * plan seed of `state`, as the canvas does in a seed's editor, in the Chinese interface.
- * @param state - the project state; its first plan seed is the edited node.
+ * Mount the plugin under a root frame that declares `dv.canvas.editor` and renders the entry of the plan node type for the
+ * plan entry of `state`, as the canvas does in an entry's editor, in the Chinese interface.
+ * @param state - the project state; its first plan entry is the edited node.
  * @param canvas - the `dvCanvas` registries the plugin reads.
  * @returns the runtime, the plugin fiber, and the frame.
  */
@@ -67,10 +67,10 @@ async function mount(state: WireState, canvas: DvCanvas) {
   vi.stubGlobal('fetch', scriptedFetch({ state }).fetch)
   const runtime = await SlotTestRuntime.create()
   runtime.ctx.provide('dvCanvas', canvas)
-  const seed = planNodeKind.nodes(state)[0]
-  if (seed === undefined) throw new Error('the state has no plan')
+  const entry = planNodeType.entries(state)[0]
+  if (entry === undefined) throw new Error('the state has no plan')
   const Frame = ({ renderSlot }: PropsRenderSlots<'dv.canvas.editor'>): ReactNode =>
-    <section data-testid="editor">{renderSlot('dv.canvas.editor', { node: seed, state, host: HOST }, { entryKey: planNodeKind.id })}</section>
+    <section data-testid="editor">{renderSlot('dv.canvas.editor', { node: entry, state, host: HOST }, { entryKey: planNodeType.id })}</section>
   await runtime.root.declare({ 'dv.canvas.editor': { kind: 'keyed', scope: 'root' } }, Frame)
   const plugin = await runtime.mount({ apply })
   const { container } = runtime.renderRoot()
@@ -174,16 +174,16 @@ describe('PlanEditor', () => {
     await runtime.dispose()
   })
 
-  it('registers under the node kind\'s id once dvCanvas and the slot are present, and the plugin disposal removes it', async () => {
+  it('registers under the node type\'s id once dvCanvas and the slot are present, and the plugin disposal removes it', async () => {
     const canvas = canvasRegistries()
     const { runtime, plugin, editor } = await mount(fixtureState(), canvas)
-    expect(runtime.slots.entries('dv.canvas.editor').map(entry => entry.options.key)).toEqual([planNodeKind.id])
+    expect(runtime.slots.entries('dv.canvas.editor').map(entry => entry.options.key)).toEqual([planNodeType.id])
     expect(within(editor).getByTestId('dv-canvas-plan-status').textContent).toBe('待批准')
     expect(canvas.takesInUse.list()).toEqual([planReferencesInUse])
     await plugin.dispose()
     expect(runtime.slots.entries('dv.canvas.editor')).toHaveLength(0)
     await waitFor(() => { expect(within(editor).queryByTestId('dv-canvas-plan-status')).toBeNull() })
-    expect(canvas.nodeKinds.list()).toEqual([])
+    expect(canvas.nodeTypes.list()).toEqual([])
     await runtime.dispose()
   })
 })

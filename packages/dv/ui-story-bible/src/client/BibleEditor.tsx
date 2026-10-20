@@ -22,7 +22,7 @@ const referenceImage: CSSProperties = { height: 220, borderRadius: 'var(--dv-rad
 
 /**
  * The editor body of the story bible node that `node` draws; nothing when no character, location or style has that node.
- * @param props - the seed, the state it came from, and the canvas host.
+ * @param props - the entry, the state it came from, and the canvas host.
  * @returns the element.
  */
 export function BibleEditor({ node, state, host }: PropsRuntime<'dv.canvas.editor'>): ReactNode {

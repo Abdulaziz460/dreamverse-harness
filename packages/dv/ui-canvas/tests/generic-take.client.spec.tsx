@@ -93,7 +93,7 @@ describe('T2c, T3c: image and audio records on the canvas', () => {
     // The running retake g3 has no output, so it draws only once the declarations arrived.
     await node('g3')
     const card = await node('i1')
-    expect(card.getAttribute('data-node-kind')).toBe('take')
+    expect(card.getAttribute('data-node-type')).toBe('take')
     expect(card.getAttribute('aria-label')).toBe('生成图片')
     expect(card.querySelector('img')?.getAttribute('src')).toBe(assetUrl('cat.png'))
     const editor = await open(card)

@@ -1,6 +1,6 @@
 /**
- * The project canvas as a standalone component: an infinite surface of asset and take nodes, and the seeds of the node
- * kinds registered in `dvCanvas`, each drawn with the default card. Drag
+ * The project canvas as a standalone component: an infinite surface of asset and take nodes, and the entries of the node
+ * types registered in `dvCanvas`, each drawn with the default card. Drag
  * empty space to pan, scroll to zoom around the cursor, drag a node to move it, click a node to select it and open its
  * editor panel, which grows out of the node and shrinks back into it on close (`@dv/ui-kit/zoom.ts`). Closing the
  * editor keeps the node selected (the accent ring); a click on empty canvas with no editor open
@@ -14,7 +14,7 @@
  * browser starts with every finished take counted as opened. The canvas draws the project's current state and
  * follows every change of it; its writes go after the current position of the project's history. Colors come from the
  * `--dv-*` theme variables that `@dv/ui-shell` defines, so the canvas follows the app's light and dark themes. An image
- * or video that no take or seed node shows has a node only while it is on the project's canvas (the `asset`
+ * or video that no take or entry node shows has a node only while it is on the project's canvas (the `asset`
  * slice's `placed`): dropping a 素材 tile on the canvas runs `asset.place` with its node under the pointer, dropping
  * image and video files imports them with `place`, and the asset node's "从画布移除" runs `asset.unplace`. Each of these
  * is a record, so History lists it and undo takes it back.
@@ -53,8 +53,8 @@ export interface CanvasViewProps {
   t?: CanvasTranslate
   /** The `dvCanvas` registries that plugin UI halves fill for this view; without them, every take is a free take. */
   canvas?: DvCanvas
-  /** Renders the canvas's slots in its editors: the `dv.canvas.editor` entry of a seed, and the `dv.canvas.picker` and
-   *  `dv.canvas.preview` entries of the asset pool; without it, a seed's editor shows only its header, the asset picker
+  /** Renders the canvas's slots in its editors: the `dv.canvas.editor` entry of an entry node, and the `dv.canvas.picker`
+   *  and `dv.canvas.preview` entries of the asset pool; without it, an entry's editor shows only its header, the asset picker
    *  offers only versioned items, and the asset preview shows nothing. */
   renderSlot?: RenderCanvasSlot
 }
@@ -72,7 +72,7 @@ const noZoom = (element: HTMLElement | null): void => { void element }
 /** The task labels while `GET /api/dv/tasks` loads or after it failed: every task shows its name. */
 const NO_TASK_LABELS: WireTaskLabels = {}
 
-/** Edge stroke per kind: the kind color of the node the edge leaves (a reference leaves a seed or an asset). */
+/** Edge stroke per kind: the type color of the node the edge leaves (a reference leaves an entry or an asset). */
 const EDGE_COLOR: Record<CanvasEdge['kind'], string> = {
   reference: 'var(--dv-kind-character)', first_frame: 'var(--dv-kind-take)', chain: 'var(--dv-kind-plan)', take: 'var(--dv-kind-take)',
 }
@@ -154,7 +154,7 @@ const SEEN_KEY = 'dv-canvas-seen:'
  * @returns whether the node is a take whose render finished with an image or a video.
  */
 function isFinishedTake(node: CanvasNode): boolean {
-  return node.kind === 'take' && !node.flags.rendering && (node.video !== null || node.thumb !== null)
+  return node.type === 'take' && !node.flags.rendering && (node.video !== null || node.thumb !== null)
 }
 
 /**
@@ -221,7 +221,7 @@ export function CanvasView(
   const taskLabels = useTaskLabels(client)
   const anchors = useRegistry(canvas.chainAnchors)
   const inUse = useRegistry(canvas.takesInUse)
-  const nodeKinds = useRegistry(canvas.nodeKinds)
+  const nodeTypes = useRegistry(canvas.nodeTypes)
   const versionKinds = useRegistry(canvas.versionKinds)
   // This view's placements whose record the project state does not show yet: asset ID → on the canvas.
   const [inFlight, setInFlight] = useState<ReadonlyMap<string, boolean>>(new Map())
@@ -259,13 +259,13 @@ export function CanvasView(
   const graph = useMemo(() => {
     if (base.value === null || base.value.project.id !== projectId) return null
     return {
-      state: base.value, ...buildCanvasGraph(base.value, placed, operations.value ?? [], language, anchors, inUse, nodeKinds, versionKinds),
+      state: base.value, ...buildCanvasGraph(base.value, placed, operations.value ?? [], language, anchors, inUse, nodeTypes, versionKinds),
     }
-  }, [base.value, placed, projectId, operations.value, language, anchors, inUse, nodeKinds, versionKinds])
-  // The frame grid of each seed with slots. Memoized on the graph, because a pan or zoom re-renders the view on every
+  }, [base.value, placed, projectId, operations.value, language, anchors, inUse, nodeTypes, versionKinds])
+  // The frame grid of each entry with slots. Memoized on the graph, because a pan or zoom re-renders the view on every
   // pointer move.
-  const grids = useMemo(() => new Map(graph === null ? [] : graph.nodes.flatMap(node => node.kind === 'seed' && node.seed.slots !== undefined
-    ? [[node.id, { frames: slotFrames(graph.nodes, node.id, node.seed.slots) }] as const]
+  const grids = useMemo(() => new Map(graph === null ? [] : graph.nodes.flatMap(node => node.type === 'entry' && node.entry.slots !== undefined
+    ? [[node.id, { frames: slotFrames(graph.nodes, node.id, node.entry.slots) }] as const]
     : [])), [graph])
 
   const [positions, setPositions] = useState<Record<string, NodePosition>>({})
@@ -400,13 +400,13 @@ export function CanvasView(
   }, [])
   useEffect(() => {
     if (pendingFocus === null || !layoutReady || graph === null) return
-    // The record's own node, else the seed node whose version it wrote, else the node of its first output.
+    // The record's own node, else the entry node whose version it wrote, else the node of its first output.
     const recordId = pendingFocus
     const firstOutput = graph.state.components.proj.records.find(record => record.id === recordId)?.outputs[0]
     const outputNode = firstOutput === undefined ? undefined : graph.assetNodes[firstOutput]
     const node = graph.nodes.find(candidate => candidate.id === recordId)
       ?? graph.nodes.find(candidate => candidate.record?.id === recordId)
-      ?? graph.nodes.find(candidate => candidate.kind === 'seed' && candidate.seed.records?.includes(recordId) === true)
+      ?? graph.nodes.find(candidate => candidate.type === 'entry' && candidate.entry.records?.includes(recordId) === true)
       ?? graph.nodes.find(candidate => candidate.id === outputNode)
     pendingFocus = null
     if (node === undefined) return
@@ -460,7 +460,7 @@ export function CanvasView(
   useEffect(() => {
     const awaited = awaitedRender.current
     if (awaited === null || graph === null) return
-    const node = graph.nodes.find(candidate => candidate.kind === 'take' && candidate.record?.based_on === awaited.basedOn && !awaited.known.has(candidate.id))
+    const node = graph.nodes.find(candidate => candidate.type === 'take' && candidate.record?.based_on === awaited.basedOn && !awaited.known.has(candidate.id))
     if (node === undefined) return
     settleAwaited()
     setEditing(null)
@@ -748,7 +748,7 @@ export function CanvasView(
               t={t}
               onPointerDown={onNodeDown(node)}
               {...grid === undefined ? {} : { frames: grid.frames }}
-              {...node.kind === 'take' && node.flags.failed ? { onRetry: () => { retryTake(node) }, retrying: retryingFrom === node.id } : {}}
+              {...node.type === 'take' && node.flags.failed ? { onRetry: () => { retryTake(node) }, retrying: retryingFrom === node.id } : {}}
               unseen={seenIds !== null && isFinishedTake(node) && !seenIds.has(node.id)}
             />
           )

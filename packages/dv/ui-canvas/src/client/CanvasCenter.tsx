@@ -1,7 +1,7 @@
 /**
  * The canvas as a view of the workspace center (`dv.center.view`): a {@link CanvasView} of the project and chat session
  * that the center passes, whose editors render the slots that this entry declares: the `dv.canvas.editor` entries of the
- * seeds, and the asset pool's `dv.canvas.picker` and `dv.canvas.preview` entries.
+ * node entries, and the asset pool's `dv.canvas.picker` and `dv.canvas.preview` entries.
  */
 import type { ReactNode } from 'react'
 import type { PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'

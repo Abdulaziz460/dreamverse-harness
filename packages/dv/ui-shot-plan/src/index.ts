@@ -1,5 +1,5 @@
 /**
- * Host half of the shot plan UI plugin: nothing. The browser half in `src/client/` registers the canvas node kind of
+ * Host half of the shot plan UI plugin: nothing. The browser half in `src/client/` registers the canvas node type of
  * plans and the takes that plans use.
  *
  * @module @dv/ui-shot-plan

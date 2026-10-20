@@ -5,7 +5,7 @@ import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import type { AssetId, RecordId } from '@dv/project/types'
 import type { ClipId, TimelineId } from '@dv/timeline/types'
 import { createRegistry } from '@dv/ui-kit/registries.ts'
-import type { ChainAnchor, DvCanvas, NodeKind, TakesInUse, VersionKind } from '@dv/ui-kit/registries.ts'
+import type { ChainAnchor, DvCanvas, NodeType, TakesInUse, VersionKind } from '@dv/ui-kit/registries.ts'
 import { fixtureState } from '../../ui-kit/tests/fixture.client.tsx'
 import { TIMELINE_ID } from '../src/client/definition.ts'
 import { apply } from '../src/client/index.ts'
@@ -47,7 +47,7 @@ describe('ui-timeline takes in use', () => {
   it('registers once dvCanvas is present, and the plugin disposal removes it', async () => {
     const ctx = new Context()
     const canvas: DvCanvas = {
-      nodeKinds: createRegistry<NodeKind>(kind => [kind.id]),
+      nodeTypes: createRegistry<NodeType>(kind => [kind.id]),
       chainAnchors: createRegistry<ChainAnchor>(anchor => [anchor.starter]),
       takesInUse: createRegistry<TakesInUse>(uses => [uses.id]),
       versionKinds: createRegistry<VersionKind>(kind => [kind.kind]),

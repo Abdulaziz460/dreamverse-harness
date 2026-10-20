@@ -12,8 +12,8 @@
  * While the render starts the button is disabled and reads 渲染中…, and a refused request shows its error under the
  * button. "添加素材" opens the asset picker; a reference chip opens the preview of its asset, or the editor of the node of
  * its versioned item (read through the registered version kinds) over this one. The picker's asset pool and the preview
- * are the `dv.canvas.picker` and `dv.canvas.preview` entries at key `assets`. A seed (a node that a registered `NodeKind`
- * drew) shows the `dv.canvas.editor` entry keyed by its `NodeKind.id`, which the canvas lends its writes, its asset
+ * are the `dv.canvas.picker` and `dv.canvas.preview` entries at key `assets`. An entry node (a node that a registered
+ * `NodeType` drew) shows the `dv.canvas.editor` entry keyed by its `NodeType.id`, which the canvas lends its writes, its asset
  * picker of assets only and its asset preview; it shows only the header when no entry is registered or the host renders
  * no entries. A stale node offers "仍然保留", which keeps its record as it is (`proj.stale_accept`).
  */
@@ -26,13 +26,13 @@ import { dispatchCompose, type DvComposeRef } from '@dv/ui-kit/compose.ts'
 import { fieldsOf, paramsOf, type FormField } from '@dv/ui-kit/form.ts'
 import { useText } from '@dv/ui-kit/locale.ts'
 import { formatInputRef } from '@dv/ui-kit/references.ts'
-import type { SeedEditorHost, VersionKind } from '@dv/ui-kit/registries.ts'
+import type { EntryEditorHost, VersionKind } from '@dv/ui-kit/registries.ts'
 import { readStored, writeStored } from '@dv/ui-kit/storage.ts'
 import { taskLabel, type WireTaskLabels } from '@dv/ui-kit/tool-labels.ts'
 import type { OperationRequest, ProjectAsset, WireOperation, WireState } from '@dv/ui-kit/types.ts'
 import { AssetMedia, AssetPicker, AssetPreview } from './AssetPicker.tsx'
 import type { CanvasNode } from './graph.ts'
-import { kindColor, kindLabel, nodeTitle } from './NodeCard.tsx'
+import { nodeTitle, typeColor, typeLabel } from './NodeCard.tsx'
 import type { CanvasTranslate } from './NodeCard.tsx'
 
 /** Renders the slots of the canvas's editors (`dv.canvas.editor`, `dv.canvas.picker`, `dv.canvas.preview`): the
@@ -68,8 +68,8 @@ export interface NodeEditorProps {
   onOpenNode: (nodeId: string) => void
   /** The zoom transition's ref for the panel, which grows out of the node and shrinks back into it. */
   zoomRef: (element: HTMLElement | null) => void
-  /** Renders the `dv.canvas.editor` entry of a seed, and the asset pool in the picker and the preview; without it a seed
-   *  shows only its header, the picker offers only versioned items, and the preview shows nothing. */
+  /** Renders the `dv.canvas.editor` entry of an entry node, and the asset pool in the picker and the preview; without it
+   *  an entry node shows only its header, the picker offers only versioned items, and the preview shows nothing. */
   renderSlot?: RenderCanvasSlot
 }
 
@@ -462,27 +462,27 @@ const RESIZE_KEYS: Readonly<Record<string, readonly [number, number]>> = {
 export function NodeEditor(props: NodeEditorProps): ReactNode {
   const { node, t, onClose } = props
   const title = nodeTitle(node, t)
-  // A node without its own title is titled by its kind, so the label beside the kind dot would repeat the title.
-  const kind = kindLabel(node, t)
+  // A node without its own title is titled by its type, so the label beside the type dot would repeat the title.
+  const type = typeLabel(node, t)
   const staleRecord = node.flags.stale ? node.record : null
   const placement = useEditorPlacement()
-  // The versioned item that a seed stands for: the item whose version kind names the seed's node.
-  const item = node.kind === 'seed' ? findItem(props.state, props.versionKinds, (kind, id) => kind.node(id) === node.id) : null
+  // The versioned item that an entry stands for: the item whose version kind names the entry's node.
+  const item = node.type === 'entry' ? findItem(props.state, props.versionKinds, (kind, id) => kind.node(id) === node.id) : null
   const askAgent = (): void => {
     const shown = node.thumb ?? node.video ?? node.references[0] ?? null
     // An asset node without a record (`asset:<id>`) is referenced as the asset itself.
-    const ref: DvComposeRef = node.kind === 'asset' && node.record === null && shown !== null
+    const ref: DvComposeRef = node.type === 'asset' && node.record === null && shown !== null
       ? { kind: 'asset', id: shown, label: title, assetId: shown }
       : { kind: item?.kind.kind ?? 'record', id: item?.id ?? node.record?.id ?? node.id, label: title, ...shown === null ? {} : { assetId: shown } }
     dispatchCompose({ text: t('compose.text', { title }), refs: [ref] })
     onClose()
   }
   let body: ReactNode
-  switch (node.kind) {
+  switch (node.type) {
     case 'take': body = <TakeForm {...props} title={title} />; break
     case 'asset': body = <AssetPanel node={node} t={t} onRemoveFromCanvas={props.onRemoveFromCanvas} />; break
-    case 'seed':
-      body = <SeedForm {...props} node={node} />
+    case 'entry':
+      body = <EntryForm {...props} node={node} />
       break
   }
   const { panelRef, rect, begin, follow, finish, reset, resizeBy } = placement
@@ -506,8 +506,8 @@ export function NodeEditor(props: NodeEditorProps): ReactNode {
           onDoubleClick={(event) => { if (!(event.target instanceof Element && event.target.closest('button') !== null)) reset() }}
         >
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, lineHeight: '16px', color: 'var(--dv-text-2)' }}>
-            <span style={{ width: 6, height: 6, borderRadius: 9999, background: kindColor(node) }} />
-            {kind === title ? null : kind}
+            <span style={{ width: 6, height: 6, borderRadius: 9999, background: typeColor(node) }} />
+            {type === title ? null : type}
           </span>
           <h2 style={{ flex: 1, minWidth: 0, margin: 0, fontSize: 16, lineHeight: '24px', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</h2>
           <button type="button" className="dv-canvas-soft" style={button} onClick={askAgent}>{t('editor.askAgent')}</button>
@@ -720,18 +720,18 @@ function TakeForm(
 }
 
 /**
- * The body of a seed: the `dv.canvas.editor` entry keyed by its `NodeKind.id`, lent the canvas's writes (with the
- * canvas's project, chat session and surface), the asset picker of assets only, and the asset preview.
- * @param props - editor props of a seed node.
+ * The body of an entry node: the `dv.canvas.editor` entry keyed by its `NodeType.id`, lent the canvas's writes (with
+ * the canvas's project, chat session and surface), the asset picker of assets only, and the asset preview.
+ * @param props - editor props of an entry node.
  * @returns the element.
  */
-function SeedForm(props: NodeEditorProps & { node: Extract<CanvasNode, { kind: 'seed' }> }): ReactNode {
+function EntryForm(props: NodeEditorProps & { node: Extract<CanvasNode, { type: 'entry' }> }): ReactNode {
   const { node, state, client, project, session, t, run } = props
   const [picking, setPicking] = useState<{ chosen: readonly string[]; onConfirm: (assets: string[]) => void } | null>(null)
   const [previewed, setPreviewed] = useState<ProjectAsset | null>(null)
   // The element that the preview grows out of and shrinks back into.
   const opener = useRef<Element | null>(null)
-  const host: SeedEditorHost = {
+  const host: EntryEditorHost = {
     run: (request) => { void run(() => client.runOperation({ ...request, project, surface: 'canvas', ...session === null ? {} : { session } })) },
     pickAssets: (chosen, onConfirm) => { setPicking({ chosen, onConfirm }) },
     preview: (assetId, element) => {
@@ -741,7 +741,7 @@ function SeedForm(props: NodeEditorProps & { node: Extract<CanvasNode, { kind: '
   }
   return (
     <>
-      {props.renderSlot?.('dv.canvas.editor', { node: node.seed, state, host }, { entryKey: node.nodeKind.id })}
+      {props.renderSlot?.('dv.canvas.editor', { node: node.entry, state, host }, { entryKey: node.nodeType.id })}
       {picking === null
         ? null
         : (

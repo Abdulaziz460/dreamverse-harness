@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Browser half of the DreamVerse shot plan: the canvas node kind that draws each plan at its latest version with a frame grid of one slot per shot, the takes in use that keep the producers of a plan's reference assets on the canvas, and the plan editor with its versions, approval status and shots.",
+  "description": "Browser half of the DreamVerse shot plan: the canvas node type that draws each plan at its latest version with a frame grid of one slot per shot, the takes in use that keep the producers of a plan's reference assets on the canvas, and the plan editor with its versions, approval status and shots.",
   "exports": {
     ".": "./src/index.ts",
     "./client": {
