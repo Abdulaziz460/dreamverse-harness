@@ -19,7 +19,7 @@ import { fixtureState, record, withTestRef } from './fixture.client.tsx'
 
 /** The reference noun `test_ref` with the default editor. */
 const testRef = defineReferenceUi({
-  id: '@dv/ui-test-ref', key: 'test_ref', slice: state => state.components.test_ref ?? {},
+  id: '@dv/ui-test-ref', key: 'test_ref', slice: state => state.components.test_ref,
   label: ['参考', 'Reference'], mention: { section: ['参考', 'References'], order: 4 },
 })
 
@@ -99,6 +99,12 @@ describe('defineReferenceUi descriptors', () => {
     expect(mentionKind.section()).toBe('References')
   })
 
+  it('draws no entry, @ item or version for a state without the slice of the noun', () => {
+    const state = fixtureState()
+    expect([testRef.nodeType.entries(state), testRef.mentionKind.items(state), testRef.versionKind.latest(state)]).toEqual([[], [], []])
+    expect(testRef.versionKind.name(state, 'hero', 1)).toBeNull()
+  })
+
   it('names the item of a <key>. record by its name, else by the ID param of the noun', () => {
     const subject = (params: Record<string, unknown>) =>
       testRef.historyRow.subject(record({ id: 'b', operation: 'test_ref.create', params }))
@@ -114,7 +120,7 @@ describe('defineReferenceUi apply', () => {
   it('registers the canvas descriptors once dvCanvas is present, and the plugin disposal removes them', async () => {
     const ctx = new Context()
     const canvas = canvasRegistries()
-    const fiber = ctx.plugin({ apply: (ctx: Context) => { testRef.apply(ctx) } })
+    const fiber = ctx.plugin({ apply: testRef.apply })
     await fiber.await()
     expect(canvas.nodeTypes.list()).toEqual([])
     ctx.provide('dvCanvas', canvas)
@@ -129,7 +135,7 @@ describe('defineReferenceUi apply', () => {
     const ctx = new Context()
     const mentions: DvMentions = { kinds: createRegistry<MentionKind>(kind => [kind.id]) }
     const history: DvHistory = { rows: createRegistry<HistoryRow>(row => [row.match]) }
-    const fiber = ctx.plugin({ apply: (ctx: Context) => { testRef.apply(ctx) } })
+    const fiber = ctx.plugin({ apply: testRef.apply })
     await fiber.await()
     ctx.provide('dvMentions', mentions)
     ctx.provide('dvHistory', history)
@@ -160,7 +166,7 @@ describe('the editor entry of a reference noun', () => {
     document.documentElement.lang = 'zh-CN'
     const runtime = await SlotTestRuntime.create()
     await runtime.declare({ 'dv.canvas.editor': { kind: 'keyed', scope: 'root' } })
-    const plugin = await runtime.mount({ apply: (ctx: Context) => { testRef.apply(ctx) } })
+    const plugin = await runtime.mount({ apply: testRef.apply })
     expect(runtime.slots.entries('dv.canvas.editor')).toHaveLength(1)
     const state = withTestRef(fixtureState())
     const host = hostMock()
@@ -218,7 +224,7 @@ describe('the editor entry of a reference noun', () => {
     const traits = defineReferenceUi({ ...testRef.spec, editor: TraitsEditor })
     const runtime = await SlotTestRuntime.create()
     await runtime.declare({ 'dv.canvas.editor': { kind: 'keyed', scope: 'root' } })
-    await runtime.mount({ apply: (ctx: Context) => { traits.apply(ctx) } })
+    await runtime.mount({ apply: traits.apply })
     const state = withTestRef(fixtureState())
     const host = hostMock()
     const { view } = runtime.renderSlot('dv.canvas.editor', { node: entryOf(state, 'test_ref:hero'), state, host }, { entryKey: traits.spec.id })

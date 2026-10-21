@@ -14,10 +14,11 @@ import { assetUrl, DvClient } from '@dv/ui-kit/api.ts'
 import { DV_COMPOSE_EVENT } from '@dv/ui-kit/compose.ts'
 import type { DvComposeDetail } from '@dv/ui-kit/compose.ts'
 import type { ChainAnchor, DvCanvas } from '@dv/ui-kit/registries.ts'
-import type { WireOperation, WireState } from '@dv/ui-kit/types.ts'
+import type { WireOperation } from '@dv/ui-kit/types.ts'
 import { DV_ASSET_DRAG_TYPE, DV_CANVAS_FOCUS_EVENT } from '@dv/ui-kit/workspace-events.ts'
 import { defineReferenceUi } from '@dv/ui-kit/reference-kit.tsx'
 import { asset, fixtureState, OPERATIONS, record, scriptedFetch, withTestRef } from '../../ui-kit/tests/fixture.client.tsx'
+import type { FixtureState } from '../../ui-kit/tests/fixture.client.tsx'
 import { planNodeType } from '../../ui-shot-plan/src/client/index.ts'
 import { CanvasView } from '../src/client/CanvasView.tsx'
 import { createDvCanvas } from '../src/client/dv-canvas.ts'
@@ -34,7 +35,7 @@ const APPROVAL: ChainAnchor = {
 
 /** The reference noun `test_ref` of the fixture, declared as the UI package of a noun declares it. */
 const testRef = defineReferenceUi({
-  id: '@dv/ui-test-ref', key: 'test_ref', slice: state => state.components.test_ref ?? {},
+  id: '@dv/ui-test-ref', key: 'test_ref', slice: state => state.components.test_ref,
   label: ['参考', 'Reference'], mention: { section: ['参考', 'References'], order: 1 },
 })
 
@@ -78,7 +79,7 @@ afterEach(() => {
  * @param operations - the operation declarations the route serves.
  * @returns the client, the recorded writes, and the recorded layout writes.
  */
-function scriptedClient(edit: (state: WireState) => void, holdOperations: boolean, operations: WireOperation[]) {
+function scriptedClient(edit: (state: FixtureState) => void, holdOperations: boolean, operations: WireOperation[]) {
   const scripted = scriptedFetch({
     state: () => {
       const state = withTestRef(fixtureState())
@@ -126,7 +127,7 @@ function nodeLookup(view: RenderResult): (id: string) => HTMLElement {
  * @returns the rendered view, the recorded writes, and a node lookup.
  */
 function mount(
-  withTranslate = true, edit: (state: WireState) => void = () => undefined, holdOperations = false, operations = OPERATIONS,
+  withTranslate = true, edit: (state: FixtureState) => void = () => undefined, holdOperations = false, operations = OPERATIONS,
   canvas: DvCanvas = planCanvas(refCanvas().canvas),
 ) {
   const { client, writes, layoutWrites } = scriptedClient(edit, holdOperations, operations)
@@ -141,7 +142,7 @@ function mount(
  * @param edit - changes to the fixture state, applied to every state the route serves.
  * @returns the runtime, the rendered view, the recorded writes, and a node lookup.
  */
-async function mountWithAssetPool(edit: (state: WireState) => void) {
+async function mountWithAssetPool(edit: (state: FixtureState) => void) {
   const { client, writes } = scriptedClient(edit, false, OPERATIONS)
   const t: CanvasTranslate = makeTranslate(zh)
   const canvas = refCanvas().canvas

@@ -32,8 +32,8 @@ export interface ReferenceUiSpec<V extends WireReferenceVersion = WireReferenceV
   id: string
   /** Component key = reference kind = node type = node ID prefix, such as 'character'. */
   key: string
-  /** The noun's slice, such as `state => state.components.character`. */
-  slice: (state: WireState) => Readonly<Record<string, readonly V[]>>
+  /** The noun's slice, such as `state => state.components.character`; undefined while the host half is not loaded. */
+  slice: (state: WireState) => Readonly<Record<string, readonly V[]>> | undefined
   /** Card label and picker section, such as ['角色', 'Character']. */
   label: readonly [zh: string, en: string]
   /** The `@` menu section and its order, such as { section: ['角色', 'Characters'], order: 1 }. */
@@ -57,8 +57,13 @@ export interface ReferenceUi<V extends WireReferenceVersion = WireReferenceVersi
   referencesInUse: TakesInUse
   mentionKind: MentionKind
   historyRow: HistoryRow
+  /** An arrow function, so `export const apply = <k>.apply` keeps it bound (D5.17). */
   apply: (ctx: ClientContext) => void
 }
+
+/** Every item of a noun by ID; a state without the noun's slice holds none, as the initial slice of the host half. */
+const itemsOf = <V extends WireReferenceVersion>(spec: ReferenceUiSpec<V>, state: WireState): Readonly<Record<string, readonly V[]>> =>
+  spec.slice(state) ?? {}
 
 /**
  * Every item of a noun at its newest version, in slice order; an ID without versions is left out.
@@ -69,7 +74,7 @@ export interface ReferenceUi<V extends WireReferenceVersion = WireReferenceVersi
 function newestOf<V extends WireReferenceVersion>(
   spec: ReferenceUiSpec<V>, state: WireState,
 ): Array<{ id: string; latest: V; versions: readonly V[] }> {
-  return Object.entries(spec.slice(state)).flatMap(([id, versions]) => {
+  return Object.entries(itemsOf(spec, state)).flatMap(([id, versions]) => {
     const latest = versions.at(-1)
     return latest === undefined ? [] : [{ id, latest, versions }]
   })
@@ -85,7 +90,7 @@ function newestOf<V extends WireReferenceVersion>(
 export function defineReferenceUi<V extends WireReferenceVersion>(spec: ReferenceUiSpec<V>): ReferenceUi<V> {
   const node = (id: string): string => `${spec.key}:${id}`
   const versionOf = (state: WireState, id: string, version: number): V | undefined =>
-    spec.slice(state)[id]?.find(entry => entry.version === version)
+    itemsOf(spec, state)[id]?.find(entry => entry.version === version)
   const nodeType: NodeType = {
     id: spec.id,
     type: spec.key,
@@ -186,7 +191,7 @@ export function ReferenceEditor<V extends WireReferenceVersion>(props: Reference
   const pick = useText()
   const prefix = `${spec.key}:`
   const id = node.id.startsWith(prefix) ? node.id.slice(prefix.length) : null
-  const latest = id === null ? undefined : spec.slice(state)[id]?.at(-1)
+  const latest = id === null ? undefined : itemsOf(spec, state)[id]?.at(-1)
   if (id === null || latest === undefined) return null
   const operation = `${spec.key}.update`
   const name = latest.name || id

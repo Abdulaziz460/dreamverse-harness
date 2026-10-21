@@ -37,7 +37,7 @@ const PROPS: NodeType = {
 
 /** The reference noun `test_ref` of the fixture, declared as the UI package of a noun declares it. */
 const testRef = defineReferenceUi({
-  id: '@dv/ui-test-ref', key: 'test_ref', slice: state => state.components.test_ref ?? {},
+  id: '@dv/ui-test-ref', key: 'test_ref', slice: state => state.components.test_ref,
   label: ['参考', 'Reference'], mention: { section: ['参考', 'References'], order: 1 },
 })
 
@@ -142,7 +142,7 @@ describe('node types', () => {
     const Frame = ({ renderSlot }: PropsRenderSlots<CanvasSlot>): ReactNode =>
       <CanvasView projectId="p1" client={client} session="s5" t={t} canvas={canvas} renderSlot={renderSlot} />
     await runtime.root.declare(CANVAS_SLOTS, Frame)
-    await runtime.mount({ apply: (ctx: Context) => { testRef.apply(ctx) } })
+    await runtime.mount({ apply: testRef.apply })
     runtime.ctx.provide('sidebarRightTabs', new SidebarRightTabRegistry(runtime.ctx) as never)
     await runtime.mount({ inject: [...assetPoolInject], apply: assetPoolApply })
     const { container } = runtime.renderRoot()

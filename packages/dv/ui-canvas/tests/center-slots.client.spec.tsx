@@ -27,7 +27,7 @@ const PROPS: NodeType = {
 
 /** The reference noun `test_ref` of the fixture, declared as the UI package of a noun declares it. */
 const testRef = defineReferenceUi({
-  id: '@dv/ui-test-ref', key: 'test_ref', slice: state => state.components.test_ref ?? {},
+  id: '@dv/ui-test-ref', key: 'test_ref', slice: state => state.components.test_ref,
   label: ['参考', 'Reference'], mention: { section: ['参考', 'References'], order: 1 },
 })
 
@@ -109,7 +109,7 @@ describe('canvas slots in the workspace center', () => {
   it('shows the editor body of a reference noun in the center canvas', async () => {
     document.documentElement.lang = 'zh-CN'
     const { runtime, view: { container } } = await centerCanvas()
-    await runtime.mount({ apply: (ctx: Context) => { testRef.apply(ctx) } })
+    await runtime.mount({ apply: testRef.apply })
 
     const editor = await openEditor(container, 'test_ref:hero')
     // The body of the noun's entry: the reference of the newest version, the description and 添加素材.

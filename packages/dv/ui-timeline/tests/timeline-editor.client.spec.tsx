@@ -6,8 +6,8 @@ import type { AssetId, RecordId } from '@dv/project/types'
 import type { ClipId, TimelineId } from '@dv/timeline/types'
 import { DvClient } from '@dv/ui-kit/api.ts'
 import { getCurrentTimeline, publishCurrentTimeline } from '@dv/ui-kit/current-timeline.ts'
-import type { WireState } from '@dv/ui-kit/types.ts'
 import { asset, fixtureState, record, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
+import type { FixtureState } from '../../ui-kit/tests/fixture.client.tsx'
 import { FALLBACK_CLIP_SECONDS } from '@dv/ui-kit/timeline.ts'
 import { DV_TIMELINE_INSERT_EVENT, dispatchWorkspaceEvent } from '@dv/ui-kit/workspace-events.ts'
 import { TimelineView } from '../src/client/TimelineView.tsx'
@@ -17,7 +17,7 @@ beforeEach(() => { document.documentElement.lang = 'zh-CN' })
 afterEach(() => { cleanup(); vi.restoreAllMocks(); publishCurrentTimeline('p1', null) })
 
 /** The shared fixture with a second timeline holding one imported clip. */
-function twoTimelines(): WireState {
+function twoTimelines(): FixtureState {
   const state = fixtureState()
   state.assets.push(asset('imported.mp4', 'video/mp4', null, 3))
   state.components.timeline.timelines.push({ id: 't2' as TimelineId, name: '片尾', clips: [{ id: 'cl3' as ClipId, asset: 'imported.mp4' as AssetId, source: null, in_sec: null, out_sec: null }] })

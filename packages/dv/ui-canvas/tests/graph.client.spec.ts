@@ -16,7 +16,7 @@ import type { CanvasGraph, CanvasNode } from '../src/client/graph.ts'
 
 /** The reference noun `test_ref` of the fixture, declared as the UI package of a noun declares it. */
 const testRef = defineReferenceUi({
-  id: '@dv/ui-test-ref', key: 'test_ref', slice: state => state.components.test_ref ?? {},
+  id: '@dv/ui-test-ref', key: 'test_ref', slice: state => state.components.test_ref,
   label: ['参考', 'Reference'], mention: { section: ['参考', 'References'], order: 1 },
 })
 
@@ -58,9 +58,9 @@ const APPROVAL = anchorOf('plan.approve')
  */
 const CLIPS: TakesInUse = {
   id: 'clips',
-  uses: state => state.components.timeline.timelines.flatMap(timeline => timeline.clips)
+  uses: state => (state.components.timeline?.timelines ?? []).flatMap(timeline => timeline.clips)
     .flatMap(clip => state.components.proj.created_by[clip.asset ?? ''] ?? []),
-  badges: state => state.components.timeline.timelines.flatMap(timeline => timeline.clips)
+  badges: state => (state.components.timeline?.timelines ?? []).flatMap(timeline => timeline.clips)
     .filter(clip => clip.in_sec !== null).map(clip => ({ asset: clip.asset ?? '', label: 'trim' })),
 }
 

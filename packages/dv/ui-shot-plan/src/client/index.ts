@@ -16,7 +16,7 @@ import { pickText } from '@dv/ui-kit/locale.ts'
 import type { HistoryRow, NodeEntry, NodeType, TakesInUse } from '@dv/ui-kit/registries.ts'
 import { clockText } from '@dv/ui-kit/timeline.ts'
 import type { WireState } from '@dv/ui-kit/types.ts'
-import { PlanEditor, totalSec } from './PlanEditor.tsx'
+import { PlanEditor, plansOf, totalSec } from './PlanEditor.tsx'
 import type { PlanEditorInjected } from './PlanEditor.tsx'
 
 declare module '@dv/ui-kit/types.ts' { interface ComponentStates { plan: PlanState } }
@@ -30,7 +30,7 @@ const ID = '@dv/ui-shot-plan'
  * @returns one entry per plan: its `PlanId`, its versions (oldest first), and its latest version.
  */
 function latestPlans(state: WireState): Array<{ id: string; versions: PlanVersion[]; latest: PlanVersion }> {
-  return Object.entries(state.components.plan.plans).flatMap(([id, versions]) => {
+  return Object.entries(plansOf(state)).flatMap(([id, versions]) => {
     const latest = versions.at(-1)
     return latest === undefined ? [] : [{ id, versions, latest }]
   })

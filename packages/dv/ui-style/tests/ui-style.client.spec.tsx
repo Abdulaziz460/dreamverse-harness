@@ -38,10 +38,10 @@ function nounState(): WireState {
     record({ id: 'n2', operation: 'style.update', params: { style: 's1' } }),
   ]
   const id = 's1' as StyleId
-  state.components.style[id] = [
+  state.components.style = { [id]: [
     { id, version: 1, name: '胶片', description: 'A short description of the style.', references: ['ref.png' as AssetId], created_by: 'n1' as RecordId },
     { id, version: 2, name: '胶片', description: '', references: ['shot1-last.png' as AssetId, 'ref.png' as AssetId], created_by: 'n2' as RecordId },
-  ]
+  ] }
   return state
 }
 

@@ -38,10 +38,10 @@ function nounState(): WireState {
     record({ id: 'n2', operation: 'location.update', params: { location: 'l1' } }),
   ]
   const id = 'l1' as LocationId
-  state.components.location[id] = [
+  state.components.location = { [id]: [
     { id, version: 1, name: '小巷', description: 'A short description of the location.', references: ['ref.png' as AssetId], created_by: 'n1' as RecordId },
     { id, version: 2, name: '小巷', description: '', references: ['shot1-last.png' as AssetId, 'ref.png' as AssetId], created_by: 'n2' as RecordId },
-  ]
+  ] }
   return state
 }
 

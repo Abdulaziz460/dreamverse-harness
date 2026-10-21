@@ -48,7 +48,7 @@ export interface TrackClip {
  * @returns the timelines in creation order.
  */
 export function timelinesOf(state: WireState): Timeline[] {
-  return state.components.timeline.timelines
+  return state.components.timeline?.timelines ?? []
 }
 
 /**

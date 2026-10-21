@@ -20,7 +20,7 @@ import { zh } from '../src/client/locales.ts'
 
 /** The reference noun `test_ref` of the fixture, declared as the UI package of a noun declares it. */
 const testRef = defineReferenceUi({
-  id: '@dv/ui-test-ref', key: 'test_ref', slice: state => state.components.test_ref ?? {},
+  id: '@dv/ui-test-ref', key: 'test_ref', slice: state => state.components.test_ref,
   label: ['参考', 'Reference'], mention: { section: ['参考', 'References'], order: 1 },
 })
 

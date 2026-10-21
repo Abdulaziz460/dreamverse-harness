@@ -102,6 +102,9 @@ function ReferenceChip({ reference }: { reference: NamedReference }): ReactNode 
   )
 }
 
+/** The plans of a state by `PlanId`, oldest version first; a state without the plan slice holds none. */
+export const plansOf = (state: WireState): Readonly<Record<string, PlanVersion[]>> => state.components.plan?.plans ?? {}
+
 /**
  * The plan editor: the version row, then the shots of the chosen version. The entry ID `plan:<PlanId>` names the plan;
  * the entry of a plan without versions shows nothing.
@@ -109,8 +112,7 @@ function ReferenceChip({ reference }: { reference: NamedReference }): ReactNode 
  * @returns the element.
  */
 export function PlanEditor({ node, state, canvas, client }: PropsRuntime<'dv.canvas.editor'> & PlanEditorInjected): ReactNode {
-  const plans: Readonly<Record<string, PlanVersion[]>> = state.components.plan.plans
-  const versions = plans[node.id.slice(node.id.indexOf(':') + 1)] ?? []
+  const versions = plansOf(state)[node.id.slice(node.id.indexOf(':') + 1)] ?? []
   // The version on show; the editor holds the choice so the version row and the shot list read the same version.
   const [chosen, setChosen] = useState<number | null>(null)
   const anchors = useRegistry(canvas.chainAnchors)

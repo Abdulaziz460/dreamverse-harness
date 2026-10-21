@@ -5,14 +5,13 @@
  */
 import type { AssetId, RecordId } from '@dv/project/types'
 import type { PlanId } from '@dv/shot-plan/types'
-import type { CharacterId } from '@dv/character/types'
 import type { ClipId, TimelineId } from '@dv/timeline/types'
 import type { WireReferenceVersion } from '../src/client/reference-kit.tsx'
 import type { WireTaskLabels } from '../src/client/tool-labels.ts'
-import type { OperationRequest, ProjectAsset, ProjectRecord, WireOperation, WireProject, WireState } from '../src/client/types.ts'
+import type { ComponentStates, OperationRequest, ProjectAsset, ProjectRecord, WireOperation, WireProject, WireState } from '../src/client/types.ts'
 
-// The slice of the test-only reference noun `test_ref`; optional, so every other state literal stays valid.
-declare module '../src/client/types.ts' { interface ComponentStates { test_ref?: Record<string, WireReferenceVersion[]> } }
+// The slice of the test-only reference noun `test_ref`.
+declare module '../src/client/types.ts' { interface ComponentStates { test_ref: Record<string, WireReferenceVersion[]> } }
 
 /**
  * A record with defaults for everything a test does not set.
@@ -51,11 +50,14 @@ export function asset(
 /** The project of the fixture. */
 export const PROJECT: WireProject = { id: 'p1', title: 'Demo', created_at: '2026-10-05T00:00:00Z' }
 
+/** The fixture state: a wire state that holds the `plan` and `timeline` slices and no noun slice. */
+export type FixtureState = WireState & { components: Pick<ComponentStates, 'plan' | 'timeline'> }
+
 /**
  * The shared state.
  * @returns a fresh copy.
  */
-export function fixtureState(): WireState {
+export function fixtureState(): FixtureState {
   const hero = { role: 'reference', ref: { character: 'hero', version: 1 }, resolved_asset: 'ref.png' }
   const records = [
     record({ id: 'u1', operation: 'asset.import', params: { name: 'ref.png' }, outputs: ['ref.png'] }),
@@ -103,9 +105,6 @@ export function fixtureState(): WireState {
           'export-last.png': 'x1',
         },
       },
-      character: { ['hero' as CharacterId]: [{ id: 'hero' as CharacterId, version: 1, name: 'Hero', description: 'A tired detective.', references: ['ref.png' as AssetId], created_by: 'e1' as RecordId }] },
-      location: {},
-      style: {},
       plan: { plans: { ['p1' as PlanId]: [{ version: 1, shots: [{ prompt: 'hero walks', modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3' }, { prompt: 'hero turns', modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', continue_previous: true }], created_by: 'p1' as RecordId }] } },
       asset: { placed: [] },
       timeline: {
@@ -135,7 +134,7 @@ export function fixtureState(): WireState {
  * @param state - a state such as {@link fixtureState}.
  * @returns the copy.
  */
-export function withTestRef(state: WireState): WireState {
+export function withTestRef<S extends WireState>(state: S): S {
   const proj = state.components.proj
   const create = record({ id: 'e1', operation: 'test_ref.create', params: { test_ref: 'hero', name: 'Hero' } })
   return {
