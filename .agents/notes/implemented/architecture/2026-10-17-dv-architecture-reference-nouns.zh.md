@@ -8,7 +8,7 @@ Status: implemented
 
 DreamVerse 保存三类镜头必须复现的条目：角色、场景和风格。这三类条目曾经都放在一对插件中。`@dv/story-bible` 拥有一个形如 `{ characters, locations, styles }` 的 `bible` slice、三个引用种类（reference kind）、按动词各用一个模板生成的六个操作（`bible.character_create`、`bible.location_update` 等）以及一个 `story-bible` skill（技能）。`@dv/ui-story-bible` 遍历一个含三个条目的 `KINDS` 列表来绘制这些名词，`@dv/api` 则逐个字段读取 `state.components.bible` 来收集参考图。修改一个名词（例如更丰富的角色编辑器）要同时修改这两个共享包，而一个 slice 装着三个名词，尽管每个名词都有自己的真源。
 
-在此之前，这些名词波及的范围更广：内核 `@dv/project` 在 `project/src/types.ts` 中声明了 `CharacterId`、`LocationId`、`StyleId`，并为每个名词声明了一个输入引用分支；`@dv/ui-kit` 复制了版本类型；`@dv/ui-canvas`、`@dv/ui-composer`、`@dv/ui-history` 和 `@dv/chat-references` 各自写出了这三个名词。添加一个引用名词（reference noun）要改动内核、`ui-kit`、画布和 story bible。在没有共享库的情况下，作为独立插件对编写的名词会复制 story bible 的代码，与其只有文字上的差异：用这种方式构建的 `prop` 名词占 437 个计数行。
+在此之前，这些名词波及的范围更广：内核 `@dv/project` 在 `project/src/types.ts` 中声明了 `CharacterId`、`LocationId`、`StyleId`，并为每个名词声明了一个输入引用分支；`@dv/ui-kit` 复制了版本类型；`@dv/ui-canvas`、`@dv/ui-composer`、`@dv/ui-history` 和 `@dv/chat-references` 各自写出了这三个名词。添加一个引用名词（reference noun）要改动内核、`ui-kit`、画布和 story bible。在没有共享库的情况下，作为独立插件对编写的名词会复制 story bible 的代码，与其只有文字上的差异。
 
 ## 决策
 
@@ -42,7 +42,7 @@ DreamVerse 保存三类镜头必须复现的条目：角色、场景和风格。
 
 ## 谁导入 kit
 
-只有六个名词包从 `src` 导入 kit：三个宿主包导入 `@dv/reference-kit`，三个 UI 包导入 `@dv/ui-kit/reference-kit.tsx`。除此之外，只有测试和 `scripts/dv-architecture.ts` 的一个 fixture（测试前置数据）引用 kit。
+只有六个名词包从 `src` 导入 kit：三个宿主包导入 `@dv/reference-kit`，三个 UI 包导入 `@dv/ui-kit/reference-kit.tsx`。除此之外，只有测试、`scripts/dv-architecture.ts` 及其 fixture（测试前置数据）、根 tsconfig 文件和 `pnpm-lock.yaml` 在代码中引用 kit；`packages/dv/COMPONENT-TEMPLATE.md`、`docs/subsystems/video-harness.md`、各包 README 和 Agent Notes 记述它。
 
 其他插件只看到 kit 注册的内容。`@dv/chat-references` 为 `dvProject.listReferenceKinds()` 中的每个种类展开 `dv:<kind>/<id>`。运行器通过已注册的引用种类解析 `c1@3`。`@dv/api` 在 `mentionedAssets` 中从记录已解析的输入收集参考图。`@dv/ui-canvas`、`@dv/ui-composer` 和 `@dv/ui-history` 从 `dvCanvas`、`dvMentions` 和 `dvHistory` 注册表绘制。运行时没有插件依赖 kit，名词也可以绕过它：`packages/dv/COMPONENT-TEMPLATE.md` 展示了直接调用 `registerComponent`、`registerReducer`、`registerReferenceKind` 和 `registerOperation` 的写法，其他形状的组件（例如 `@dv/shot-plan` 和 `@dv/timeline`）就是这样自行注册的。
 
@@ -80,13 +80,13 @@ DreamVerse 保存三类镜头必须复现的条目：角色、场景和风格。
 
 ## 后果
 
-一个名词只需两次声明。`@dv/character` 有 46 个非空 `src` 行，`@dv/ui-character` 有 23 个；场景和风格的大小相同。在一次试验构建中，基于 kit 的第四个名词 `prop` 在两个包中占 66 个计数行（`prop` 中 48 个，`ui-prop` 中 18 个，按 `scripts/dv-blast-radius.ts` 的计数方式），没有修改任何共享包；不使用 kit 的同一名词占 437 个。第二次试验通过 `fields`、`children` 和 `editor` 给角色加上 `traits` 字段和自己的编辑器，只改动了 `character` 和 `ui-character`。
+一个名词只需两次声明。`@dv/character` 有 46 个非空 `src` 行，`@dv/ui-character` 有 23 个；场景和风格的大小相同。在一次试验构建中，基于 kit 的第四个名词 `prop` 只修改了它自己的两个包 `prop` 和 `ui-prop`，没有修改任何共享包。第二次试验通过 `fields`、`children` 和 `editor` 给角色加上 `traits` 字段和自己的编辑器，只改动了 `character` 和 `ui-character`。
 
 对 kit 的改动会同时影响每个名词。kit 中的一次缺陷修复同时修好三个名词，而为一个名词加的选项会让三个名词都背负它。没有自动检查执行成员规则；由评审执行。
 
 挂载一个名词仍要修改它那对包之外的接线文件：`packages/bundle/dv/` 下的 bundle 文件、`tsconfig.base.json` 中的路径别名，以及 `docs/subsystems/video-harness.md` 中的名词列表。
 
-UI 一半与无关代码共用一个包：`@dv/ui-kit/src/client` 有 21 个模块、2382 行，其中包括 `/api/dv` 客户端、wire 类型和时间线几何，并且有 14 个 UI 包依赖 `@dv/ui-kit`。
+UI 一半与无关代码共用一个包：`@dv/ui-kit/src/client` 有 22 个模块、2404 行，其中包括 `/api/dv` 客户端、wire 类型和时间线几何，并且有 14 个 UI 包依赖 `@dv/ui-kit`。
 
 已知缺口：
 

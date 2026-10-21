@@ -45,7 +45,7 @@ The Host half registers nothing. The browser half registers both descriptors ins
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
 
-`src/client/index.ts` merges `PlanState` of the client face `@dv/shot-plan/types` into the client `ComponentStates` of `@dv/ui-kit`, so the package reads the `plan` slice typed. The canvas core fills the frame grid from the anchored takes of each slot, centers the entry for a History focus on a record in `records`, and shows the editor entry under its own editor header. The plan editor reads the approved versions from the chain anchors and the names of version references from the version kinds of `dvCanvas`, and the task labels from `GET /api/dv/tasks`.
+`src/client/index.ts` merges `PlanState` of the client face `@dv/shot-plan/types` into the client `ComponentStates` of `@dv/ui-kit`, so the package reads the `plan` slice typed. The canvas core fills the frame grid from the anchored takes of each slot, centers the entry for a History focus on a record in `records`, and shows the editor entry under its own editor header. The plan editor reads the approved versions from the chain anchors and the names of version references from the version kinds of `dvCanvas`, and the task labels from `GET /api/dv/tasks`. `plansOf(state)` in `src/client/PlanEditor.tsx` reads the `plan` slice and gives `{}` while `@dv/shot-plan` is not loaded; the canvas entries and the plan editor read through it.
 
 | File | Content |
 | --- | --- |

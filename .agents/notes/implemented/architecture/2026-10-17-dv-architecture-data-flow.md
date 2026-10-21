@@ -110,4 +110,4 @@ A view writes through `DvClient.runOperation` (`POST /api/dv/operation`), and a 
 
 **An unchecked chain field.** The runner copies `started_by` without a check that its record exists; workflows and UI code own its meaning.
 
-**Known gaps.** The `Surface` union in `packages/dv/project/src/types.ts` names the views `timeline` and `asset_pool`, and the fitness test skips that union. The module comment and the `resolveInputs` JSDoc in `packages/dv/project/src/runner.ts` name character, location and style; the fitness test scans string literals, not comments. `mentionedAssets` reads `state.components.timeline`, and `@dv/api` does not inject `dvTimeline`; [client state types](2026-10-17-dv-architecture-client-state-types.md) records this gap.
+**Known gaps.** The `Surface` union in `packages/dv/project/src/types.ts` names the views `timeline` and `asset_pool`, and the fitness test skips that union. `mentionedAssets` reads `state.components.timeline`, and `@dv/api` does not inject `dvTimeline`; [client state types](2026-10-17-dv-architecture-client-state-types.md) records this gap.

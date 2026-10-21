@@ -1,5 +1,5 @@
 /**
- * Parity of `story.approve` with `plan.approve` in the REAL composition of `fixture.ts` (test case T4 pass 1). Each case
+ * Parity of `story.approve` with `plan.approve` in the REAL composition of `fixture.ts`. Each case
  * approves with `story.approve` in one project. Each approval records the run requests that its execute sends to
  * `dvProject.run`, and the timelines after its renders finish. The recording must equal the approval's entry in
  * `parity.golden.json`, the recording of the same steps approved with `plan.approve`, after three normalizations: a
@@ -97,7 +97,7 @@ const SHOTS = [
 ]
 
 describe('story.approve parity with the plan.approve golden file', () => {
-  it('T4.1: (a) v1, (b) v2 with an added shot, and (c) v4 that returns to the v1 shots write the same chain', async () => {
+  it('(a) v1, (b) v2 with an added shot, and (c) v4 that returns to the v1 shots write the same chain', async () => {
     const fixture = await start()
     const picture = fixture.put('face', 'image/png', 'face.png')
     const v1 = { references: [picture], aspect_ratio: '9:16', shots: SHOTS }
@@ -130,7 +130,7 @@ describe('story.approve parity with the plan.approve golden file', () => {
     expect(c.timelines).toEqual([{ id: 't1', clips: [r1, r2, r3].map(record => ({ record, output: 0 })) }])
   })
 
-  it('T4.1: (e) renders a shot that equals a free take or a take of another plan, because neither belongs to the plan', async () => {
+  it('(e) renders a shot that equals a free take or a take of another plan, because neither belongs to the plan', async () => {
     const fixture = await start()
     const picture = fixture.put('face', 'image/png', 'face.png')
     await fixture.record('plan.create', { references: [picture], aspect_ratio: '9:16', shots: SHOTS })
@@ -148,7 +148,7 @@ describe('story.approve parity with the plan.approve golden file', () => {
     expect(e.calls[3]?.params).toEqual({ timeline: 't2' })
   })
 
-  it('T4.1: (f) creates the next timeline when the user re-laid the plan\'s timeline, and leaves that timeline unchanged', async () => {
+  it('(f) creates the next timeline when the user re-laid the plan\'s timeline, and leaves that timeline unchanged', async () => {
     const fixture = await start()
     await fixture.record('plan.create', { shots: [SHOTS[2], { ...SHOTS[2], prompt: 'A street at noon' }] })
     const first = await approveAsGolden(fixture, { plan: 'p1' }, 'f-first')
@@ -166,7 +166,7 @@ describe('story.approve parity with the plan.approve golden file', () => {
     ])
   })
 
-  it('T4.1: (h) passes the plan\'s seed and resolution, and a shot\'s own seed, to each render', async () => {
+  it('(h) passes the plan\'s seed and resolution, and a shot\'s own seed, to each render', async () => {
     const fixture = await start()
     const shots = [{ ...SHOTS[2], duration_sec: 1 }, { ...SHOTS[2], prompt: 'A street at noon', duration_sec: 1, seed: 9 }]
     await fixture.record('plan.create', { resolution: '720p', seed: 7, shots })

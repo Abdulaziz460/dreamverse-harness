@@ -50,7 +50,7 @@ describe('projectItems', () => {
     expect(iconOf(hat ?? {})).toBeNull()
   })
 
-  it('lists no clip and no story bible item without a registered kind', () => {
+  it('lists no clip and no reference noun item without a registered kind', () => {
     expect(projectItems(fixtureState(), []).some(item => item.uri.startsWith('dv:clip/') || item.uri.startsWith('dv:character/'))).toBe(false)
   })
 })

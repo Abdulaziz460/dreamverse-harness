@@ -8,7 +8,7 @@
  * edits, and an operation's `execute` may itself call `dvProject.run`.
  *
  * Calls: the record store (lock, head, append, update, records), the reducer
- * registry (state at a record's parent, character, location and style assets), the scheduler (`enqueue`), and the
+ * registry (state at a record's parent, the reference assets of a version), the scheduler (`enqueue`), and the
  * asset store. Called by the service and by the scheduler (`execute`).
  *
  * @module @dv/project/runner
@@ -360,9 +360,9 @@ export class Runner {
 
   /**
    * Turn the request's input refs into record inputs against a state. An asset ref must name a stored asset; a record
-   * output ref resolves to the producer's output once the producer is done; a character, location or style ref becomes
-   * one input per asset of that version. A record output ref of one of the operation's `pendingInputRoles` may name a
-   * producer in any status: it resolves to null until the producer is done.
+   * output ref resolves to the producer's output once the producer is done; a version ref of a registered reference
+   * kind becomes one input per asset of that version. A record output ref of one of the operation's `pendingInputRoles`
+   * may name a producer in any status: it resolves to null until the producer is done.
    * @param spec - the operation.
    * @param request - the call.
    * @param state - the state the record's inputs resolve against.

@@ -26,7 +26,7 @@ export const RULE_STATEMENTS: Readonly<Record<string, string>> = {
   R6: 'No deep import into another package\'s src.',
   R7: 'Dependencies point down the layers; a ./types entry reaches no host-only module.',
   R8: 'A skill never names a consumer; only the package that owns a reference kind names its tools.',
-  marker: 'The only exception marker is "// dv-arch-allow R<k>: transition until W4", and it suppresses a match on its line.',
+  marker: 'The only exception marker is "// dv-arch-allow R<k>: temporary exception", and it suppresses a match on its line.',
 }
 
 type Layer = 'kernel' | 'base' | 'provider' | 'domain' | 'workflow-lib' | 'workflow' | 'surface' | 'ui-core' | 'ui' | 'bundle'
@@ -78,7 +78,7 @@ const UI_ROWS: Readonly<Record<string, [OwnerWhat, string]>> = {
 const BASE = ['models', 'generation', 'asset-pool', 'ffmpeg', 'reference-kit']
 const SURFACE = ['api', 'chat-references', 'mcp-presets']
 const UI_CORE = ['ui-kit', 'ui-canvas', 'ui-history', 'ui-shell', 'ui-composer']
-/** Value-import targets, then extra `import type` targets, of each host layer (§1, R7). */
+/** Value-import targets, then extra `import type` targets, of each host layer (R7). */
 const IMPORTS: Partial<Record<Layer, [Layer[], Layer[]]>> = {
   base: [['kernel', 'base'], []],
   provider: [['kernel', 'base'], []],
@@ -98,7 +98,10 @@ const MARKER = /\/\/ dv-arch-allow (R\d+): (.*)$/u
 /** Modules that a `./types` entry must never reach (R7 b). */
 const HOST_ONLY = /^(?:node:|@deepseek-ai\/(?:cordis|dsh-tools)(?:\/|$))/u
 const KIT_LINES = 300
-/** A reference noun key names its skill, ID param and tools; the kernel reserves the other keys (project/src/types.ts:78). */
+/**
+ * A reference noun key names its skill, ID param and tools; the kernel reserves the other keys (`RESERVED_KINDS` in
+ * `project/src/index.ts`, and Project's component key `proj`).
+ */
 const NOUN_KEY = /^[a-z][a-z0-9]*$/u
 const RESERVED_KEYS = ['proj', 'asset', 'record', 'version']
 
@@ -192,7 +195,8 @@ function collectFacts(sources: readonly Source[], files: readonly ScanFile[]): F
       }
       const operation = declaredOperation(node)
       if (operation !== undefined) row('operation', operation, node, `dv_${operation.replace('.', '_')}`)
-      // A defineReference noun owns its kind and both operations; a defineReferenceUi call fills four UI registries.
+      // A defineReference noun owns its kind and both operations; a defineReferenceUi call gives four rows: node type,
+      // version kind, mention kind and history row.
       const reference = callee === 'defineReference' ? stringProperty(arg, 'component') : undefined
       if (reference !== undefined) {
         row('kind', reference.text, reference.at)
@@ -219,7 +223,7 @@ function collectFacts(sources: readonly Source[], files: readonly ScanFile[]): F
   return facts
 }
 
-/** The §1 layer of a package, inferred from its name and, for providers, from `dvModels.register(` in its `src`. */
+/** The layer of a package, inferred from its name and, for providers, from `dvModels.register(` in its `src`. */
 function layerOf(pkg: string, facts: Facts): Layer {
   if (pkg === 'project') return 'kernel'
   if (pkg === 'bundle') return 'bundle'
@@ -352,6 +356,7 @@ function scanSource({ path, pkg, sf }: Source, facts: Facts, out: Violation[]): 
     const operationKey = key !== null && key[2] !== '' ? key[1] ?? '' : undefined
     if (pkg === 'workflow-kit' && literal !== undefined && workflowKey(operationKey ?? literal)) report('R2b', literal)
     // R3: `name:` beside `component:`, or `operation:` in a defineGeneration declaration, names a key of this package.
+    // R3c: a defineReference key is one lowercase word and not a reserved key.
     const noun = ts.isCallExpression(node) && textOf(node.expression) === 'defineReference' ? stringProperty(node.arguments[0], 'component') : undefined
     if (noun !== undefined && (!NOUN_KEY.test(noun.text) || RESERVED_KEYS.includes(noun.text))) report('R3c', noun.text)
     const operation = declaredOperation(node)
@@ -429,7 +434,7 @@ function applyMarkers(path: string, text: string, found: Violation[]): Violation
     if (!line.includes('dv-arch-allow')) return
     const marker = MARKER.exec(line)
     const hits = found.filter(v => v.line === index + 1 && v.rule.replace(/[a-z]$/u, '') === marker?.[1])
-    if (marker === null || marker[2] !== 'transition until W4' || hits.length === 0) {
+    if (marker === null || marker[2] !== 'temporary exception' || hits.length === 0) {
       invalid.push({ file: path, line: index + 1, rule: 'marker', text: line.trim() })
     } else for (const hit of hits) suppressed.add(hit)
   })
@@ -504,7 +509,7 @@ export function countViolations(violations: readonly Violation[]): Baseline {
 
 /**
  * Compare violations with the ratchet baseline. A new entry, more matches than an entry's count, and fewer matches
- * than its count each fail, so a slice that removes a violation lowers its entry in the same commit.
+ * than its count each fail, so a change that removes a violation lowers its entry in the same commit.
  * @param violations - output of `scan`.
  * @param baseline - the recorded counts.
  * @returns one line per differing entry, with the lines of its current matches and the statement of its rule; empty

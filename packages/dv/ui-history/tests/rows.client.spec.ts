@@ -59,8 +59,8 @@ describe('actionRows', () => {
 })
 
 describe('labels, thumbnails and times', () => {
-  it('names no subject of plan and story bible actions without a registered row', () => {
-    // The UI halves of the shot plan and the story bible register the rows that name these subjects.
+  it('names no subject of plan, timeline and character actions without a registered row', () => {
+    // The UI halves of the shot plan, the timeline and the character noun register the rows that name these subjects.
     expect(actionLabel(record({ id: 'a', operation: 'plan.create', params: { title: '猫' }, report: { plan: 'p1', version: 1 } }), labels()))
       .toEqual(['新建分镜计划', 'Create plan'])
     expect(actionLabel(record({ id: 'c', operation: 'plan.update', params: { plan: 'p1' }, report: { plan: 'p1', version: 2 } }), labels()))

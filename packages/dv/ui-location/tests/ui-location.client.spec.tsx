@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /**
- * The location noun in the browser: its canvas node type, version kind, `@` menu kind and History row (TS4 passes 2-4
- * of spec v5 §8), the registration and removal of every descriptor, and the `dv.canvas.editor` entry with its writes.
+ * The location noun in the browser: its canvas node type, version kind, `@` menu kind and History row, the registration
+ * and removal of every descriptor, and the `dv.canvas.editor` entry with its writes.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent } from '@testing-library/react'
@@ -67,7 +67,7 @@ const declared = (name: string, zh: string, en: string): WireOperation => ({
 })
 
 describe('the location descriptors', () => {
-  it('TS4.2: labels the node type and the version kind 场景 / Location, which titles the picker section, and reads every version', () => {
+  it('labels the node type and the version kind 场景 / Location, which titles the picker section, and reads every version', () => {
     document.documentElement.lang = 'zh-CN'
     const state = nounState()
     const { nodeType, versionKind } = location
@@ -82,7 +82,7 @@ describe('the location descriptors', () => {
     expect(location.referencesInUse.uses(state)).toContain('g1')
   })
 
-  it('TS4.3: lists the newest locations in the @ section 场景 at order 2, and a pick inserts dv:location/<id>', () => {
+  it('lists the newest locations in the @ section 场景 at order 2, and a pick inserts dv:location/<id>', () => {
     document.documentElement.lang = 'zh-CN'
     const { mentionKind } = location
     expect([mentionKind.id, mentionKind.kind, mentionKind.order, mentionKind.section()]).toEqual(['@dv/ui-location', 'location', 2, '场景'])
@@ -92,7 +92,7 @@ describe('the location descriptors', () => {
     expect(mentionKind.section()).toBe('Locations')
   })
 
-  it('TS4.4: names the History rows 新建场景「小巷」 and 修改场景「小巷」', () => {
+  it('names the History rows 新建场景「小巷」 and 修改场景「小巷」', () => {
     const context = {
       operations: [declared('location.create', '新建场景', 'Create location'), declared('location.update', '修改场景', 'Update location')],
       rows: [location.historyRow], records: new Map(),

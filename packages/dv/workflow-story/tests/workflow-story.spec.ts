@@ -1,7 +1,6 @@
 /**
  * `dvStory` in the REAL composition of `fixture.ts`: registration, the `story-directing` skill, `story.preview`,
- * `story.approve` and the `story` slice, with the intended differences from `plan.approve` (test case T4 pass 2) and the
- * agent's flow (pass 3).
+ * `story.approve` and the `story` slice, with the intended differences from `plan.approve` and the agent's flow.
  */
 import type { AssetId, OperationSpec, OperationToolValue, RunRequest } from '@dv/project'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -33,7 +32,7 @@ function reference(asset: AssetId): RunRequest['inputs'][number] {
 }
 
 describe('dvStory', () => {
-  it('T4.3: registers the labeled read story.preview and the labeled write story.approve, and removes both on disposal', async () => {
+  it('registers the labeled read story.preview and the labeled write story.approve, and removes both on disposal', async () => {
     const fixture = await start()
     const spec = specOf(fixture, 'story.preview')
     expect(spec).toMatchObject({
@@ -72,7 +71,7 @@ describe('dvStory', () => {
     expect(await fixture.ctx.skills.get('story-directing')).toBeUndefined()
   })
 
-  it('T4.3: the agent creates a plan, previews it, approves it with user_approved and waits; no tool is dv_plan_approve', async () => {
+  it('the agent creates a plan, previews it, approves it with user_approved and waits; no tool is dv_plan_approve', async () => {
     const fixture = await start()
     const tools = fixture.ctx.tools.schemas().map(tool => tool.name).filter(name => /^dv_(?:plan|story)_/u.test(name))
     expect(tools.sort()).toEqual(['dv_plan_create', 'dv_plan_update', 'dv_story_approve', 'dv_story_preview'])
@@ -172,7 +171,7 @@ describe('dvStory', () => {
     })
   })
 
-  it('T4.3: asks for the user\'s agreement with the preview lines, refuses a plan with problems, and records each approval', async () => {
+  it('asks for the user\'s agreement with the preview lines, refuses a plan with problems, and records each approval', async () => {
     const fixture = await start()
     const shots = [{ ...TXT, prompt: 'A street at dawn', duration_sec: 2 }, { ...TXT, prompt: 'A street at night', duration_sec: 2 }]
     await fixture.call('dv_plan_create', { reason: 'propose', title: 'Streets', shots })
@@ -222,7 +221,7 @@ describe('dvStory', () => {
     expect(summary.isError ? null : summary.value).toMatchObject({ story_approvals: [{ plan: 'p1', approved_version: 1, timeline: 't1' }] })
   })
 
-  it('T4.2: (d) after a stored plan.approve log, the first story approval renders every shot into the next timeline', async () => {
+  it('after a stored plan.approve log, the first story approval renders every shot into the next timeline', async () => {
     const fixture = await start('plan-approve')
     const stored = fixture.ctx.dvProject.listProjects().find(info => info.title === 'plan.approve log')?.id
     if (stored === undefined) throw new Error('the stored plan.approve log did not load')
@@ -241,7 +240,7 @@ describe('dvStory', () => {
     expect(clips).toEqual(renders.map(record => ({ record: record.id, output: 0 })))
   })
 
-  it('T4.2: (g) never reuses a take without started_by, even with the params and inputs of a shot', async () => {
+  it('never reuses a take without started_by, even with the params and inputs of a shot', async () => {
     const fixture = await start()
     const picture = fixture.put('face', 'image/png', 'face.png')
     const shot = { ...REF, prompt: 'Picture 1 starts dancing', duration_sec: 1 }
@@ -254,7 +253,7 @@ describe('dvStory', () => {
     expect(scheduled).not.toContain(free)
   })
 
-  it('T4.2: (i) approves a fresh plan whose continuing shot cites its first frame, rendering it from the last still of shot 1', async () => {
+  it('approves a fresh plan whose continuing shot cites its first frame, rendering it from the last still of shot 1', async () => {
     const fixture = await start()
     const shots = [{ ...REF, prompt: 'A dancer bows', duration_sec: 1 }, { ...REF, prompt: 'The dancer from @[首帧](dv:input/first_frame) spins', duration_sec: 1, continue_previous: true }]
     await fixture.call('dv_plan_create', { reason: 'propose', shots })

@@ -72,7 +72,7 @@ A test-only key merged into the host `ComponentStates` stays optional, for examp
 
 ## Consequences
 
-Adding a reference noun writes the required host merge, the required client merge, a `defineReferenceUi({ id, key, slice, label, mention })` call and `export const apply = <k>.apply`. It writes no `?`, no `?? {}`, no cast and no edit to a shared package; the [reference nouns note](2026-10-17-dv-architecture-reference-nouns.md) owns the kit and the measured cost of a noun. An extra noun field, such as `traits: string[]` on character, is a required type.
+Adding a reference noun writes the required host merge, the required client merge, a `defineReferenceUi({ id, key, slice, label, mention })` call and `export const apply = <k>.apply`. It writes no `?`, no `?? {}`, no cast and no edit to a shared package; the [reference nouns note](2026-10-17-dv-architecture-reference-nouns.md) owns the kit and the measured cost of a noun. An extra noun field, such as a `traits: string[]` field declared through `fields`, is a required type.
 
 The reads that the owners serve do not throw when a host plugin is missing: `timelinesOf`, `plansOf` and the noun reads of the kit return the owner's empty value. The compiler checks absence: a direct read such as `state.components.character.hero` in client code fails with `'state.components.character' is possibly 'undefined'`, so a reader goes through the owner's accessor or proves presence with `Pick`.
 

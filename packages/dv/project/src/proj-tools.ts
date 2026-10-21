@@ -24,7 +24,10 @@ import type { AssetStore, ProjectId, ProjectRecord, ProjectState, RecordId, Reco
 export interface ProjToolDeps {
   /** The registered asset store; throws when none is registered. */
   assets(): AssetStore
-  /** The `agentSummary` fields of every reducer that defines it, in component key order. */
+  /**
+   * The `agentSummary` fields of every reducer that defines it: Project's `proj` slice first, then the other components
+   * in the alphabetical order of their keys.
+   */
   agentSummaries(state: ProjectState): Array<Record<string, JsonValue>>
   /** The agent turn a tool call belongs to, or null outside any turn. */
   turnOf(exec: Pick<ToolRunContext, 'agent'>): TurnId | null

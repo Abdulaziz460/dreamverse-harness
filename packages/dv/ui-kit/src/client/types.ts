@@ -141,8 +141,8 @@ export interface ComponentStates {
   [key: string]: unknown
 }
 
-/** The slices of one wire state: `proj` and `asset` always (the api plugin injects dvProject and dvAssetPool,
- *  api/src/index.ts:94); any other slice only while the server loads the plugin that owns it. */
+/** The slices of one wire state: `proj` and `asset` always (the `@dv/api` plugin injects `dvProject` and `dvAssetPool`
+ *  in `static inject` of `DvApi`); any other slice only while the server loads the plugin that owns it. */
 export type WireComponents = Pick<ComponentStates, 'proj' | 'asset'> & Partial<ComponentStates>
 
 /** The project's current state, with the assets the views need beside it. */

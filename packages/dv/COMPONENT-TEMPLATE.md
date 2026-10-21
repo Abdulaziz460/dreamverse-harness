@@ -14,7 +14,7 @@ This file is the recipe for one DreamVerse component package under `packages/dv`
 
 ## 1. What a component is
 
-A component owns one capability: its implementation, its data, its operations, the reducer that turns its records into its state slice, and (through Project) the agent tool of each operation. It depends only on `@dv/project` (to register and run operations) and on the asset pool (to read and import assets); outside tools such as ffmpeg come through `@dv/ffmpeg`. A component never imports another component's package for code. It reads another component's state only through `ProjectState`; a type-only import of another component (for its `ComponentStates` slice) is allowed. It runs another component's operation only through `dvProject.run` by name. A workflow package (`workflow-*`, such as `@dv/workflow-story`) instead depends on domain services: it lists them in `static inject`, calls their methods (`ctx.dvShotPlan.shots`), and runs no other component's operation by name.
+A component owns one capability: its implementation, its data, its operations, the reducer that turns its records into its state slice, and (through Project) the agent tool of each operation. It depends only on the kernel `@dv/project` and the base packages (`@dv/asset-pool` to read and import assets, `@dv/models`, `@dv/generation`, `@dv/reference-kit`, and `@dv/ffmpeg` for outside tools). A component never imports another component's package, not even for types, and names no operation of another component. A workflow package (`workflow-*`, such as `@dv/workflow-story`) instead depends on domain services: it lists them in `static inject`, calls their methods (`ctx.dvShotPlan.shots`), and runs no other component's operation by name.
 
 ## 2. Package layout
 
@@ -23,7 +23,7 @@ packages/dv/<dir>/                 package @dv/<dir>, service dv<Name> (glossary
   package.json                     private, type module, exports ./src/index.ts; deps listed in section 4
   tsconfig.json                    extends ../../../tsconfig.base.json, rootDir src, outDir lib/types, references
   src/index.ts                     the service class (default export), Config, declare module Context
-  src/types.ts                     types only: the state slice, IDs, `declare module '@dv/project'` (if state)
+  src/types.ts                     types only: the state slice, IDs, `declare module '@dv/project/types'` (if state)
   src/reducer.ts                   the pure reducer (if the component has state)
   src/<area>.ts                    operation specs and helpers when index.ts grows past one screen per operation
   tests/<dir>.spec.ts              Loader composition test (copy inspector/tests/inspector.spec.ts)
@@ -58,7 +58,7 @@ export default class DvTimeline extends Service {
 
 Every registration is inside `ctx.effect`, so disposal removes it. An operation that needs an optional service (the model) is registered inside `ctx.inject([...], child => child.effect(...))`, as `inspect.image` is. Service methods named by registry verbs (`insertClip`, `exportTimeline`) do the work; each operation's `execute` calls one of them. A generation primitive declares its operation for `defineGeneration` of `@dv/generation`, which builds its service with the `GenerationApi` methods, as `dvShotRender` does.
 
-**Operation spec** (`OperationSpec` of `@dv/project`; read its JSDoc in `packages/dv/project/src/types.ts`):
+**Operation spec** (`OperationSpec` of `@dv/project`; read its JSDoc in `packages/dv/project/src/operation-types.ts`):
 
 | Field             | Rule                                                                                                  |
 | ----------------- | ----------------------------------------------------------------------------------------------------- |
@@ -85,16 +85,16 @@ Every registration is inside `ctx.effect`, so disposal removes it. An operation 
 **Reducer.** Declare the slice in `src/types.ts` and register the reducer under the component key:
 
 ```ts
-declare module '@dv/project' {
+declare module '@dv/project/types' {
   interface ComponentStates { timeline: TimelineState }
 }
 ```
 
 The reducer is pure: `initial()`, and `reduce(slice, record)` that ignores records of other components (match on `record.operation`) and records that are not `done`. Add the optional members where they apply:
 
-| Member         | Who                              | Meaning                                                                                                                                     |
-| -------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `agentSummary` | Character, Shot plan, Timeline   | the fields of the slice that the agent reads in the project summary of `dv_proj_state`; field names unique across components                |
+| Member         | Who                                                                                              | Meaning                                                                                                                      |
+| -------------- | ------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| `agentSummary` | Character, Location and Style (through `@dv/reference-kit`), Shot plan, Story workflow, Timeline | the fields of the slice that the agent reads in the project summary of `dv_proj_state`; field names unique across components |
 
 **Reference kinds.** A component whose items an input names as `<id>@<version>` declares each kind in `ReferenceKinds` (as `@dv/character` declares `character`) and registers it after its component key: `ctx.effect(() => ctx.dvProject.registerReferenceKind({ kind, component, assetsOf, createdBy, latest }))`; a noun whose items keep reference images declares all of this with one `defineReference` call of `@dv/reference-kit`, as `@dv/character` does. `assetsOf(slice, id, version)` gives the assets a version stands for, which the runner resolves version inputs to; `createdBy(slice, id, version)` gives the record that wrote the version, which Project uses for stale marks and for `<id>@<n>` parsing; `latest(slice, id)` gives the newest version of an ID, or null. One plugin owns each kind (`kind_exists`). IDs are unique across kinds: the kind's create refuses an ID that `ctx.dvProject.kindsWithId(context.state, id)` lists.
 
@@ -112,6 +112,7 @@ The reducer is pure: `initial()`, and `reduce(slice, record)` that ignores recor
 2. `tsconfig.host.json` `references`: `{ "path": "./packages/dv/<dir>" }` next to the other `packages/dv` rows.
 3. `packages/bundle/dv/cordis.patch.yml`: one row `- id: dv-<dir>` / `name: '@dv/<dir>'` with its config, in the `insert` list after the rows it injects; and `@dv/<dir>` in that bundle's `package.json`.
 4. Every consumer's `tsconfig.json` `references` and `package.json` `dependencies` (api and chat-references for a slice type).
+5. A client face, when a UI package reads the slice: the `./types` export in `package.json`, a `tsconfig.client.json` that includes only `src/types.ts`, the path `@dv/<dir>/types` in `tsconfig.base.json`, and a reference in the root `tsconfig.client.json`.
 
 **node_modules.** Run `pnpm install` from the worktree root; it links `@dv/<dir>` into every package that lists it in `dependencies` and records the package in `pnpm-lock.yaml`.
 

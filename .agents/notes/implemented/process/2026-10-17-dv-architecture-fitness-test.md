@@ -79,7 +79,7 @@ An added line counts 1, a deleted line 0.5, and a deleted line whose trimmed tex
 
 ## Consequences
 
-The packages went from 197 matches to an empty baseline and no marker, and any regression fails `pnpm test` with the broken rule in words. Measured with the change size check, the image-generation work rebuilt on the layers takes 717 counted lines and 2 outside files instead of 826.5 and 7, and the audio-generation work 493 and 12 instead of 735.5 and 18.
+The packages went from 197 matches to an empty baseline and no marker, and any regression fails `pnpm test` with the broken rule in words. Measured with the change size check, the image-generation work rebuilt on the layers changed 2 test files outside its own packages instead of 7 files, and the audio-generation work changed 12 files of its provider instead of 18 files in 3 packages.
 
 R1 (c), R1 (d) and R5 (c) match fixed names such as `CharacterId`, the word timeline and the literal `plan`, so a noun outside those lists passes them; key-based clauses such as R1 (b) and R5 (b) follow the registered keys. A package gets its layer from its folder name, and a provider from its `dvModels.register(` call.
 

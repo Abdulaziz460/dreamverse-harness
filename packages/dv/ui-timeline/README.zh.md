@@ -67,7 +67,7 @@ DOM 带测试 ID `dv-timeline-body`、`dv-timeline-editor`、`dv-timeline-viewer
 | [`src/client/TimelineBody.tsx`](src/client/TimelineBody.tsx) | 标签主体：项目栏和编辑器 |
 | [`src/client/TimelineView.tsx`](src/client/TimelineView.tsx) | 中央视图：状态、写入，以及 `dv:timeline-insert` 请求的插入 |
 | [`src/client/TimelineEditor.tsx`](src/client/TimelineEditor.tsx) | 编辑器：标签、预览、工具栏、标尺、轨道、手势 |
-| [`src/client/timelines.ts`](src/client/timelines.ts) | 片段摆放、放下位置、时间码 |
+| [`src/client/timelines.ts`](src/client/timelines.ts) | `timelinesOf(state)`（`timeline` 切片中的时间线，`@dv/timeline` 未加载时为 `[]`）、片段摆放、放下位置、时间码 |
 | [`src/client/takes-in-use.ts`](src/client/takes-in-use.ts) | 画布的 `TakesInUse`：片段记录和裁剪标记 |
 | [`src/client/history-row.ts`](src/client/history-row.ts) | 时间线记录的 `HistoryRow`：每个片段所属的时间线和选中记录的定位 |
 | [`src/client/mention.ts`](src/client/mention.ts) | 对话输入框 `@` 菜单的片段提及类型 |

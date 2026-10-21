@@ -22,8 +22,8 @@ import type {
 declare module '@dv/project' {
   interface ComponentStates {
     /**
-     * The slice of the test reducers that stand in for Story bible: the assets and the creating record of each
-     * version, by {@link versionKey}.
+     * The slice of the test reducers that stand in for the reference noun plugins: the assets and the creating record
+     * of each version, by {@link versionKey}.
      */
     test_bible?: { assets: Record<string, AssetId[]>; creators: Record<string, RecordId> }
   }

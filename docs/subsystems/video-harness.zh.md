@@ -8,6 +8,7 @@ DreamVerse 各包是 DeepSeek Harness 内视频制作的项目层。本页定义
 
 ```text
 views          @dv/ui-shell @dv/ui-canvas @dv/ui-timeline @dv/ui-asset-pool @dv/ui-composer @dv/ui-history (+ library @dv/ui-kit)
+               @dv/ui-character @dv/ui-location @dv/ui-style @dv/ui-shot-plan @dv/ui-shot-render @dv/ui-workflow-story
   │ HTTP: /api/dv/…, /dv/events
   ▼
 API            @dv/api                    routes that read state and run operations as the user; the event stream
@@ -15,11 +16,18 @@ API            @dv/api                    routes that read state and run operati
   ▼
 registry       @dv/project                records, the history list, undo and redo, state, agent tools, the dv:project prompt section
   ▲ registerOperation, registerReducer             ▲ dvProject.run (asset.import, asset.place), current-state reads
-  │                                                │
+  │ from workflows and components                  │
+workflows      @dv/workflow-story                  │
+               (+ library @dv/workflow-kit)        │
+  │ dvShotPlan, dvShotRender, dvTimeline           │
+  ▼                                                │
 components     @dv/asset-pool @dv/character       chat references   @dv/chat-references   dv: mentions, chat images
                @dv/location @dv/style
                @dv/shot-plan @dv/shot-render
                @dv/timeline @dv/inspector
+  │ defineGeneration, defineReference
+  ▼
+base libraries @dv/generation @dv/reference-kit
   │ ctx.dvModels (Consumer: @dv/shot-render)
   ▼
 models         @dv/models                 the model catalog dvModels, dv_models_list, dv_models_get, video-model-selection
@@ -30,17 +38,19 @@ providers      @dv/fastvideo              provider fastvideo: fasth3 for tasks r
 bundle         @dv/bundle                 the cordis.patch.yml rows of every package above, the video-directing skill
 ```
 
-每个箭头从一个包指向它所依赖的包，没有反方向的依赖。一个组件只通过 `dvProject.run` 按名字运行另一个组件的操作。用 DeepSeek Harness 的术语说，各层的角色如下：
+每个箭头从一个包指向它所依赖的包，没有反方向的依赖。组件从不写出另一个组件的操作名。工作流通过组件的服务使用组件，例如 `dvShotPlan.shots`、`dvShotRender.estimate` 和 `dvTimeline.layout`；只有 surface 包 `@dv/api` 和 `@dv/chat-references` 以用户身份按名字运行其他包的操作。用 DeepSeek Harness 的术语说，各层的角色如下：
 
-| 层      | 包                                                                                                                 | 角色                                                                                                                                                      |
-| ------ | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 注册表    | [`@dv/project`](../../packages/dv/project/README.zh.md)                                                           | `dvProject` 服务：组件向它注册操作和归约函数，就像工具向 `ctx.tools` 注册一样。它是项目文件唯一的写入者，把每个操作变成一个 DSH 工具，并注册 `dv:project` 系统提示词段。                                              |
-| 组件     | `@dv/asset-pool`、`@dv/character`、`@dv/location`、`@dv/style`、`@dv/shot-plan`、`@dv/shot-render`、`@dv/timeline`、`@dv/inspector`               | 各自拥有一项能力的插件：它的数据（一个状态切片及其归约函数）、它的操作，以及智能体读到的关于它们的文字。外部程序经 [`@dv/ffmpeg`](../../packages/dv/ffmpeg/README.zh.md) 运行。                                     |
-| 模型     | [`@dv/models`](../../packages/dv/models/README.zh.md)、[`@dv/fastvideo`](../../packages/dv/fastvideo/README.zh.md) | 模型目录：`@dv/models` 持有 `dvModels` Service Definition 以及 `PrimitiveTypes` 和 `TaskMap`，`@dv/fastvideo` 这样的提供方插件是 Service Provider，注册自己服务的模型，镜头渲染是 Consumer。    |
-| API    | [`@dv/api`](../../packages/dv/api/README.zh.md)                                                                   | DSH `connection` 服务上的 Fetch 路由和 `webServer` 上的事件流；视图读取或修改项目的唯一途径。                                                                                       |
-| 对话引用   | [`@dv/chat-references`](../../packages/dv/chat-references/README.zh.md)                                           | `agent/pre-step` 和 `session/event` 上的监听器，把用户在对话消息中指向的东西变成项目 ID 和素材。                                                                                     |
-| 视图     | `@dv/ui-*`                                                                                                        | DSH Web 客户端的右侧栏标签类型和中央视图；`@dv/ui-kit` 是它们共用的库。                                                                                                          |
-| bundle | [`@dv/bundle`](../../packages/bundle/dv/README.zh.md)                                                             | profile 层：把每一行组成 `video-harness` 和 `video-harness-headless` 两个 profile，并附带 `video-directing` skill。                                                     |
+| 层      | 包                                                                                                                            | 角色                                                                                                                                                      |
+| ------ | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 注册表    | [`@dv/project`](../../packages/dv/project/README.zh.md)                                                                      | `dvProject` 服务：组件向它注册操作和归约函数，就像工具向 `ctx.tools` 注册一样。它是项目文件唯一的写入者，把每个操作变成一个 DSH 工具，并注册 `dv:project` 系统提示词段。                                              |
+| 工作流    | `@dv/workflow-story`（库 `@dv/workflow-kit`）                                                                                   | 一个制作流程：预览、批准、版本复用、时间线选择。                                                                                                                                |
+| 组件     | `@dv/asset-pool`、`@dv/character`、`@dv/location`、`@dv/style`、`@dv/shot-plan`、`@dv/shot-render`、`@dv/timeline`、`@dv/inspector` | 各自拥有一项能力的插件：它的数据（一个状态切片及其归约函数）、它的操作，以及智能体读到的关于它们的文字。外部程序经 [`@dv/ffmpeg`](../../packages/dv/ffmpeg/README.zh.md) 运行。                                     |
+| 基础库    | `@dv/generation`、`@dv/reference-kit`                                                                                         | `defineGeneration` 和 `defineReference` 构建生成原语或引用名词的服务。                                                                                                  |
+| 模型     | [`@dv/models`](../../packages/dv/models/README.zh.md)、[`@dv/fastvideo`](../../packages/dv/fastvideo/README.zh.md)            | 模型目录：`@dv/models` 持有 `dvModels` Service Definition 以及 `PrimitiveTypes` 和 `TaskMap`，`@dv/fastvideo` 这样的提供方插件是 Service Provider，注册自己服务的模型，镜头渲染是 Consumer。 |
+| API    | [`@dv/api`](../../packages/dv/api/README.zh.md)                                                                              | DSH `connection` 服务上的 Fetch 路由和 `webServer` 上的事件流；视图读取或修改项目的唯一途径。                                                                                       |
+| 对话引用   | [`@dv/chat-references`](../../packages/dv/chat-references/README.zh.md)                                                      | `agent/pre-step` 和 `session/event` 上的监听器，把用户在对话消息中指向的东西变成项目 ID 和素材。                                                                                     |
+| 视图     | UI 核心（`@dv/ui-kit`、`@dv/ui-canvas`、`@dv/ui-history`、`@dv/ui-shell`、`@dv/ui-composer`）和 UI 插件 `@dv/ui-<name>`                 | DSH Web 客户端的右侧栏标签类型和中央视图；`@dv/ui-kit` 是它们共用的库。                                                                                                          |
+| bundle | [`@dv/bundle`](../../packages/bundle/dv/README.zh.md)                                                                        | profile 层：把每一行组成 `video-harness` 和 `video-harness-headless` 两个 profile，并附带 `video-directing` skill。                                                     |
 
 组件用 `dvProject.registerOperation` 注册操作，用 `dvProject.registerReducer` 注册归约函数。每个操作同时是智能体工具 `dv_<操作名，点换成下划线>`，一次调用成为一条记录。素材库的 `dv_asset_import`、`dv_asset_grab_still` 和 `dv_asset_cut_segment` 添加素材，`dv_asset_place` 和 `dv_asset_unplace` 把素材放到画布上和从画布移除；角色、场景和风格组件的 `dv_character_*`、`dv_location_*` 和 `dv_style_*` 工具创建和更新各自的版本；分镜的 `dv_plan_create` 写入一个新分镜计划的版次 1，该计划得到一个 `PlanId`（`p1`、`p2`、…），`dv_plan_update` 写入 `plan` 参数所指计划的下一个版次；故事工作流的 `dv_story_preview` 报告批准一个版次会渲染什么、花费多少，`dv_story_approve` 批准它；镜头渲染的 `dv_shot_render` 按调用指定的[模型](#model-catalog)渲染镜头的一个版本，`duration_sec` 是该模型范围内的整秒数（默认为模型的最小值）；时间线的 `dv_timeline_*` 工具创建、更新、重命名和删除时间线，并插入、移动、移除、拆分、裁剪和替换片段，不创建文件，它的 `dv_timeline_export` 把一条时间线写成一个视频；检查器的 `dv_inspect_image` 和 `dv_inspect_asset` 读取素材，不写记录。项目组件自己的 `dv_proj_*` 工具创建和打开项目、读取状态和历史、撤销、接受过期记录，以及等待排定的记录。操作声明资源类别（`none`、`cpu`、`gpu`）和确认策略（`never`、`always`、`over_gpu_budget`；见[在对话中确认](#confirmation-in-the-conversation)）；项目组件的调度器按类别并发上限运行排定的记录。
 
@@ -104,7 +114,7 @@ bundle         @dv/bundle                 the cordis.patch.yml rows of every pac
 
 ## 项目状态
 
-归约函数读取记录并计算状态；它不写记录。运行器和记录存储是仅有的写入者。当前状态是把以当前位置结尾的链交给归约函数折叠的结果：项目组件从这条记录沿 `parents[0]` 往回走，再把这些记录按从旧到新的顺序交给每个已注册的归约函数。每个组件的归约函数把自己的记录变成 `ProjectState.components` 中自己的切片（角色 `character`、场景 `location`、风格 `style`、分镜 `plan`、时间线 `timeline`），项目组件自己的归约函数维护 `proj` 切片：这条链上的记录、过期和被替代的记录，以及创建每个素材的记录。归约函数的 `agentSummary` 把该组件的字段加入 `dv_proj_*` 工具和 `dv:project` 提示词段交给智能体的项目摘要。
+归约函数读取记录并计算状态；它不写记录。运行器和记录存储是仅有的写入者。当前状态是把以当前位置结尾的链交给归约函数折叠的结果：项目组件从这条记录沿 `parents[0]` 往回走，再把这些记录按从旧到新的顺序交给每个已注册的归约函数。每个组件的归约函数把自己的记录变成 `ProjectState.components` 中自己的切片（角色 `character`、场景 `location`、风格 `style`、分镜 `plan`、时间线 `timeline`、故事工作流 `story`），项目组件自己的归约函数维护 `proj` 切片：这条链上的记录、过期和被替代的记录，以及创建每个素材的记录。归约函数的 `agentSummary` 把该组件的字段加入 `dv_proj_*` 工具和 `dv:project` 提示词段交给智能体的项目摘要。
 
 视图显示的要么是记录，要么是状态。历史面板列出记录：历史列表中的步骤，最新的在前；被丢弃的记录不显示。画布、时间线编辑器和素材库面板显示状态：当前状态，因此撤销、重做或移到某一步会改变它们画出的内容。素材库面板列出当前状态中的每个素材，以及项目中每个导入的素材，包括被丢弃的步骤导入的素材（[历史规则](#history-rules)第 4 条）。没有视图持有项目状态：每个视图获取当前状态，并在实时事件流的每个事件后重新获取。
 
@@ -133,7 +143,7 @@ skill 承载工作流程和模型专属的规则，各由其主人注册：
 
 [`@dv/api`](../../packages/dv/api/README.zh.md) 是项目组件面向浏览器的 HTTP 面：`/api/dv/state` 把项目的当前状态返回为一份 JSON 文档，`/api/dv/operations` 列出已注册的操作，`/api/dv/operation` 以用户身份运行一个操作，其记录带 `surface: 'canvas'`、`'timeline'` 或 `'asset_pool'`，`/api/dv/history` 返回历史的一页，`/api/dv/undo`、`/api/dv/redo` 和 `/api/dv/stale/accept` 暴露撤销、重做和过期操作，其他路由管理项目、素材导入、画布布局（节点位置和视口）和 Workspace 链接，`/dv/events` 推送每一次记录追加、记录更新和当前位置的移动。
 
-界面各包是 web 应用的右侧栏标签类型和中央视图，因此在同一个 profile 里与对话页并存。[`@dv/ui-shell`](../../packages/dv/ui-shell/README.zh.md) 把项目工作区放在中央，把 对话 / Chat 和 轨迹 / Trajectory 标签放在右侧，把 画布 / Canvas 和 时间线 / Timeline 切换按钮放在顶栏，并把 Ctrl+Z 绑定到撤销，把 Shift+Ctrl+Z 绑定到重做。[`@dv/ui-canvas`](../../packages/dv/ui-canvas/README.zh.md) 把当前状态画成按素材流向相连的节点：处于当前版本的角色、场景和风格，导入的素材，处于最新版次的每个分镜计划（写出每个镜头的模型和生成任务，设置了的写出 接上一镜头 / Continues the previous shot），以及带模型和生成任务的版本；过期记录有标记，它的编辑器以用户记录渲染新版本或替换参考图。[`@dv/ui-timeline`](../../packages/dv/ui-timeline/README.zh.md) 把每条时间线画成一条轨道，把插入、移动、移除、拆分和裁剪手势变成按 `ClipId` 指定片段的 `timeline.*` 记录，把导出变成一条 `timeline.export` 记录。`@dv/ui-asset-pool` 列出项目的每个素材并导入文件；`@dv/ui-composer` 为对话加上 `@` 和 `+ → 引用` 引用和面向创作者的工具名，`@dv/ui-shot-render` 加上渲染卡片。
+界面各包是 web 应用的右侧栏标签类型和中央视图，因此在同一个 profile 里与对话页并存。[`@dv/ui-shell`](../../packages/dv/ui-shell/README.zh.md) 把项目工作区放在中央，把 对话 / Chat 和 轨迹 / Trajectory 标签放在右侧，把 画布 / Canvas 和 时间线 / Timeline 切换按钮放在顶栏，并把 Ctrl+Z 绑定到撤销，把 Shift+Ctrl+Z 绑定到重做。[`@dv/ui-canvas`](../../packages/dv/ui-canvas/README.zh.md) 把当前状态画成按素材流向相连的节点：导入的素材，带模型和生成任务的版本，以及 UI 插件注册的条目：处于当前版本的角色、场景和风格（`@dv/ui-character`、`@dv/ui-location`、`@dv/ui-style`），和处于最新版次的每个分镜计划，写出每个镜头的模型和生成任务，设置了的写出 接上一镜头 / Continues the previous shot（`@dv/ui-shot-plan`）；`@dv/ui-workflow-story` 把一次故事批准的版本挂在分镜计划节点下。`@dv/ui-canvas` 标记过期记录，它的编辑器以用户记录渲染新版本或替换参考图。[`@dv/ui-timeline`](../../packages/dv/ui-timeline/README.zh.md) 把每条时间线画成一条轨道，把插入、移动、移除、拆分和裁剪手势变成按 `ClipId` 指定片段的 `timeline.*` 记录，把导出变成一条 `timeline.export` 记录。`@dv/ui-asset-pool` 列出项目的每个素材并导入文件；`@dv/ui-composer` 为对话加上 `@` 和 `+ → 引用` 引用和面向创作者的工具名，`@dv/ui-shot-render` 加上渲染卡片。
 
 ## 历史和轨迹
 
@@ -158,13 +168,13 @@ DreamVerse 的新行为挂在某个包已拥有的扩展点上，就像 DeepSeek
 2. **插件能用一句话说出自己拥有什么。** 只能描述成“把 A 接到 B”的插件什么也不拥有，要拆分给 A 和 B 的主人。
 3. **新行为挂在已有的扩展点上**，扩展点从下面的查表中选。
 4. **只有可替换的能力才做成能力 seam。** 有两个或更多可互换实现的能力，才做成一个 Service Definition 包加若干 Service Provider 包。
-5. **依赖只朝一个方向：** 视图 → `@dv/api` → `@dv/project` ← 组件 → Service Definition ← Service Provider。没有包反方向依赖，也没有包在代码里写死别的插件的操作名。
+5. **依赖只朝一个方向：** 视图 → `@dv/api` → `@dv/project` ← 组件 ← 工作流；组件 → 基础库和 Service Definition ← Service Provider。没有包反方向依赖，也没有包在代码里写死别的插件的操作名。
 6. **给智能体的文字跟着主人走**，按下表放置：
 
 | 文字讲的是                | 放在哪里                                                     |
 | -------------------- | -------------------------------------------------------- |
 | 一个组件的工具怎么用           | 该操作的 `description`                                       |
-| 跨多个组件的做事流程           | `@dv/bundle` 中的一个 skill                                  |
+| 跨多个组件的做事流程           | `@dv/bundle` 或拥有该流程的工作流中的一个 skill（`story-directing`）     |
 | 模型的限制和提示词写法，例如参考素材要求 | 模型的提供方插件为该生成任务注册的提示词 skill                               |
 | 如何为镜头选择模型            | `@dv/models` 的 `video-model-selection` skill             |
 | 每轮都会变的项目状态           | `@dv/project` 的 `dv:project` 提示词段，经由归约函数的 `agentSummary` |
@@ -183,17 +193,19 @@ DreamVerse 的新行为挂在某个包已拥有的扩展点上，就像 DeepSeek
 
 ### 查表
 
-| 要加的东西       | 做法                                                                                                                      | 例子                         |
-| ----------- | ----------------------------------------------------------------------------------------------------------------------- | -------------------------- |
-| 项目数据        | 加进主人组件的归约函数状态，并在 `agentSummary` 中给出摘要                                                                                   | 镜头的配乐                      |
-| 操作          | 在主人组件中 `registerOperation`；项目组件据此生成工具、API 路由、历史和撤销                                                                      | `timeline.clip_split`      |
-| 可替换能力       | 一个 Service Definition 包加若干 Service Provider 包；用到它的组件是 Consumer                                                          | 模型目录、3D 渲染                 |
-| 模型          | 提供方插件的修改；见[添加提供方或模型](../../packages/dv/models/README.zh.md#add-a-provider-or-a-model)                                   | `@dv/fastvideo` 的 `fasth3` |
-| 生成任务        | 一个 `TaskMap` 条目，由引入该生成任务的插件声明（[模型键](../../packages/dv/models/README.zh.md#model-keys)），若有新的输入角色，再加上 `shot.render` 的对应输入 | 由首帧和尾帧渲染的生成任务              |
-| 输出模态        | 一个 `PrimitiveTypes` 行（[模型键](../../packages/dv/models/README.zh.md#model-keys)），并带上在其上运行的生成任务和存储其输出的 Consumer           | 图像生成                       |
-| 给智能体的文字     | 按原则中的文字表放置                                                                                                              | “先出分镜计划再渲染”                |
-| 视图          | 一个只通过 `@dv/api` 读写的 `@dv/ui-*` 插件                                                                                       | 画布                         |
-| 接到智能体循环上的逻辑 | 由数据的主人在 DSH 事件上注册，例如 `agent/pre-step` 或 `tools/pre-execute`                                                             | `dv:` 提及展开                 |
+| 要加的东西       | 做法                                                                                                                                            | 例子                         |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
+| 项目数据        | 加进主人组件的归约函数状态，并在 `agentSummary` 中给出摘要                                                                                                         | 镜头的配乐                      |
+| 操作          | 在主人组件中 `registerOperation`；项目组件据此生成工具、API 路由、历史和撤销                                                                                            | `timeline.clip_split`      |
+| 可替换能力       | 一个 Service Definition 包加若干 Service Provider 包；用到它的组件是 Consumer                                                                                | 模型目录、3D 渲染                 |
+| 模型          | 提供方插件的修改；见[添加提供方或模型](../../packages/dv/models/README.zh.md#add-a-provider-or-a-model)                                                         | `@dv/fastvideo` 的 `fasth3` |
+| 生成任务        | 一个 `TaskMap` 条目，由引入该生成任务的插件声明（[模型键](../../packages/dv/models/README.zh.md#model-keys)），再加上它在其原语声明的 `tasks` 记录中的标签；生成任务若有任何原语都没有的输入角色，就有自己的原语包 | 由首帧和尾帧渲染的生成任务              |
+| 输出模态        | 一个 `PrimitiveTypes` 行（[模型键](../../packages/dv/models/README.zh.md#model-keys)），并带上在其上运行的生成任务和一个调用 `@dv/generation` 的 `defineGeneration` 的原语包  | 图像生成                       |
+| 引用名词        | 两个声明：`@dv/reference-kit` 的 `defineReference` 和 `@dv/ui-kit` 的 `defineReferenceUi`                                                             | `@dv/character`            |
+| 制作流程        | 一个工作流包 `@dv/workflow-<key>` 及其 UI 半部                                                                                                          | `@dv/workflow-story`       |
+| 给智能体的文字     | 按原则中的文字表放置                                                                                                                                    | “先出分镜计划再渲染”                |
+| 视图          | 一个只通过 `@dv/api` 读写、并通过 `@dv/ui-canvas`、`@dv/ui-history` 和 `@dv/ui-composer` 的注册表绘制的 `@dv/ui-*` 插件                                             | 画布                         |
+| 接到智能体循环上的逻辑 | 由数据的主人在 DSH 事件上注册，例如 `agent/pre-step` 或 `tools/pre-execute`                                                                                   | `dv:` 提及展开                 |
 
 ### 例子：不带参考图的渲染
 
@@ -266,7 +278,7 @@ DreamVerse 的新行为挂在某个包已拥有的扩展点上，就像 DeepSeek
 | Timeline 时间线         | `timeline` | `@dv/timeline`       | `dvTimeline`   | `timeline.create` `timeline.update` `timeline.rename` `timeline.delete` `timeline.clip_insert` `timeline.clip_move` `timeline.clip_remove` `timeline.clip_split` `timeline.clip_trim` `timeline.clip_replace` `timeline.export` |
 | Inspector 检查器        | `inspect`  | `@dv/inspector`      | `dvInspector`  | 读取 `inspect.image` `inspect.asset`                                                                                                                                                                                              |
 
-操作名为 `<key>.<verb>` 或 `<key>.<object>_<verb>`，它的智能体工具名是 `dv_` 加上把 `.` 换成 `_` 的操作名（`timeline.clip_move` → `dv_timeline_clip_move`）。模型读到的文字写工具名，从不写操作名。其他包是模型目录 `@dv/models`（`dvModels`）和提供方插件 `@dv/fastvideo`、对话引用 `@dv/chat-references`（`dvChatReferences`）、API 接口（`@dv/api`，`dvApi`）、bundle（`@dv/bundle`）和界面（`@dv/ui-shell`、`@dv/ui-canvas`、`@dv/ui-timeline`、`@dv/ui-asset-pool`、`@dv/ui-composer`、`@dv/ui-history`，以及库 `@dv/ui-kit`）。以产品命名的名称用 `dv`：路由 `/api/dv/…` 和 `/dv/events`、窗口事件 `dv:…`、页面全局变量 `__dv…`、测试 ID `dv-<area>-<thing>`。
+操作名为 `<key>.<verb>` 或 `<key>.<object>_<verb>`，它的智能体工具名是 `dv_` 加上把 `.` 换成 `_` 的操作名（`timeline.clip_move` → `dv_timeline_clip_move`）。模型读到的文字写工具名，从不写操作名。其他包是模型目录 `@dv/models`（`dvModels`）和提供方插件 `@dv/fastvideo`、对话引用 `@dv/chat-references`（`dvChatReferences`）、API 接口（`@dv/api`，`dvApi`）、库 `@dv/generation`、`@dv/reference-kit` 和 `@dv/workflow-kit`、bundle（`@dv/bundle`）和界面（`@dv/ui-shell`、`@dv/ui-canvas`、`@dv/ui-timeline`、`@dv/ui-asset-pool`、`@dv/ui-composer`、`@dv/ui-history`、库 `@dv/ui-kit`，以及 `@dv/ui-character`、`@dv/ui-location`、`@dv/ui-style`、`@dv/ui-shot-plan`、`@dv/ui-shot-render` 和 `@dv/ui-workflow-story`）。以产品命名的名称用 `dv`：路由 `/api/dv/…` 和 `/dv/events`、窗口事件 `dv:…`、页面全局变量 `__dv…`、测试 ID `dv-<area>-<thing>`。
 
 ### 动词
 

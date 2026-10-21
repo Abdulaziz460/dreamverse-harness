@@ -202,13 +202,13 @@ describe('exception markers', () => {
   ]
 
   it('suppress a violation of the named rule on their line', () => {
-    expect(scan(transition("const starter = 'plan.approve' // dv-arch-allow R5: transition until W4"))).toEqual([])
+    expect(scan(transition("const starter = 'plan.approve' // dv-arch-allow R5: temporary exception"))).toEqual([])
   })
 
   it.each([
     ['another reason', "const starter = 'plan.approve' // dv-arch-allow R5: legacy log reader"],
-    ['another rule', "const starter = 'plan.approve' // dv-arch-allow R4: transition until W4"],
-    ['a marker that suppresses nothing', 'const approvals = 0 // dv-arch-allow R5: transition until W4'],
+    ['another rule', "const starter = 'plan.approve' // dv-arch-allow R4: temporary exception"],
+    ['a marker that suppresses nothing', 'const approvals = 0 // dv-arch-allow R5: temporary exception'],
   ])('fail on %s', (_name, line) => {
     expect(rules(transition(line))).toContain('marker')
   })
@@ -239,7 +239,7 @@ describe('ratchet baseline comparison', () => {
   })
 })
 
-describe('slice budget check (R9, R10)', () => {
+describe('change size check (R9, R10)', () => {
   const change = (path: string, added: string[], deleted: string[] = []): FileChange =>
     ({ path, added, addedAt: added.map((_, index) => index + 1), deleted })
   const budget = (changes: FileChange[], own: string[], allow: string[], existing: string[] = [], maxLines = 400) =>

@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-10-17-dv-architecture-client-state-types.md
-2026-10-17-dv-architecture-client-state-types.md: db1237cd3b5beef4b7186d67a56fcf18bd07b415
-2026-10-17-dv-architecture-client-state-types.zh.md: 66f2d547c0e0276ba7db477301ba55707e2b61a1
+2026-10-17-dv-architecture-client-state-types.md: ae1712822e7db93ca6e33b129fd2ed1547c9096c
+2026-10-17-dv-architecture-client-state-types.zh.md: 0499928ca89a290f6c7ba9094af22b01b12c064a

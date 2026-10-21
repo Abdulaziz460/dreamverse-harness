@@ -279,7 +279,7 @@ export interface OperationOutput {
  * The state slice of each component, keyed by component key. Each component adds its slice by declaration merging:
  *
  * ```ts
- * declare module '@dv/project' {
+ * declare module '@dv/project/types' {
  *   interface ComponentStates { timeline: TimelineState }
  * }
  * ```
@@ -321,9 +321,9 @@ export interface Reducer<K extends ComponentKey = ComponentKey> {
   reduce(slice: ComponentStates[K], record: ProjectRecord): ComponentStates[K]
   /**
    * The fields of this slice that the agent reads in the project summary that `dv_proj_state` and the other
-   * `dv_proj_*` tools return. Project merges the fields of every reducer that defines it, in component key order,
-   * after the record count and before the stale records; a field name that Project or another component already uses
-   * throws `invalid_params`.
+   * `dv_proj_*` tools return. Project merges the fields of every reducer that defines it after the record count and
+   * before the stale records, Project's `proj` slice first and then the other components in the alphabetical order of
+   * their keys; a field name that Project or another component already uses throws `invalid_params`.
    * @param slice - the slice of the current state.
    * @param assets - the asset store, for the URLs of the assets the slice names.
    * @param state - the whole current state, for the records the slice refers to.

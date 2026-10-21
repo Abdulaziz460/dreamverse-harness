@@ -489,7 +489,7 @@ describe('dvApi', () => {
     expect(mentionedAssets(fixture.project.getState(projectId), imports())).toEqual([...imported.outputs, ...later.outputs])
   })
 
-  it('TS4.1: parses the input c1@3 to { character: c1, version: 3 }, and resolves a version input to its references', async () => {
+  it('parses the input c1@3 to { character: c1, version: 3 }, and resolves a version input to its references', async () => {
     const fixture = await start()
     const projectId = await fixture.newProject('demo')
     const image = async (name: string): Promise<AssetId[]> => (await fixture.handlers.runOperation({

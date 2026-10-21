@@ -450,7 +450,7 @@ describe('node types', () => {
   })
 })
 
-describe('T1c: the canvas writes a reference of any kind', () => {
+describe('the canvas writes a reference of any kind', () => {
   /**
    * The shared fixture plus a take `g9` that reads version 3 of `z1`, an item of a reference kind `zz` that no UI package
    * knows, whose reference image `zz.png` the import `u9` wrote.
@@ -470,7 +470,7 @@ describe('T1c: the canvas writes a reference of any kind', () => {
     return state
   }
 
-  it('T1c.1: a take input { zz: z1, version: 3 } reads as the reference chip z1@3, never undefined@', () => {
+  it('a take input { zz: z1, version: 3 } reads as the reference chip z1@3, never undefined@', () => {
     const take = buildCanvasGraph(unknownKindState(), undefined, OPERATIONS).nodes.find(node => node.id === 'g9')
     // The take editor's chips and the retry request write each input with formatInputRef.
     const chips = take?.record?.inputs.map(input => formatInputRef(input.ref))
@@ -478,7 +478,7 @@ describe('T1c: the canvas writes a reference of any kind', () => {
     expect(chips?.join(' ')).not.toContain('undefined')
   })
 
-  it('T1c.2: a version of a kind without a version kind links from the node of its asset; a test_ref version links from its entry node', () => {
+  it('a version of a kind without a version kind links from the node of its asset; a test_ref version links from its entry node', () => {
     const graph = refGraph(unknownKindState(), new Set(['zz.png']), OPERATIONS)
     expect(graph.edges).toContainEqual({ from: 'u9', to: 'g9', kind: 'reference' })
     expect(graph.edges).toContainEqual({ from: 'test_ref:hero', to: 'g1', kind: 'reference' })

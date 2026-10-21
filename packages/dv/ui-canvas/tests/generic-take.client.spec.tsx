@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-/** Test cases T2c and T3c: image and audio records on the canvas, and the take editor that shows only declared params. */
+/** Image and audio records on the canvas, and the take editor that shows only declared params. */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
@@ -87,8 +87,8 @@ function mount(operations: WireOperation[], records: ProjectRecord[], assets: Pr
 /** The image take `i1` with its output `cat.png`. */
 const catTake = (): ProjectRecord => record({ id: 'i1', operation: 'image.generate', deterministic: false, params: CAT_PARAMS, outputs: ['cat.png'] })
 
-describe('T2c, T3c: image and audio records on the canvas', () => {
-  it('T2c.1: a done image.generate record draws a take with its label and thumb; its form starts with the prompt and has no duration_sec field', async () => {
+describe('image and audio records on the canvas', () => {
+  it('a done image.generate record draws a take with its label and thumb; its form starts with the prompt and has no duration_sec field', async () => {
     const { view, writes, node, open } = mount([...OPERATIONS, IMAGE], [catTake()], [asset('cat.png', 'image/png', 'i1')])
     // The running retake g3 has no output, so it draws only once the declarations arrived.
     await node('g3')
@@ -116,13 +116,13 @@ describe('T2c, T3c: image and audio records on the canvas', () => {
     })
   })
 
-  it('T2c.2: a pending image.generate record with no outputs draws with the rendering flag', async () => {
+  it('a pending image.generate record with no outputs draws with the rendering flag', async () => {
     const pending = record({ id: 'i2', operation: 'image.generate', deterministic: false, params: CAT_PARAMS, status: 'pending' })
     const { node } = mount([...OPERATIONS, IMAGE], [pending], [])
     expect((await node('i2')).textContent).toContain(zh['node.rendering'])
   })
 
-  it('T3c.3: an audio.generate take plays in an audio player with controls, not muted', async () => {
+  it('an audio.generate take plays in an audio player with controls, not muted', async () => {
     const line = record({
       id: 'v1', operation: 'audio.generate', deterministic: false, outputs: ['line.wav'],
       params: { modality: 'audio', task: 't2a', provider: 'sglang', model: 'fish-audio', prompt: 'hello', voice: 'calm' },
@@ -140,7 +140,7 @@ describe('T2c, T3c: image and audio records on the canvas', () => {
     expect(editor.querySelector('#dv-canvas-editor-seed')).toBeNull()
   })
 
-  it('T2c.4: an image record whose operation is off the list shows the label image.generate, no 渲染新版本 and no form', async () => {
+  it('an image record whose operation is off the list shows the label image.generate, no 渲染新版本 and no form', async () => {
     const { view, node, open } = mount(OPERATIONS, [catTake()], [asset('cat.png', 'image/png', 'i1')])
     await node('g3')
     const card = await node('i1')
@@ -150,7 +150,7 @@ describe('T2c, T3c: image and audio records on the canvas', () => {
     expect(view.queryByText(zh['editor.renderTake'])).toBeNull()
   })
 
-  it('T2c.5: a timeline.export record draws no node', async () => {
+  it('a timeline.export record draws no node', async () => {
     const exported = record({ id: 'c9', operation: 'timeline.export', deterministic: false, params: { timeline: 't1' }, outputs: ['cut.mp4'] })
     const { view, node } = mount([...OPERATIONS, IMAGE, EXPORT], [catTake(), exported], [asset('cat.png', 'image/png', 'i1'), asset('cut.mp4', 'video/mp4', 'c9', 3)])
     await node('g3')
@@ -158,7 +158,7 @@ describe('T2c, T3c: image and audio records on the canvas', () => {
     expect(view.container.querySelector('[data-node-id="c9"]')).toBeNull()
   })
 
-  it('T2c.6: the render-mode line of a t2i take reads the catalog label of t2i, else the task name', async () => {
+  it('the render-mode line of a t2i take reads the catalog label of t2i, else the task name', async () => {
     const labelled = mount([...OPERATIONS, IMAGE], [catTake()], [asset('cat.png', 'image/png', 'i1')], { t2i: { zh: '文字生成图片', en: 'Image from text' } })
     await labelled.node('g3')
     await labelled.open(await labelled.node('i1'))

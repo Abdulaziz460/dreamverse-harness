@@ -67,7 +67,7 @@ The DOM carries test IDs `dv-timeline-body`, `dv-timeline-editor`, `dv-timeline-
 | [`src/client/TimelineBody.tsx`](src/client/TimelineBody.tsx) | The tab body: project bar and editor |
 | [`src/client/TimelineView.tsx`](src/client/TimelineView.tsx) | The center view: state, writes, and the inserts that `dv:timeline-insert` requests |
 | [`src/client/TimelineEditor.tsx`](src/client/TimelineEditor.tsx) | The editor: tabs, viewer, toolbar, ruler, tracks, gestures |
-| [`src/client/timelines.ts`](src/client/timelines.ts) | Clip placement, drop position, timecode |
+| [`src/client/timelines.ts`](src/client/timelines.ts) | `timelinesOf(state)` (the timelines of the `timeline` slice, `[]` while `@dv/timeline` is not loaded), clip placement, drop position, timecode |
 | [`src/client/takes-in-use.ts`](src/client/takes-in-use.ts) | The `TakesInUse` of the canvas: clip records and trim badges |
 | [`src/client/history-row.ts`](src/client/history-row.ts) | The `HistoryRow` of timeline records: the timeline of each clip and the focus of a selected record |
 | [`src/client/mention.ts`](src/client/mention.ts) | The clip mention kind of the composer's `@` menu |

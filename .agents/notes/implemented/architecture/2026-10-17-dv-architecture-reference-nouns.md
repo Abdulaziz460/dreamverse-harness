@@ -8,7 +8,7 @@ English | [中文](2026-10-17-dv-architecture-reference-nouns.zh.md)
 
 DreamVerse keeps three kinds of item that shots must reproduce: characters, locations and styles. All three lived in one plugin pair. `@dv/story-bible` owned one `bible` slice shaped `{ characters, locations, styles }`, three reference kinds, six operations built from one template per verb (`bible.character_create`, `bible.location_update` and the others) and one `story-bible` skill. `@dv/ui-story-bible` looped over a `KINDS` list of three entries to draw the nouns, and `@dv/api` read `state.components.bible` field by field to collect reference images. A change to one noun, such as a richer character editor, edited both shared packages, and one slice held three nouns that each have their own source of truth.
 
-Before that, the nouns reached further: the kernel `@dv/project` declared `CharacterId`, `LocationId`, `StyleId` and one input-reference arm per noun in `project/src/types.ts`, `@dv/ui-kit` copied the version types, and `@dv/ui-canvas`, `@dv/ui-composer`, `@dv/ui-history` and `@dv/chat-references` each named the three nouns. Adding one reference noun touched the kernel, `ui-kit`, the canvas and the story bible. A noun written as its own plugin pair without a shared library copied the story bible code and differed from it only in text: a `prop` noun built that way took 437 counted lines.
+Before that, the nouns reached further: the kernel `@dv/project` declared `CharacterId`, `LocationId`, `StyleId` and one input-reference arm per noun in `project/src/types.ts`, `@dv/ui-kit` copied the version types, and `@dv/ui-canvas`, `@dv/ui-composer`, `@dv/ui-history` and `@dv/chat-references` each named the three nouns. Adding one reference noun touched the kernel, `ui-kit`, the canvas and the story bible. A noun written as its own plugin pair without a shared library copied the story bible code and differed from it only in text.
 
 ## Decision
 
@@ -42,7 +42,7 @@ Each noun pair holds one call to each half of a shared library, the **reference 
 
 ## Who imports the kit
 
-Only the six noun packages import the kit from `src`: the three host packages import `@dv/reference-kit`, and the three UI packages import `@dv/ui-kit/reference-kit.tsx`. Beyond them, only tests and one fixture of `scripts/dv-architecture.ts` refer to the kit.
+Only the six noun packages import the kit from `src`: the three host packages import `@dv/reference-kit`, and the three UI packages import `@dv/ui-kit/reference-kit.tsx`. Beyond them, only tests, `scripts/dv-architecture.ts` and its fixtures, the root tsconfig files and `pnpm-lock.yaml` refer to the kit in code; `packages/dv/COMPONENT-TEMPLATE.md`, `docs/subsystems/video-harness.md`, the package READMEs and the Agent Notes document it.
 
 Every other plugin sees only what the kit registers. `@dv/chat-references` expands `dv:<kind>/<id>` for each kind in `dvProject.listReferenceKinds()`. The runner resolves `c1@3` through the registered reference kind. `@dv/api` collects reference images from the resolved inputs of records in `mentionedAssets`. `@dv/ui-canvas`, `@dv/ui-composer` and `@dv/ui-history` draw from the `dvCanvas`, `dvMentions` and `dvHistory` registries. No plugin depends on the kit at runtime, and a noun can bypass it: `packages/dv/COMPONENT-TEMPLATE.md` shows the direct `registerComponent`, `registerReducer`, `registerReferenceKind` and `registerOperation` calls that components of other shapes, such as `@dv/shot-plan` and `@dv/timeline`, make themselves.
 
@@ -80,13 +80,13 @@ The host half is its own package, while the UI half is one file of `@dv/ui-kit`,
 
 ## Consequences
 
-A noun costs two declarations. `@dv/character` has 46 non-blank `src` lines and `@dv/ui-character` has 23; location and style have the same sizes. In a trial build, a fourth noun `prop` on the kit took 66 counted lines in two packages (48 in `prop`, 18 in `ui-prop`, as `scripts/dv-blast-radius.ts` counts them) and edited no shared package, against 437 for the same noun without the kit. A second trial gave character a `traits` field and its own editor through `fields`, `children` and `editor`, and changed only `character` and `ui-character`.
+A noun costs two declarations. `@dv/character` has 46 non-blank `src` lines and `@dv/ui-character` has 23; location and style have the same sizes. In a trial build, a fourth noun `prop` on the kit edited only its own two packages, `prop` and `ui-prop`, and no shared package. A second trial gave character a `traits` field and its own editor through `fields`, `children` and `editor`, and changed only `character` and `ui-character`.
 
 A kit change reaches every noun at once. A bug fix in the kit fixes all three nouns, and an option for one noun would burden all three. No automated check enforces the membership rule; review enforces it.
 
 Mounting a noun still edits wiring outside its pair: the bundle files under `packages/bundle/dv/`, the path aliases in `tsconfig.base.json` and the noun lists of `docs/subsystems/video-harness.md`.
 
-The UI half shares a package with unrelated code: `@dv/ui-kit/src/client` holds 21 modules and 2382 lines, among them the `/api/dv` client, the wire types and the timeline geometry, and 14 UI packages depend on `@dv/ui-kit`.
+The UI half shares a package with unrelated code: `@dv/ui-kit/src/client` holds 22 modules and 2404 lines, among them the `/api/dv` client, the wire types and the timeline geometry, and 14 UI packages depend on `@dv/ui-kit`.
 
 Known gaps:
 

@@ -1,5 +1,5 @@
 /**
- * Check that one DreamVerse refactor slice stays inside its budget. R9: every changed path is own, wiring (W), or
+ * Check the size of one DreamVerse change against a base commit. R9: every changed path is own, wiring (W), or
  * matched by an `--allow` glob and its limits. R10: at most 400 counted lines, or the cap of `--max-lines <n>`, and at
  * most 3 logic packages. `--lint`: the default oxlint config reports no finding on an added line.
  *
@@ -28,7 +28,7 @@ export interface BudgetOptions {
   allow: Allow[]
   /** `packages/<group>/<pkg>` directories, and the ratchet baseline file, that exist at the merge base. */
   existing: ReadonlySet<string>
-  /** The counted-line cap of R10: 400, or the cap that a row or test case passes as `--max-lines <n>`. */
+  /** The counted-line cap of R10: 400, or the cap that a caller passes as `--max-lines <n>`. */
   maxLines: number
 }
 
@@ -110,7 +110,7 @@ export function parseDiff(text: string): FileChange[] {
 /**
  * Weigh the changed lines (R10): an added line counts 1 and a deleted line 0.5. A deleted line whose trimmed,
  * non-blank text is added in another file of the same diff is a moved line and counts 0.
- * @param changes - every changed file of the slice.
+ * @param changes - every file that the change touches.
  * @param isCounted - whether a path counts; by default every path that `UNCOUNTED` does not exclude.
  * @returns the counted lines over the files that `isCounted` accepts.
  */
@@ -131,7 +131,7 @@ export function countLines(changes: readonly FileChange[], isCounted = (path: st
 }
 
 /**
- * Apply R9 and R10 to the changed files of one slice. W is the fixed list, the baseline file once it exists at the
+ * Apply R9 and R10 to the changed files of one change. W is the fixed list, the baseline file once it exists at the
  * merge base, and the `README.md`, `package.json` and `tsconfig.json` of a new package. A new package counts only its
  * `src/**` and `skills/**` lines. A package whose changed `src` files all match a limited allow glob is no logic
  * package.
@@ -183,9 +183,9 @@ export function checkBudget(changes: readonly FileChange[], options: BudgetOptio
 }
 
 /**
- * Keep the oxlint findings that sit on an added line of the slice. Findings on old lines do not block.
+ * Keep the oxlint findings that sit on an added line of the change. Findings on old lines do not block.
  * @param output - stdout of `scripts/run-oxlint.ts -f unix`, with repository-relative paths.
- * @param changes - every changed file of the slice.
+ * @param changes - every file that the change touches.
  * @returns one failure per finding on an added line.
  */
 export function findingsOnAddedLines(output: string, changes: readonly FileChange[]): string[] {
@@ -199,7 +199,7 @@ export function findingsOnAddedLines(output: string, changes: readonly FileChang
  * Lint the changed `.ts` and `.tsx` files that exist in the worktree with the default, type-aware oxlint config. The
  * type-aware rules read the host build, so run this after `tsc -b tsconfig.host.json`.
  * @param root - the repository root.
- * @param changes - every changed file of the slice.
+ * @param changes - every file that the change touches.
  * @returns the number of linted files and the failures: findings on added lines, or the oxlint error when oxlint
  * fails and reports no finding.
  */
@@ -223,7 +223,7 @@ function git(root: string, args: string[]): string {
  * Collect the changed files of the worktree against a base, as `scripts/change-scope.ts` scopes them (committed,
  * staged, unstaged and untracked), with their lines from the merge base to the working tree.
  * @param cwd - a directory inside the worktree.
- * @param base - the slice's parent commit.
+ * @param base - the parent commit of the change.
  * @returns the repository root, the changes, the merge base, and the touched packages and baseline file that exist at
  * the merge base.
  */
@@ -251,10 +251,10 @@ function collectChanges(cwd: string, base: string): { root: string; changes: Fil
 }
 
 /**
- * Run the budget check from command-line arguments.
+ * Run the change size check from command-line arguments.
  * @param args - arguments after the script path.
  * @param cwd - a directory inside the worktree.
- * @returns the report text and whether the slice is inside its budget.
+ * @returns the report text and whether the change passes the check.
  */
 export function runBlastRadius(args: string[], cwd: string): { text: string; ok: boolean } {
   const { values } = parseArgs({

@@ -55,7 +55,7 @@ A second workflow, such as an ad workflow `@dv/workflow-ad` whose `ad.preview` a
 
 1. Create `packages/dv/workflow-<key>` with its service, reducer, two operations, `Owns` function, `<key>-directing` skill, and REAL-composition test. It calls the kit functions and copies none of them. An ad workflow passes each variant as a `walkShot` override and as the `lane`, and chains each variant `after` the last render of the one before it.
 2. Create `packages/dv/ui-workflow-<key>` with one chain anchor and one History row, laid out as `@dv/ui-workflow-story` is.
-3. Add the wiring: the host and client rows in `packages/bundle/dv/cordis.patch.yml`, the dependency in `packages/bundle/dv/package.json`, the plugin map of `packages/bundle/dv/tests/composition.spec.ts`, the `tsconfig.base.json`, `tsconfig.host.json` and `tsconfig.client.json` entries, `pnpm-lock.yaml`, and the lines that list the mounted workflows in the bundle README pair and the `docs/subsystems/video-harness.md` pair.
+3. Add the wiring: the host and client rows in `packages/bundle/dv/cordis.patch.yml`, the dependency in `packages/bundle/dv/package.json`, the plugin map of `packages/bundle/dv/tests/composition.spec.ts`, the `tsconfig.base.json`, `tsconfig.host.json` and `tsconfig.client.json` entries, `pnpm-lock.yaml`, the lines that list the mounted workflows in the bundle README pair and the `docs/subsystems/video-harness.md` pair, and the lines that list the skills that plugins register: the `skill-filesystem` sentence of the bundle README pair and the skills table of the `docs/subsystems/video-harness.md` pair.
 
 No file of `@dv/project`, `@dv/shot-plan`, `@dv/shot-render`, `@dv/timeline`, `@dv/workflow-kit`, `@dv/workflow-story`, or the UI core changes. Two workflows can approve the same plan, because each reuses only the takes and timelines whose starter its own `Owns` accepts.
 
@@ -77,7 +77,7 @@ No file of `@dv/project`, `@dv/shot-plan`, `@dv/shot-render`, `@dv/timeline`, `@
 
 `packages/dv/shot-plan/src/index.ts` has 304 lines, against 561 when it held `plan.approve`, and `@dv/project` is its only DreamVerse dependency. `packages/dv/workflow-kit/src/index.ts` has 230 non-blank lines of the 300 that the fitness test allows.
 
-A trial ad workflow took 228 and 290 counted lines in two commits for its host package and 79 for its UI half, changed no file of another package beyond the wiring, and left no clone between the two workflows. The bundle does not mount it.
+A trial ad workflow, with a host package and a UI half, changed no file of another package beyond the wiring and left no clone between the two workflows. The bundle does not mount it.
 
 `packages/dv/workflow-story/tests/parity.spec.ts` pins `story.approve` to the run requests that `plan.approve` wrote, recorded in `parity.golden.json`.
 

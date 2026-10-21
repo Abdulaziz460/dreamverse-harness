@@ -2,8 +2,8 @@
  * The Shot render component in a REAL composition: a test-only `cordis.yml` boots the DSH tool registry, the asset
  * pool, `dvProject`, `dvFfmpeg`, `dvModels` and `dvShotRender` through the Loader. The video model is the only fake:
  * an in-process model `fake` of provider `test`, registered once per task, whose entries render solid-color clips with
- * ffmpeg. A test-only `bible` reducer and
- * reference kind `test_character` stand for the Story bible, so references can name character versions.
+ * ffmpeg. A test-only `bible` reducer and reference kind `test_character` stand for a reference noun plugin such as
+ * `@dv/character`, so references can name character versions.
  */
 import { execFile } from 'node:child_process'
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -158,7 +158,7 @@ class FakeLiveStream {
   }
 }
 
-/** The test-only Story bible slice: each character's versions, each with its reference images and its record. */
+/** The test-only `bible` slice: each character's versions, each with its reference images and its record. */
 type BibleSlice = Record<string, Array<{ references: AssetId[]; record: RecordId }>>
 
 /** The test-only `bible.character_create`: records a character version whose references are its input assets. */
@@ -175,7 +175,10 @@ function versionOf(slice: BibleSlice, id: string, version: number) {
   return slice[id]?.[version - 1] ?? null
 }
 
-/** The test-only reference kind `test_character`, which answers from the test-only slice the way the Story bible does. */
+/**
+ * The test-only reference kind `test_character`, which answers from the test-only slice the way the reference kind of
+ * `@dv/character` does.
+ */
 const characterKind: ReferenceKindSpec<never> = {
   kind: 'test_character', component: 'bible' as never,
   assetsOf: (slice: BibleSlice, id, version) => versionOf(slice, id, version)?.references ?? null,

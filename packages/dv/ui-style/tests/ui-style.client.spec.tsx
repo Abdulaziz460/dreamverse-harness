@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /**
- * The style noun in the browser: its canvas node type, version kind, `@` menu kind and History row (TS4 passes 2-4
- * of spec v5 §8), the registration and removal of every descriptor, and the `dv.canvas.editor` entry with its writes.
+ * The style noun in the browser: its canvas node type, version kind, `@` menu kind and History row, the registration
+ * and removal of every descriptor, and the `dv.canvas.editor` entry with its writes.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent } from '@testing-library/react'
@@ -67,7 +67,7 @@ const declared = (name: string, zh: string, en: string): WireOperation => ({
 })
 
 describe('the style descriptors', () => {
-  it('TS4.2: labels the node type and the version kind 风格 / Style, which titles the picker section, and reads every version', () => {
+  it('labels the node type and the version kind 风格 / Style, which titles the picker section, and reads every version', () => {
     document.documentElement.lang = 'zh-CN'
     const state = nounState()
     const { nodeType, versionKind } = style
@@ -82,7 +82,7 @@ describe('the style descriptors', () => {
     expect(style.referencesInUse.uses(state)).toContain('g1')
   })
 
-  it('TS4.3: lists the newest styles in the @ section 风格 at order 3, and a pick inserts dv:style/<id>', () => {
+  it('lists the newest styles in the @ section 风格 at order 3, and a pick inserts dv:style/<id>', () => {
     document.documentElement.lang = 'zh-CN'
     const { mentionKind } = style
     expect([mentionKind.id, mentionKind.kind, mentionKind.order, mentionKind.section()]).toEqual(['@dv/ui-style', 'style', 3, '风格'])
@@ -92,7 +92,7 @@ describe('the style descriptors', () => {
     expect(mentionKind.section()).toBe('Styles')
   })
 
-  it('TS4.4: names the History rows 新建风格「胶片」 and 修改风格「胶片」', () => {
+  it('names the History rows 新建风格「胶片」 and 修改风格「胶片」', () => {
     const context = {
       operations: [declared('style.create', '新建风格', 'Create style'), declared('style.update', '修改风格', 'Update style')],
       rows: [style.historyRow], records: new Map(),

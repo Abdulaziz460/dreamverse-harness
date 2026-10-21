@@ -72,7 +72,7 @@ export type WireComponents = Pick<ComponentStates, 'proj' | 'asset'> & Partial<C
 
 ## 后果
 
-添加一个引用名词需要写必填的宿主合并、必填的客户端合并、一次 `defineReferenceUi({ id, key, slice, label, mention })` 调用和 `export const apply = <k>.apply`。它不写 `?`、`?? {}`、类型断言，也不修改任何共享包；kit 和一个名词的实测成本由 [引用名词 Agent Note](2026-10-17-dv-architecture-reference-nouns.zh.md) 负责。额外的名词字段（例如 character 上的 `traits: string[]`）是必填类型。
+添加一个引用名词需要写必填的宿主合并、必填的客户端合并、一次 `defineReferenceUi({ id, key, slice, label, mention })` 调用和 `export const apply = <k>.apply`。它不写 `?`、`?? {}`、类型断言，也不修改任何共享包；kit 和一个名词的实测成本由 [引用名词 Agent Note](2026-10-17-dv-architecture-reference-nouns.zh.md) 负责。额外的名词字段（例如通过 `fields` 声明的 `traits: string[]` 字段）是必填类型。
 
 当宿主插件缺失时，所有者负责的读取不会抛错：`timelinesOf`、`plansOf` 和 kit 的名词读取返回所有者的空值。编译器检查缺失：客户端代码中像 `state.components.character.hero` 这样的直接读取会报错 `'state.components.character' is possibly 'undefined'`，所以读取方要么经过所有者的访问函数，要么用 `Pick` 证明存在。
 

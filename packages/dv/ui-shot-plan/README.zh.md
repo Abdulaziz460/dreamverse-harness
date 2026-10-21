@@ -45,7 +45,7 @@ Host 半边不注册任何东西。浏览器半边在 `ctx.inject(['dvCanvas'], 
 <a id="understand-the-implementation"></a>
 ## 理解实现
 
-`src/client/index.ts` 把客户端门面 `@dv/shot-plan/types` 的 `PlanState` 合并进 `@dv/ui-kit` 的客户端 `ComponentStates`，所以这个包按类型读取 `plan` 切片。画布核心按每个位置的锚定版本填充画面网格，在历史面板聚焦 `records` 中的记录时把条目移到中央，并在自己的编辑器标题栏下显示编辑器条目。分镜计划编辑器从 `dvCanvas` 的链锚点读取已批准版本，从版本类别读取版本引用的名字，并从 `GET /api/dv/tasks` 读取生成任务标签。
+`src/client/index.ts` 把客户端门面 `@dv/shot-plan/types` 的 `PlanState` 合并进 `@dv/ui-kit` 的客户端 `ComponentStates`，所以这个包按类型读取 `plan` 切片。画布核心按每个位置的锚定版本填充画面网格，在历史面板聚焦 `records` 中的记录时把条目移到中央，并在自己的编辑器标题栏下显示编辑器条目。分镜计划编辑器从 `dvCanvas` 的链锚点读取已批准版本，从版本类别读取版本引用的名字，并从 `GET /api/dv/tasks` 读取生成任务标签。`src/client/PlanEditor.tsx` 中的 `plansOf(state)` 读取 `plan` 切片，`@dv/shot-plan` 未加载时给出 `{}`；画布条目和分镜计划编辑器都通过它读取。
 
 | 文件 | 内容 |
 | --- | --- |

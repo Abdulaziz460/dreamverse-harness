@@ -614,7 +614,7 @@ describe('canvas stories', () => {
     const page = await openPage()
     await gotoProject(page, project.id)
     await fitCanvas(page)
-    // The smallest line box among the card elements that hold text directly: titles, kind labels, durations, and badges.
+    // The smallest line box among the card elements that hold text directly: titles, type labels, durations, and badges.
     const smallest = await page.locator('[data-node-id]').evaluateAll(nodes => Math.min(...nodes.flatMap(node => [...node.querySelectorAll('*')]
       .filter(element => [...element.childNodes].some(child => child.nodeType === Node.TEXT_NODE && (child.textContent ?? '').trim() !== ''))
       .map(element => element.getBoundingClientRect().height))))

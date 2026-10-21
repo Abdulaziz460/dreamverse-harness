@@ -76,7 +76,7 @@ An editor entry imports only `@dv/ui-kit`, so the canvas lends it an `EntryEdito
 
 ## Consequences
 
-A plugin's interface is added or removed with its own package. A hand-written UI half that registers a node type, a version kind, takes in use, a history row and a mention kind for a `prop` noun measured 179 counted lines and edited no UI-core file; an ad workflow's UI half that hangs a second chain off the same plan node measured 79 counted lines and edited no file outside its own package. The [reference nouns](2026-10-17-dv-architecture-reference-nouns.md) note gives the smaller cost of a noun built on `defineReferenceUi`.
+A plugin's interface is added or removed with its own package. A hand-written UI half that registers a node type, a version kind, takes in use, a history row and a mention kind for a `prop` noun edited no UI-core file; an ad workflow's UI half that hangs a second chain off the same plan node edited no file outside its own package. The [reference nouns](2026-10-17-dv-architecture-reference-nouns.md) note gives the cost of a noun built on `defineReferenceUi`.
 
 The registries cost indirection and runtime failure modes:
 

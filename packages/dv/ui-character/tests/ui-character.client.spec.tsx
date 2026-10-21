@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /**
- * The character noun in the browser: its canvas node type, version kind, `@` menu kind and History row (TS4 passes 2-4
- * of spec v5 §8), the registration and removal of every descriptor, and the `dv.canvas.editor` entry with its writes.
+ * The character noun in the browser: its canvas node type, version kind, `@` menu kind and History row, the
+ * registration and removal of every descriptor, and the `dv.canvas.editor` entry with its writes.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render } from '@testing-library/react'
@@ -71,7 +71,7 @@ const declared = (name: string, zh: string, en: string): WireOperation => ({
 })
 
 describe('the character descriptors', () => {
-  it('TS4.2: labels the node type and the version kind 角色 / Character, which titles the picker section, and reads every version', () => {
+  it('labels the node type and the version kind 角色 / Character, which titles the picker section, and reads every version', () => {
     document.documentElement.lang = 'zh-CN'
     const state = nounState()
     const { nodeType, versionKind } = character
@@ -86,7 +86,7 @@ describe('the character descriptors', () => {
     expect(character.referencesInUse.uses(state)).toContain('g1')
   })
 
-  it('TS4.3: lists the newest characters in the @ section 角色 at order 1, and a pick inserts dv:character/<id>', () => {
+  it('lists the newest characters in the @ section 角色 at order 1, and a pick inserts dv:character/<id>', () => {
     document.documentElement.lang = 'zh-CN'
     const { mentionKind } = character
     expect([mentionKind.id, mentionKind.kind, mentionKind.order, mentionKind.section()]).toEqual(['@dv/ui-character', 'character', 1, '角色'])
@@ -96,7 +96,7 @@ describe('the character descriptors', () => {
     expect(mentionKind.section()).toBe('Characters')
   })
 
-  it('TS4.4: names the History rows 新建角色「阿明」 and 修改角色「阿明」', () => {
+  it('names the History rows 新建角色「阿明」 and 修改角色「阿明」', () => {
     const context = {
       operations: [declared('character.create', '新建角色', 'Create character'), declared('character.update', '修改角色', 'Update character')],
       rows: [character.historyRow], records: new Map(),
@@ -108,7 +108,7 @@ describe('the character descriptors', () => {
     expect(row('character.update', { character: 'c1' })).toEqual(['修改角色「c1」', 'Update character “c1”'])
   })
 
-  it('TS4.5: draws the card of character:c1 with the label 角色, the name and the references, as data-node-type character', () => {
+  it('draws the card of character:c1 with the label 角色, the name and the references, as data-node-type character', () => {
     document.documentElement.lang = 'zh-CN'
     const state = nounState()
     const node = buildCanvasGraph(state, undefined, [], 'zh', [], [], [character.nodeType], [character.versionKind]).nodes

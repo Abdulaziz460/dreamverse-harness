@@ -110,4 +110,4 @@ agent tool call   view (POST /api/dv/operation)   plugin service (ctx.dv<Name>.<
 
 **不受检查的链字段。** 运行器复制 `started_by` 时不检查其记录是否存在；工作流和 UI 代码负责它的含义。
 
-**已知缺口。** `packages/dv/project/src/types.ts` 中的 `Surface` 联合类型列出了视图 `timeline` 和 `asset_pool`，适应度测试跳过这个联合类型。`packages/dv/project/src/runner.ts` 的模块注释和 `resolveInputs` 的 JSDoc 提到了 character、location 和 style；适应度测试扫描字符串字面量，不扫描注释。`mentionedAssets` 读取 `state.components.timeline`，而 `@dv/api` 没有注入 `dvTimeline`；[客户端状态类型](2026-10-17-dv-architecture-client-state-types.zh.md) 记录了这个缺口。
+**已知缺口。** `packages/dv/project/src/types.ts` 中的 `Surface` 联合类型列出了视图 `timeline` 和 `asset_pool`，适应度测试跳过这个联合类型。`mentionedAssets` 读取 `state.components.timeline`，而 `@dv/api` 没有注入 `dvTimeline`；[客户端状态类型](2026-10-17-dv-architecture-client-state-types.zh.md) 记录了这个缺口。

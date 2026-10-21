@@ -454,8 +454,8 @@ const RESIZE_KEYS: Readonly<Record<string, readonly [number, number]>> = {
 }
 
 /**
- * The editor: a header with the kind, the title, "问 agent" and close, above the body
- * of the node's kind. The title row moves the panel and a double click on it resets the panel; the handles on the right
+ * The editor: a header with the node type, the title, "问 agent" and close, above the body
+ * of the node's type. The title row moves the panel and a double click on it resets the panel; the handles on the right
  * edge, the bottom edge, and the bottom-right corner resize it.
  * @param props - the node, the state it came from, and the write callbacks.
  * @returns the element.

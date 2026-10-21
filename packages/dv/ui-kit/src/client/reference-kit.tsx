@@ -57,7 +57,7 @@ export interface ReferenceUi<V extends WireReferenceVersion = WireReferenceVersi
   referencesInUse: TakesInUse
   mentionKind: MentionKind
   historyRow: HistoryRow
-  /** An arrow function, so `export const apply = <k>.apply` keeps it bound (D5.17). */
+  /** An arrow function, so `export const apply = <k>.apply` keeps it bound. */
   apply: (ctx: ClientContext) => void
 }
 

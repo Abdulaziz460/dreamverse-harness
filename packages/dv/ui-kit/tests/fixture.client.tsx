@@ -1,7 +1,7 @@
 /**
- * A project state the view tests share: one character, one approved plan whose shots were rendered and put on a
- * timeline, a failed export, and a running retake as the last record. Also a scripted `fetch` that answers the
- * `/api/dv` routes from such a state and records every write.
+ * A project state the view tests share: the record that created character `hero` (the state holds no noun slice), one
+ * approved plan whose shots were rendered and put on a timeline, a failed export, and a running retake as the last
+ * record. Also a scripted `fetch` that answers the `/api/dv` routes from such a state and records every write.
  */
 import type { AssetId, RecordId } from '@dv/project/types'
 import type { PlanId } from '@dv/shot-plan/types'
