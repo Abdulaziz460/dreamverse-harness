@@ -187,8 +187,9 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
     /** The editor body of the nodes of one `NodeType`, keyed by its `id`; `@dv/ui-canvas` renders it in a node's editor. */
     'dv.canvas.editor': { kind: 'keyed'; scope: 'root'; owner: { node: NodeEntry; state: WireState; host: EntryEditorHost } }
-    /** The asset pool panel in the canvas's asset picker, and the preview of one asset; `@dv/ui-canvas` renders both at key 'assets'. */
+    /** The asset pool panel in the canvas's asset picker; `@dv/ui-canvas` renders the entry at key 'assets' below the version kinds. */
     'dv.canvas.picker': { kind: 'keyed'; scope: 'root'; owner: { projectId: string; session: string | null; client: DvClient; onOpen(asset: Asset): void } }
+    /** The preview of one asset; `@dv/ui-canvas` renders the entry at key 'assets'. Without it, the preview shows nothing. */
     'dv.canvas.preview': { kind: 'keyed'; scope: 'root'; owner: { asset: Asset; onClose(): void; zoom: ZoomPresence<Asset> } }
     /** One view of the open project, such as the canvas; `@dv/ui-shell` shows the selected entry in the workspace center. */
     'dv.center.view': { kind: 'list'; scope: 'root'; owner: { projectId: string; session: string | null } }

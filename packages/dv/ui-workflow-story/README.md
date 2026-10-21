@@ -65,7 +65,7 @@ The client state type of `@dv/ui-kit` gives the `story` slice the type `unknown`
 <a id="model-experience"></a>
 ## Model Experience
 
-None; the package sends nothing to a model.
+None, as browser-side descriptors of the story workflow; they show its records and write no record.
 
 #### KV Cache effect
 

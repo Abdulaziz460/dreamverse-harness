@@ -62,11 +62,33 @@ kind: "package-reference"
 <a id="model-experience"></a>
 ## 模型体验
 
-模型看到带 `@dv/reference-kit` 文案的工具 `dv_character_create` 和 `dv_character_update`、`dv_proj_state` 的 `characters` 字段，以及 skill `character`。
+### 工具定义
+
+#### 模型看到什么
+
+两个工具 `dv_character_create` 和 `dv_character_update`，格式与 `@dv/project` 给每个操作工具的一样。每个工具接受名为 `character` 的 ID 参数、`name`、`description`（"Words carried into every prompt: wardrobe, mood, or look."），以及带素材 ID 的 `inputs.reference`。创建工具的描述说明角色是在各个镜头中必须保持同样外观的人物、镜头以输入 `<character>@1` 指明它，以及 ID 不得已用于其他引用种类的条目；更新工具的描述说明下一个版本保留调用未改的内容，并把用上一版本做出的一切标为过期。`dv_proj_state` 的 `characters` 字段列出每个角色的最新版本，skill `character` 说明这些参数。
+
+#### Token 影响
+
+两个定义约 600 个 token，插件挂载期间固定不变；`@dv/project` 的共享参数让每个定义多约 200 个 token。
 
 #### KV Cache 影响
 
-插件挂载期间工具定义和 skill 文本不变，所以提示词前缀保持稳定。
+这些定义位于每次智能体请求中固定的工具部分；挂载或移除插件会改变工具列表，使缓存前缀从工具部分起失效。
+
+### 工具结果
+
+#### 模型看到什么
+
+一次调用返回一个文本块：`done <record>: character Lead created`（更新时为 `character c1 updated`）和参数。被拒绝的 ID 返回说明原因的工具错误，例如 "The ID 'c1' already names a style; update it, or choose another ID." 或 "Unknown character 'c9'."
+
+#### Token 影响
+
+每次调用约 50 个 token。
+
+#### KV Cache 影响
+
+结果在调用之后追加到对话中；已缓存的前缀保持不变。
 
 ## 已知限制与后续工作
 

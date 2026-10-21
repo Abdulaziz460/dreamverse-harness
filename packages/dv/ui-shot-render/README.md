@@ -73,7 +73,7 @@ Each mounted card reads `GET /api/dv/operations` and `GET /api/dv/tasks` once, t
 <a id="model-experience"></a>
 ## Model Experience
 
-None; the package sends nothing to a model.
+None, as a browser-side tool card; it shows the calls and results of `dv_shot_render` and writes no record.
 
 #### KV Cache effect
 

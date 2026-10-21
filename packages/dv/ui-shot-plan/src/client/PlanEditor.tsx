@@ -8,6 +8,7 @@ import type { CSSProperties, ReactNode } from 'react'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { PlanVersion, Shot } from '@dv/shot-plan/types'
 import { assetUrl, type DvClient } from '@dv/ui-kit/api.ts'
+import { AssetMedia } from '@dv/ui-kit/asset-media.tsx'
 import { useText } from '@dv/ui-kit/locale.ts'
 import { isPicture, pictureParts, referenceAssets } from '@dv/ui-kit/references.ts'
 import type { DvCanvas, Registry, VersionKind } from '@dv/ui-kit/registries.ts'
@@ -85,18 +86,11 @@ function referenceLabel(reference: NamedReference): string {
   return reference.picture === null ? reference.name : `Picture ${String(reference.picture)} · ${reference.name}`
 }
 
-/** An image asset as an image and a video asset as its first frame; nothing for another media type. */
-function ReferenceMedia({ asset, style }: { asset: ProjectAsset; style: CSSProperties }): ReactNode {
-  if (asset.mime.startsWith('video/')) return <video src={`${assetUrl(asset.id)}#t=0.1`} muted preload="metadata" style={style} />
-  if (asset.mime.startsWith('image/')) return <img src={assetUrl(asset.id)} alt="" style={style} draggable={false} />
-  return null
-}
-
 /** One reference asset as a chip: its media and its label. */
 function ReferenceChip({ reference }: { reference: NamedReference }): ReactNode {
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, height: 32, padding: '0 10px 0 4px', borderRadius: 'var(--dv-radius-md)', background: 'var(--dv-surface-3)', maxWidth: '100%' }}>
-      <ReferenceMedia asset={reference.asset} style={chipThumb} />
+      <AssetMedia asset={reference.asset} style={chipThumb} />
       <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{referenceLabel(reference)}</span>
     </span>
   )
@@ -190,7 +184,7 @@ function PlanHeader(
             {pick('计划参考', 'Plan references')}
             {references.map((reference, index) => (
               <span key={index} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                <ReferenceMedia asset={reference.asset} style={{ ...chipThumb, boxShadow: '0 0 0 1px var(--dv-line-strong)' }} />
+                <AssetMedia asset={reference.asset} style={{ ...chipThumb, boxShadow: '0 0 0 1px var(--dv-line-strong)' }} />
                 <span style={{ color: 'var(--dv-text)' }}>{referenceLabel(reference)}</span>
               </span>
             ))}

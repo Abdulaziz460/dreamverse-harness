@@ -33,6 +33,7 @@ export const NO_ASSET_KINDS: AssetKinds = new Map()
 const REFETCH_DELAY_MS = 150
 
 /**
+ * The media kind that a chat card draws for an asset.
  * @param mime - an asset's MIME type.
  * @returns the media kind, or undefined for other files.
  */

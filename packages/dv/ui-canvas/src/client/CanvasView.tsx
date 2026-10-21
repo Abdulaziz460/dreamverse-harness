@@ -26,7 +26,7 @@ import { useLanguage } from '@dv/ui-kit/locale.ts'
 import { formatInputRef } from '@dv/ui-kit/references.ts'
 import type { DvCanvas, Registry } from '@dv/ui-kit/registries.ts'
 import type { WireTaskLabels } from '@dv/ui-kit/tool-labels.ts'
-import type { CanvasViewport, NodePosition, OperationRequest } from '@dv/ui-kit/types.ts'
+import type { CanvasViewport, NodePosition, OperationRequest, WireState } from '@dv/ui-kit/types.ts'
 import { DV_ASSET_DRAG_TYPE, DV_CANVAS_FOCUS_EVENT } from '@dv/ui-kit/workspace-events.ts'
 import type { DvWorkspaceEventMap } from '@dv/ui-kit/workspace-events.ts'
 import { readStored, writeStored } from '@dv/ui-kit/storage.ts'
@@ -767,6 +767,22 @@ export function CanvasView(
     setSelected(null)
     void run(() => changePlacement(assetId, false))
   }
+  /** The props that the editor of the open node and the stacked editor share. */
+  const sharedEditorProps = (state: WireState) => ({
+    state,
+    operations: operations.value ?? [],
+    taskLabels: taskLabels.value ?? NO_TASK_LABELS,
+    versionKinds,
+    client,
+    project: projectId,
+    session,
+    t,
+    ...renderSlot === undefined ? {} : { renderSlot },
+    run,
+    onRender: startRender,
+    onRemoveFromCanvas: removeFromCanvas,
+    onOpenNode: setStacked,
+  })
   return (
     <div
       ref={container}
@@ -803,20 +819,8 @@ export function CanvasView(
               key={editingNode.id}
               node={editingNode}
               zoomRef={editorZoom.targetRef}
-              state={graph.state}
-              operations={operations.value ?? []}
-              taskLabels={taskLabels.value ?? NO_TASK_LABELS}
-              versionKinds={versionKinds}
-              client={client}
-              project={projectId}
-              session={session}
-              t={t}
-              {...renderSlot === undefined ? {} : { renderSlot }}
+              {...sharedEditorProps(graph.state)}
               onClose={() => { setEditing(null) }}
-              run={run}
-              onRender={startRender}
-              onRemoveFromCanvas={removeFromCanvas}
-              onOpenNode={setStacked}
             />
           </>
         )
@@ -830,20 +834,8 @@ export function CanvasView(
               key={`stacked:${stackedNode.id}`}
               node={stackedNode}
               zoomRef={noZoom}
-              state={graph.state}
-              operations={operations.value ?? []}
-              taskLabels={taskLabels.value ?? NO_TASK_LABELS}
-              versionKinds={versionKinds}
-              client={client}
-              project={projectId}
-              session={session}
-              t={t}
-              {...renderSlot === undefined ? {} : { renderSlot }}
+              {...sharedEditorProps(graph.state)}
               onClose={() => { setStacked(null) }}
-              run={run}
-              onRender={startRender}
-              onRemoveFromCanvas={removeFromCanvas}
-              onOpenNode={setStacked}
             />
           </div>
         )

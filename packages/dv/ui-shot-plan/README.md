@@ -68,7 +68,7 @@ The Host half registers nothing. The browser half registers both descriptors ins
 <a id="model-experience"></a>
 ## Model Experience
 
-None; the package sends nothing to a model.
+None, as a browser-side plan node and plan editor; they show plans and write no record.
 
 #### KV Cache effect
 

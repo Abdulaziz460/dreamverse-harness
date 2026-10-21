@@ -62,11 +62,33 @@ Mount the plugin after `@dv/project`:
 <a id="model-experience"></a>
 ## Model Experience
 
-The model sees the tools `dv_character_create` and `dv_character_update` with the texts of `@dv/reference-kit`, the `characters` field of `dv_proj_state`, and the skill `character`.
+### Tool definitions
+
+#### What the model sees
+
+Two tools, `dv_character_create` and `dv_character_update`, in the format `@dv/project` gives every operation tool. Each takes the ID under the name `character`, `name`, `description` ("Words carried into every prompt: wardrobe, mood, or look."), and `inputs.reference` with asset IDs. The create description says that a character is a person who must look the same across shots, that a shot names it as the input `<character>@1`, and that the ID must not name an item of another reference kind; the update description says that the next version keeps what the call does not change and marks everything made with the previous version as stale. The `characters` field of `dv_proj_state` lists the newest version of each character, and the skill `character` describes the arguments.
+
+#### Token effect
+
+About 600 tokens for the two definitions, fixed while the plugin is mounted; the shared arguments of `@dv/project` add about 200 tokens to each definition.
 
 #### KV Cache effect
 
-The tool definitions and the skill text are fixed for a mounted plugin, so they keep the prompt prefix stable.
+The definitions sit in the stable tool section of every agent request; mounting or removing the plugin changes the tool list and invalidates the cached prefix from the tool section on.
+
+### Tool results
+
+#### What the model sees
+
+A call returns one text block: `done <record>: character Lead created` (`character c1 updated` for an update) and the params. A refused ID returns a tool error that says why, such as "The ID 'c1' already names a style; update it, or choose another ID." or "Unknown character 'c9'."
+
+#### Token effect
+
+About 50 tokens per call.
+
+#### KV Cache effect
+
+The result is appended to the conversation after the call; the cached prefix stays intact.
 
 ## Known Limitations and Deferred Work
 

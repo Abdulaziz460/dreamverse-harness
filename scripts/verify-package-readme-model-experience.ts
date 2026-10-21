@@ -239,6 +239,12 @@ const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
   'packages/dv/ui-composer': { kind: 'indirect', reason: 'Browser-side composer additions; @dv/chat-references turns their dv: mentions into model context.' },
   'packages/dv/ui-skills': { kind: 'indirect', reason: 'Browser-side Skills page; Use puts /name into the composer, and the skill reaches the model only when the user sends the message and dsh-tool-skill loads it.' },
   'packages/dv/ui-shell': { kind: 'indirect', reason: 'Browser-side shell; the session bindings it saves and the records its Insert clip writes reach the model only through the dv:project prompt section and the dv_proj_* and operation tools of @dv/project.' },
+  'packages/dv/ui-character': { kind: 'indirect', reason: 'Browser-side character node and editor; the character.update records its editor writes reach the model only through @dv/project.' },
+  'packages/dv/ui-location': { kind: 'indirect', reason: 'Browser-side location node and editor; the location.update records its editor writes reach the model only through @dv/project.' },
+  'packages/dv/ui-style': { kind: 'indirect', reason: 'Browser-side style node and editor; the style.update records its editor writes reach the model only through @dv/project.' },
+  'packages/dv/ui-shot-plan': { kind: 'none', reason: 'Browser-side plan node and plan editor; they show plans and write no record.' },
+  'packages/dv/ui-shot-render': { kind: 'none', reason: 'Browser-side render tool card; it shows the calls and results of dv_shot_render and writes no record.' },
+  'packages/dv/ui-workflow-story': { kind: 'none', reason: 'Browser-side descriptors of the story workflow; they show its records and write no record.' },
   'packages/dv/ffmpeg': { kind: 'indirect', reason: 'The command runner adds no tool; the component operations that call it report its files and probe fields.' },
   'packages/dv/e2e': { kind: 'none', reason: 'Browser stories that run the DreamVerse profile against a scripted model; the package ships no plugin, prompt, or tool.' },
 }

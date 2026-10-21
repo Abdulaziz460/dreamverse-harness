@@ -12,7 +12,7 @@ import { Fragment, useEffect, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
-import { assetUrl } from '@dv/ui-kit/api.ts'
+import { AssetMedia } from '@dv/ui-kit/asset-media.tsx'
 import type { DvClient } from '@dv/ui-kit/api.ts'
 import type { VersionKind } from '@dv/ui-kit/registries.ts'
 import type { Asset, WireState } from '@dv/ui-kit/types.ts'
@@ -54,19 +54,6 @@ function useEscapeFirst(active: boolean, onEscape: () => void): void {
     window.addEventListener('keydown', onKey, true)
     return () => { window.removeEventListener('keydown', onKey, true) }
   }, [active, onEscape])
-}
-
-/**
- * An image asset as an image and a video asset as its first frame; nothing for another media type or a missing asset.
- * @param props - the asset and the media's style.
- * @returns the element.
- */
-export function AssetMedia(props: { asset: Asset | undefined; style: CSSProperties }): ReactNode {
-  const { asset, style } = props
-  if (asset === undefined) return null
-  if (asset.mime.startsWith('video/')) return <video src={`${assetUrl(asset.id)}#t=0.1`} muted preload="metadata" style={style} />
-  if (asset.mime.startsWith('image/')) return <img src={assetUrl(asset.id)} alt="" style={style} draggable={false} />
-  return null
 }
 
 /** Props of {@link AssetPicker}. */
