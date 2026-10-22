@@ -205,6 +205,48 @@ describe('PlanEditor', () => {
     await runtime.dispose()
   })
 
+  it('measures a shot prompt again when the chosen version shows a different prompt in the same shot', async () => {
+    // jsdom lays out nothing; a prompt box reports a height of 10 px per prompt character.
+    vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockImplementation(function (this: HTMLElement) { return (this.textContent ?? '').length * 10 })
+    const state = fixtureState()
+    const [v1] = state.components.plan.plans['p1' as PlanId] ?? []
+    const [shot] = v1?.shots ?? []
+    if (v1 === undefined || shot === undefined) throw new Error('fixture lacks plan p1')
+    state.components.plan.plans['p1' as PlanId] = [
+      { ...v1, shots: [{ ...shot, prompt: 'hero walks through the rain' }] },
+      { ...v1, version: 2, shots: [{ ...shot, prompt: 'hero turns' }] },
+    ]
+    const { runtime, editor } = await mount(state, canvasRegistries())
+    const toggles = (): HTMLElement[] => within(editor).queryAllByRole('button', { name: '展开全部提示词' })
+    expect(toggles()).toHaveLength(0)
+    fireEvent.click(within(editor).getByRole('button', { name: '第 1 版' }))
+    expect(toggles()).toHaveLength(1)
+    fireEvent.click(within(editor).getByRole('button', { name: '第 2 版' }))
+    expect(toggles()).toHaveLength(0)
+    await runtime.dispose()
+  })
+
+  it('measures a shot prompt again when a reference starts to resolve and its Picture N token turns into an image', async () => {
+    // jsdom lays out nothing; a prompt box reports a height of 10 px per prompt character, and an image adds none.
+    vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockImplementation(function (this: HTMLElement) { return (this.textContent ?? '').length * 10 })
+    const canvas = canvasRegistries()
+    const state = fixtureState()
+    const [v1] = state.components.plan.plans['p1' as PlanId] ?? []
+    if (v1 === undefined) throw new Error('fixture lacks plan p1')
+    state.components.plan.plans['p1' as PlanId] = [{
+      ...v1, references: ['hero@1'],
+      shots: [{ prompt: '<Picture 1> walks', modality: 'video' as const, task: 'ref2v' as const, provider: 'fastvideo', model: 'fasth3' }],
+    }]
+    const { runtime, editor } = await mount(state, canvas)
+    const toggles = (): HTMLElement[] => within(editor).queryAllByRole('button', { name: '展开全部提示词' })
+    // Without a version kind, hero@1 resolves to nothing, and the 17-character token text overflows.
+    expect(toggles()).toHaveLength(1)
+    act(() => { canvas.versionKinds.register(CHARACTERS) })
+    // After the registration, Hero's image stands for <Picture 1>; the remaining 6 characters fit.
+    await waitFor(() => { expect(toggles()).toHaveLength(0) })
+    await runtime.dispose()
+  })
+
   it('shows nothing for an entry whose plan the state does not hold', async () => {
     const state = fixtureState()
     const [entry] = planNodeType.entries(state)

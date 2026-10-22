@@ -3,7 +3,7 @@
  * Its texts follow the interface language of `<html lang>`.
  * @module @dv/ui-shot-plan/PlanEditor
  */
-import { memo, useCallback, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { memo, useCallback, useState, useSyncExternalStore } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { PlanVersion, Shot } from '@dv/shot-plan/types'
@@ -255,16 +255,11 @@ function PromptBox({ prompt, references }: { prompt: string; references: NamedRe
   const pick = useText()
   const [expanded, setExpanded] = useState(false)
   const [overflows, setOverflows] = useState(false)
-  const box = useRef<HTMLDivElement | null>(null)
-  // Measure after layout: only a prompt taller than the collapsed height gets the fade and the toggle.
-  useLayoutEffect(() => {
-    if (box.current !== null) setOverflows(box.current.scrollHeight > PROMPT_COLLAPSED_HEIGHT)
-  }, [prompt])
   const collapsed = overflows && !expanded
   return (
     <>
       <div
-        ref={box}
+        ref={(box) => { if (box !== null) setOverflows(box.scrollHeight > PROMPT_COLLAPSED_HEIGHT) }}
         style={{
           position: 'relative', maxHeight: expanded ? 'none' : PROMPT_COLLAPSED_HEIGHT, overflow: 'hidden', boxSizing: 'border-box', padding: '10px 12px',
           borderRadius: 'var(--dv-radius-md)', background: 'var(--dv-surface-1)', boxShadow: 'inset 0 0 0 1px var(--dv-line)',
