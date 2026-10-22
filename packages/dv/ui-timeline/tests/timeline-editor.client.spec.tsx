@@ -24,8 +24,15 @@ beforeEach(async () => {
 })
 afterEach(async () => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); await booted.fiber.dispose() })
 
-/** @returns the selected timeline of project p1 in the plugin's shared selection. */
-const selected = (): string | undefined => booted.center().hooks.selection.getSnapshot().timelines['p1']
+/** @returns the selected timeline of project p1 in its center fields. */
+const selected = (): string | undefined => booted.stand.getSnapshot().fields['timeline']
+
+/**
+ * @param view - the rendered editor.
+ * @returns the `aria-selected` of each timeline tab.
+ */
+const shownTabs = (view: { getAllByRole: (role: string) => HTMLElement[] }): Array<string | null> =>
+  view.getAllByRole('tab').map(tab => tab.getAttribute('aria-selected'))
 
 /** The shared fixture with a second timeline holding one imported clip. */
 function twoTimelines(): FixtureState {
@@ -43,7 +50,7 @@ function twoTimelines(): FixtureState {
  */
 function mount(routes: ScriptedRoutes = { state: twoTimelines }) {
   const { fetch, writes } = scriptedFetch(routes)
-  const view = render(centerView(booted.center(), { client: new DvClient(fetch) }))
+  const view = render(centerView(booted, { client: new DvClient(fetch) }))
   const clip = (position: number): HTMLElement => {
     const element = view.container.querySelector(`[data-clip-position="${String(position)}"]`)
     if (!(element instanceof HTMLElement)) throw new Error(`no clip ${String(position)}`)
@@ -63,7 +70,7 @@ describe('TimelineView', () => {
     expect(clip(2).getAttribute('data-clip-stale')).toBe('true')
     expect(clip(2).getAttribute('data-clip')).toBe('cl2')
     expect(view.getByTestId('dv-timeline-time').textContent).toBe('00:00.00 / 00:07.00')
-    await waitFor(() => { expect(selected()).toBe('t1') })
+    expect(shownTabs(view)).toEqual(['true', 'false'])
     fireEvent.click(view.getAllByRole('tab')[1] as HTMLElement)
     expect(view.container.querySelectorAll('[data-clip]')).toHaveLength(1)
   })
@@ -133,7 +140,7 @@ describe('TimelineView', () => {
         return state
       },
     })
-    const view = render(centerView(booted.center(), { client: new DvClient(fetch) }))
+    const view = render(centerView(booted, { client: new DvClient(fetch) }))
     await view.findByRole('list', { name: '视频轨道' })
     const frames = (): HTMLVideoElement[] => [...view.getByTestId('dv-timeline-viewer').querySelectorAll('video')]
     expect(frames()[0]?.getAttribute('src')).toBe('/dv/assets/shot1.mp4')
@@ -141,7 +148,6 @@ describe('TimelineView', () => {
     fireEvent.pointerUp(view.getByTestId('dv-timeline-ruler'), { clientX: 200 })
     expect(view.getByTestId('dv-timeline-time').textContent).toBe('00:05.00 / 00:07.00')
 
-    await waitFor(() => { expect(selected()).toBe('t1') })
     fireEvent.click(view.getAllByRole('tab')[1] as HTMLElement)
     expect(view.getByTestId('dv-timeline-time').textContent).toBe('00:00.00 / 00:03.00')
     expect(frames()[0]?.getAttribute('src')).toBe('/dv/assets/imported.mp4')
@@ -192,42 +198,49 @@ describe('TimelineView', () => {
     window.sessionStorage.clear()
   })
 
-  it('keeps the selected timeline in the shared selection, notes a picked timeline as the center target, and follows another editor\'s selection', async () => {
+  it('notes a picked timeline as the project\'s timeline center field, and shows the first timeline while the field names none or a lost one', async () => {
     const { view, track } = mount()
     await track()
-    // The first timeline shows by default; the default is selected without a center target.
-    await waitFor(() => { expect(selected()).toBe('t1') })
-    expect(booted.noted).toEqual([])
+    expect([selected(), shownTabs(view)]).toEqual([undefined, ['true', 'false']])
     fireEvent.click(view.getAllByRole('tab')[1] as HTMLElement)
-    expect(selected()).toBe('t2')
-    expect(booted.noted).toEqual([{ view: 'timeline', target: { timeline: 't2' } }])
-    act(() => { booted.tab().select('p1', 't1') })
-    expect(view.getAllByRole('tab').map(tab => tab.getAttribute('aria-selected'))).toEqual(['true', 'false'])
+    expect([selected(), shownTabs(view)]).toEqual(['t2', ['false', 'true']])
+    act(() => { booted.stand.note({ timeline: 't9' }) })
+    expect(shownTabs(view)).toEqual(['true', 'false'])
+    // The tab body's selection of the same project is its own.
+    act(() => { booted.tab().select('p1', 't2') })
+    expect(shownTabs(view)).toEqual(['true', 'false'])
   })
 
-  it('applies a center target once per serial: its timeline is selected and its clip selected and played from its start', async () => {
+  it('applies a request once: its timeline is selected, and its clip selected and played from its start', async () => {
     const { fetch } = scriptedFetch({ state: twoTimelines })
     const client = new DvClient(fetch)
-    const view = render(centerView(booted.center(), { client, target: { value: { timeline: 't1', clip: 'cl2' }, serial: 1 } }))
+    booted.stand.show({ timeline: 't1', clip: 'cl2' })
+    const view = render(centerView(booted, { client }))
     await view.findByRole('list', { name: '视频轨道' })
-    const pressed = (): Array<string | null> => [...view.container.querySelectorAll('[data-clip]')].map(clip => clip.getAttribute('aria-pressed'))
+    const pressed = (): Array<string | null> => [...document.querySelectorAll('[data-clip]')].map(clip => clip.getAttribute('aria-pressed'))
     await waitFor(() => { expect(pressed()).toEqual(['false', 'true']) })
     expect(view.getByTestId('dv-timeline-time').textContent).toBe('00:04.00 / 00:07.00')
-    // Another timeline picked in the editor stays when the center hands the same target again (a remount).
+    expect([selected(), booted.stand.getSnapshot().request]).toEqual(['t1', null])
+    // Another timeline picked in the editor stays when the view mounts again: the request was taken.
     fireEvent.click(view.getAllByRole('tab')[1] as HTMLElement)
-    view.rerender(centerView(booted.center(), { client, target: { value: { timeline: 't1', clip: 'cl2' }, serial: 1 } }))
-    expect(view.getAllByRole('tab').map(tab => tab.getAttribute('aria-selected'))).toEqual(['false', 'true'])
-    // A new target with the clip of the second timeline selects it there; a value that is not a timeline target is ignored.
-    view.rerender(centerView(booted.center(), { client, target: { value: { timeline: 't2', clip: 'cl3' }, serial: 2 } }))
+    view.unmount()
+    const again = render(centerView(booted, { client }))
+    await again.findByRole('list', { name: '视频轨道' })
+    expect(shownTabs(again)).toEqual(['false', 'true'])
+    // A request with the clip of the second timeline selects it there, and one without a clip only its timeline.
+    act(() => { booted.stand.show({ timeline: 't2', clip: 'cl3' }) })
     await waitFor(() => { expect(pressed()).toEqual(['true']) })
-    view.rerender(centerView(booted.center(), { client, target: { value: { timeline: 7 }, serial: 3 } }))
-    expect(selected()).toBe('t2')
+    act(() => { booted.stand.show({ timeline: 't1', clip: null }) })
+    expect([selected(), shownTabs(again), booted.stand.getSnapshot().request]).toEqual(['t1', ['true', 'false'], null])
+    // A value that is neither request form changes nothing.
+    act(() => { booted.stand.show({ timeline: 7 }) })
+    act(() => { booted.stand.show({ timeline: 't2', clip: 7 }) })
+    expect([selected(), shownTabs(again)]).toEqual(['t1', ['true', 'false']])
   })
 
   it('renames a timeline by double-click and deletes it from the tab menu after a confirmation', async () => {
     const { view, requests, track } = mount()
     await track()
-    await waitFor(() => { expect(selected()).toBe('t1') })
     fireEvent.doubleClick(view.getAllByRole('tab')[1] as HTMLElement)
     const box = within(view.getByRole('tablist')).getByRole('textbox')
     fireEvent.change(box, { target: { value: '结尾' } })
@@ -243,7 +256,7 @@ describe('TimelineView', () => {
 
   it('edits the project at once, with the chat session beside it recorded on each edit; undo and redo move the current position', async () => {
     const { fetch, writes } = scriptedFetch({ state: () => ({ ...fixtureState(), tip: 'later' }) })
-    const editing = render(centerView(booted.center(), { client: new DvClient(fetch), session: 's5' }))
+    const editing = render(centerView(booted, { client: new DvClient(fetch), session: 's5' }))
     await waitFor(() => { expect((editing.getByRole('button', { name: '拆分' }) as HTMLButtonElement).disabled).toBe(false) })
     // Redo is enabled while a step lies after the current position.
     expect((editing.getByRole('button', { name: '重做' }) as HTMLButtonElement).disabled).toBe(false)
@@ -286,7 +299,7 @@ describe('TimelineView', () => {
     const placed = placeTimeline(state, timeline ?? null).clips.slice(-2)
     expect(placed.map(clip => [clip.status, clip.seconds])).toEqual([['rendering', 2], ['failed', FALLBACK_CLIP_SECONDS]])
     const { fetch } = scriptedFetch({ state: () => state })
-    const view = render(centerView(booted.center(), { client: new DvClient(fetch) }))
+    const view = render(centerView(booted, { client: new DvClient(fetch) }))
     await view.findByRole('list', { name: '视频轨道' })
     expect(view.container.querySelector('[data-clip="cl8"]')?.getAttribute('title')).toContain('渲染中…')
     expect(view.container.querySelector('[data-clip="cl9"]')?.getAttribute('title')).toContain('渲染失败')
@@ -317,14 +330,15 @@ describe('TimelineView', () => {
     expect(requests()[0]).toMatchObject({ params: { timeline: 't1' } })
   })
 
-  it('inserts the asset of a dv:timeline-insert request at the end of the selected timeline, for the chat session beside it', async () => {
+  it('shows itself with an insert request for a dv:timeline-insert event, and inserts the asset at the end of the selected timeline', async () => {
     const { fetch, writes } = scriptedFetch({ state: twoTimelines })
-    const view = render(centerView(booted.center(), { client: new DvClient(fetch), session: 's5' }))
+    const view = render(centerView(booted, { client: new DvClient(fetch), session: 's5' }))
     await view.findByRole('list', { name: '视频轨道' })
     fireEvent.click(view.getAllByRole('tab')[1] as HTMLElement)
-    act(() => { dispatchWorkspaceEvent(DV_TIMELINE_INSERT_EVENT, { projectId: 'p1', assetId: 'shot1.mp4' }) })
-    // The request shows the timeline view on the selected timeline.
-    expect(booted.shown.at(-1)).toEqual({ view: 'timeline', target: { timeline: 't2' } })
+    dispatchWorkspaceEvent(DV_TIMELINE_INSERT_EVENT, { projectId: 'p1', assetId: 'shot1.mp4' })
+    expect(booted.shown).toEqual([{ view: 'timeline', target: { insert: 'shot1.mp4' } }])
+    act(() => { booted.stand.show({ insert: 'shot1.mp4' }) })
+    expect(booted.stand.getSnapshot().request).toBeNull()
     await waitFor(() => { expect(writes.filter(write => write.path === '/api/dv/operation')).toHaveLength(1) })
     expect(writes.find(write => write.path === '/api/dv/operation')?.body).toEqual({
       project: 'p1', operation: 'timeline.clip_insert', params: { timeline: 't2', at: 2, asset: 'shot1.mp4' }, intent: '在位置 2 插入片段',
@@ -332,20 +346,18 @@ describe('TimelineView', () => {
     })
   })
 
-  it('keeps an asset of its project queued before the view mounts, leaves one of another project, and creates t1 holding the clip in a project without timelines', async () => {
+  it('inserts the asset of an insert request handed before the state is read, as t1 holding the clip in a project without timelines', async () => {
     const state = fixtureState()
     state.components.timeline.timelines = []
     const { fetch, writes } = scriptedFetch({ state: () => state })
-    // The asset of another project waits for a view of that project.
-    dispatchWorkspaceEvent(DV_TIMELINE_INSERT_EVENT, { projectId: 'p2', assetId: 'other.mp4' })
-    dispatchWorkspaceEvent(DV_TIMELINE_INSERT_EVENT, { projectId: 'p1', assetId: 'shot2.mp4' })
-    render(centerView(booted.center(), { client: new DvClient(fetch) }))
+    booted.stand.show({ insert: 'shot2.mp4' })
+    render(centerView(booted, { client: new DvClient(fetch) }))
     await waitFor(() => {
       expect(writes.filter(write => write.path === '/api/dv/operation').map(write => write.body)).toEqual([{
         project: 'p1', operation: 'timeline.create', params: { timeline: 't1', assets: ['shot2.mp4'] }, intent: '新建时间线', surface: 'timeline',
       }])
     })
-    expect(booted.center().hooks.selection.getSnapshot().inserts).toEqual([{ projectId: 'p2', assetId: 'other.mp4' }])
+    expect([selected(), booted.stand.getSnapshot().request]).toEqual(['t1', null])
   })
 })
 
@@ -356,13 +368,14 @@ function withoutTimelineSlice(): WireState {
 }
 
 describe('timeline editor gestures', () => {
-  it('drops the selection when the selected clip leaves the timeline, and selects nothing for a target clip the timeline lacks', async () => {
+  it('drops the selection when the selected clip leaves the timeline, and selects nothing for a requested clip the timeline lacks', async () => {
     let state: FixtureState = twoTimelines()
     const { fetch } = scriptedFetch({ state: () => state })
-    const view = render(centerView(booted.center(), { client: new DvClient(fetch), target: { value: { timeline: 't1', clip: 'gone' }, serial: 1 } }))
+    booted.stand.show({ timeline: 't1', clip: 'gone' })
+    const view = render(centerView(booted, { client: new DvClient(fetch) }))
     await view.findByRole('list', { name: '视频轨道' })
     const pressed = (): Array<string | null> => [...view.container.querySelectorAll('[data-clip]')].map(clip => clip.getAttribute('aria-pressed'))
-    await waitFor(() => { expect(booted.center().hooks.selection.getSnapshot().clipFocus).toBeNull() })
+    await waitFor(() => { expect(booted.stand.getSnapshot().request).toBeNull() })
     expect(pressed()).toEqual(['false', 'false'])
     const second = view.container.querySelector('[data-clip="cl2"]') as HTMLElement
     fireEvent.pointerDown(second, { clientX: 0 })
@@ -451,7 +464,6 @@ describe('timeline editor gestures', () => {
   it('returns to the shown timeline when creating one fails, and keeps the selection when a removal or a move fails', async () => {
     const { view, clip, requests, track } = mount({ state: twoTimelines, post: () => ({ status: 500, body: { error: 'busy' } }) })
     await track()
-    await waitFor(() => { expect(selected()).toBe('t1') })
     fireEvent.click(view.getByText('＋ 新建'))
     expect(selected()).toBe('t3')
     await waitFor(() => { expect(selected()).toBe('t1') })
@@ -714,19 +726,18 @@ describe('timeline editor layout', () => {
   })
 })
 
-describe('the shared timeline selection', () => {
-  it('ignores a target that is no timeline target, and publishes nothing when there is no clip focus or queued asset to take', () => {
-    const center = booted.center()
+describe('the tab body\'s timeline selection', () => {
+  it('selects per project, clears a selection, and publishes nothing for a selection that stays', () => {
+    const { hooks, select } = booted.tab()
     const notified = vi.fn()
-    const unsubscribe = center.hooks.selection.subscribe(notified)
-    const before = center.hooks.selection.getSnapshot()
-    center.applyTarget('p1', { value: 't1', serial: 1 })
-    center.applyTarget('p1', { value: ['t1'], serial: 2 })
-    center.takeClipFocus()
-    expect(center.takeInserts('p1')).toEqual([])
+    const unsubscribe = hooks.selection.subscribe(notified)
+    select('p1', 't2')
+    select('p2', 't1')
+    select('p2', 't1')
+    expect(hooks.selection.getSnapshot()).toEqual({ p1: 't2', p2: 't1' })
+    select('p1', null)
     unsubscribe()
-    expect(notified).not.toHaveBeenCalled()
-    expect(center.hooks.selection.getSnapshot()).toBe(before)
+    expect([hooks.selection.getSnapshot(), notified.mock.calls.length]).toEqual([{ p2: 't1' }, 3])
   })
 })
 
@@ -741,7 +752,7 @@ describe('TimelineView copy and failures', () => {
     const failing: typeof fetch = (input, init) => input === '/api/dv/state?project=p1'
       ? Promise.resolve(new Response(JSON.stringify({ error: 'no state' }), { status: 500 }))
       : fetch(input, init)
-    const view = render(centerView(booted.center(), { client: new DvClient(failing) }))
+    const view = render(centerView(booted, { client: new DvClient(failing) }))
     await waitFor(() => { expect(view.getByRole('alert').textContent).toBe('失败：no state') })
   })
 
@@ -749,7 +760,7 @@ describe('TimelineView copy and failures', () => {
     const { fetch } = scriptedFetch({ state: twoTimelines })
     // oxlint-disable-next-line typescript/prefer-promise-reject-errors -- the non-Error rejection is the scenario under test.
     const offline: typeof fetch = (input, init) => input === '/api/dv/operation' ? Promise.reject('offline') : fetch(input, init)
-    const view = render(centerView(booted.center(), { client: new DvClient(offline) }))
+    const view = render(centerView(booted, { client: new DvClient(offline) }))
     fireEvent.click(await view.findByText('＋ 新建'))
     await waitFor(() => { expect(view.getByRole('alert').textContent).toBe('失败：offline') })
   })

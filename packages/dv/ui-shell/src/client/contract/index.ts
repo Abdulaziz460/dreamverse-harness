@@ -1,6 +1,6 @@
 /**
  * The shell's surface contract: the slots that `@dv/ui-shell` declares for other UI plugins, and the center service
- * that moves the workspace center to a view and a target in it. The shell names no view. Types only.
+ * that shows a view of the open project and hands it a request. The shell names no view. Types only.
  *
  * @module @dv/ui-shell/contract
  */
@@ -8,25 +8,36 @@ import type {} from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
 
 /** JSON data. */
-export type Json = null | boolean | number | string | readonly Json[] | { readonly [key: string]: Json }
+export type Json = null | boolean | number | string | readonly Json[] | JsonFields
 
-/** Where the center moves: a `dv.center.view` entry's ID and a JSON target that the view reads, such as a record. */
-export interface CenterTarget { view: string; target: Json }
+/** A JSON object. */
+export interface JsonFields { readonly [key: string]: Json }
+
+/** A request for the center: a `dv.center.view` entry's ID and a value that the view reads once, such as a record. */
+export interface CenterTarget { view: string; target: JsonFields }
 
 /** Provided by `@dv/ui-shell` as `ctx.dvCenter`. */
 export interface DvCenter {
-  /** Show the view of `target` in the workspace center and hand it the target; the view reads it when it mounts. */
-  show(target: CenterTarget): void
   /**
-   * Record the target of a view without showing the view or handing it a new target, such as the timeline that the user
-   * picked in a view or in the right sidebar. The URL keeps the shown view's target, and the string fields of every
-   * view's target narrow the open project's summary, such as the timeline whose first clip is the session cover.
+   * Show the view of `target` in the open project's center and hand it the target as its request. A later `show`, a
+   * switch to another view, and a switch to another project drop a request that the view has not taken.
    */
-  note(target: CenterTarget): void
+  show(target: CenterTarget): void
 }
 
-/** The target that the center handed one view: the latest `show` for it, numbered so a repeat of one target differs. */
-export interface ViewTarget { value: Json; serial: number }
+/** A request that the center hands the shown view until the view takes it. */
+export interface CenterRequest {
+  value: JsonFields
+  /** Mark the request as handled, so the view does not get it again, also after a remount. */
+  take: () => void
+}
+
+/**
+ * The open project's center fields, which every view of the project reads and sets, the URL hash keeps as plain
+ * fields such as `timeline=t2`, and the summary request reads, such as the timeline whose first clip is the session
+ * cover. A field is named by the plugin that sets it; `project`, `view` and `session` name the hash's own fields.
+ */
+export type CenterFields = Readonly<Record<string, string>>
 
 declare module '@deepseek-ai/cordis' {
   interface Context { dvCenter: DvCenter }
@@ -42,8 +53,19 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
     'dv.explore': { kind: 'list'; scope: 'root' }
     /**
      * One view of the open project, such as the canvas; `@dv/ui-shell` shows the selected entry in the workspace center
-     * and hands it the latest target that `dvCenter.show` named for it, else null.
+     * and hands it the request of the latest `dvCenter.show` for it that it has not taken (else null), the project's
+     * center fields, and `note`, which sets center fields of the project (null removes one).
      */
-    'dv.center.view': { kind: 'list'; scope: 'root'; owner: { projectId: string; session: string | null; target: ViewTarget | null } }
+    'dv.center.view': {
+      kind: 'list'
+      scope: 'root'
+      owner: {
+        projectId: string
+        session: string | null
+        request: CenterRequest | null
+        fields: CenterFields
+        note: (fields: Readonly<Record<string, string | null>>) => void
+      }
+    }
   }
 }

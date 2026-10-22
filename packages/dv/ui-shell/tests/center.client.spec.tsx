@@ -140,9 +140,9 @@ function ChatStandIn({ sessionId, view }: PropsRuntime<'conversation.session'> &
   return <p data-testid="chat">{`${sessionId}:${view ?? 'stored'}`}</p>
 }
 
-/** A center view that prints the project, the session and the target value the workspace handed it. */
-function CenterViewStandIn({ projectId, session, target }: PropsRuntime<'dv.center.view'>): ReactNode {
-  return <p data-testid="center-view">{`${projectId}|${session ?? 'none'}|${JSON.stringify(target?.value ?? null)}`}</p>
+/** A center view that prints the project, the session, the center fields and the request value the workspace handed it. */
+function CenterViewStandIn({ projectId, session, fields, request }: PropsRuntime<'dv.center.view'>): ReactNode {
+  return <p data-testid="center-view">{`${projectId}|${session ?? 'none'}|${JSON.stringify(fields)}|${JSON.stringify(request?.value ?? null)}`}</p>
 }
 
 /** How a test opens the page. */
@@ -442,17 +442,16 @@ describe('the entry page', () => {
 
 describe('the URL restore', () => {
   it('opens the URL\'s project with its session once the lists are ready, and binds the session to its Workspace\'s project', async () => {
-    const target = encodeURIComponent(JSON.stringify({ timeline: 't2' }))
-    const bench = await mountCenter({ hash: `#project=p1&view=timeline&target=${target}&session=s1`, main: 's1' })
-    // The URL's view and target are in place before the restore.
-    expect(bench.view.view.getByTestId('center-view').textContent).toBe('p1|none|{"timeline":"t2"}')
+    const bench = await mountCenter({ hash: '#project=p1&view=timeline&timeline=t2&session=s1', main: 's1' })
+    // The URL's view and center fields are in place before the restore.
+    expect(bench.view.view.getByTestId('center-view').textContent).toBe('p1|none|{"timeline":"t2"}|null')
     expect(bench.stand.calls.filter(call => call.startsWith('openProject'))).toEqual([])
     await bench.refreshLinks()
     await waitFor(() => { expect(bench.stand.calls).toContain('openProject(p1,s1)') })
-    expect(bench.view.view.getByTestId('center-view').textContent).toBe('p1|s1|{"timeline":"t2"}')
+    expect(bench.view.view.getByTestId('center-view').textContent).toBe('p1|s1|{"timeline":"t2"}|null')
     await waitFor(() => { expect(bench.server.binds).toEqual([{ session: 's1', project: 'p1' }]) })
     await waitFor(() => { expect(bench.store.getShell().links?.bindings).toEqual({ s1: 'p1' }) })
-    expect(window.location.hash).toBe(`#project=p1&view=timeline&target=${target}&session=s1`)
+    expect(window.location.hash).toBe('#project=p1&view=timeline&timeline=t2&session=s1')
 
     // The server drops the binding again: the center does not bind the same pair twice.
     bench.server.links = { ...bench.server.links, bindings: {} }
@@ -559,12 +558,12 @@ describe('the workspace', () => {
     // An unknown view in the URL shows the first view.
     expect(page.getAllByRole('tab').map(tab => [tab.textContent, tab.getAttribute('aria-selected')]))
       .toEqual([['Canvas', 'true'], ['Timeline', 'false']])
-    expect(page.getByTestId('center-view').textContent).toBe('p1|s1|null')
+    expect(page.getByTestId('center-view').textContent).toBe('p1|s1|{}|null')
     fireEvent.click(page.getByRole('tab', { name: 'Timeline' }))
     expect(bench.store.getShell().view).toBe('timeline')
     expect(page.getByRole('tab', { name: 'Timeline' }).getAttribute('data-active')).toBe('')
     act(() => { bench.store.showInCenter({ view: 'timeline', target: { timeline: 't3' } }) })
-    expect(page.getByTestId('center-view').textContent).toBe('p1|s1|{"timeline":"t3"}')
+    expect(page.getByTestId('center-view').textContent).toBe('p1|s1|{}|{"timeline":"t3"}')
   })
 
   it('records no session for its views while the main session is another project\'s, and opens no panels for it', async () => {
@@ -572,7 +571,7 @@ describe('the workspace', () => {
     await bench.refreshLinks()
     const page = bench.view.view
     expect(page.getByTitle('Switch chat or project').textContent).toBe('Launch film/New chat')
-    expect(page.getByTestId('center-view').textContent).toBe('p1|none|null')
+    expect(page.getByTestId('center-view').textContent).toBe('p1|none|{}|null')
     act(() => { bench.stand.mounted.set('s0' as SessionId) })
     fireEvent.click(page.getByRole('button', { name: 'Open the right panel' }))
     expect(bench.stand.calls).not.toContain('showPanels()')

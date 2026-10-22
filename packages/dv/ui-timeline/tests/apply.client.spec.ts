@@ -72,9 +72,9 @@ describe('ui-timeline apply', () => {
     expect(Object.keys(en).sort()).toEqual(Object.keys(zh).sort())
   })
 
-  it('registers the center view once dvCenter is present, sharing the tab body\'s selection, and it leaves with dvCenter', async () => {
+  it('registers the center view once dvCenter is present, with the tab body\'s API client, and it leaves with dvCenter', async () => {
     const { ctx, registered } = await boot()
-    const dispose = ctx.provide('dvCenter', { show: () => {}, note: () => {} })
+    const dispose = ctx.provide('dvCenter', { show: () => {} })
     await vi.waitFor(() => { expect(registered).toHaveLength(2) })
     expect(registered.map(entry => [entry.name, entry.key ?? entry.id, entry.locale, entry.component])).toEqual([
       ['sidebar.right.pane.tab', TIMELINE_ID, 'dvTimeline', TimelineBody],
@@ -82,7 +82,7 @@ describe('ui-timeline apply', () => {
     ])
     // The center view comes after the canvas in the workspace's view control, under the tab type's label.
     expect([registered[1]?.order, registered[1]?.label?.()]).toEqual([1, 'type.label'])
-    expect(registered[1]?.inject().hooks).toEqual(registered[0]?.inject().hooks)
+    expect(registered[1]?.inject().client).toBe(registered[0]?.inject().client)
     dispose()
     await vi.waitFor(() => { expect(registered.map(entry => entry.name)).toEqual(['sidebar.right.pane.tab']) })
   })

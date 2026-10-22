@@ -635,7 +635,7 @@ describe('CanvasView', () => {
   })
 
   it('opens the record that the focus names; empty-canvas clicks and Escape close the editor', async () => {
-    const { view, node } = mount(true, undefined, false, OPERATIONS, undefined, { record: 'g2', serial: 1 })
+    const { view, node } = mount(true, undefined, false, OPERATIONS, undefined, { record: 'g2', take: () => {} })
     const editor = await view.findByTestId('dv-canvas-node-editor')
     expect(editor.getAttribute('aria-label')).toBe(node('g2').getAttribute('aria-label'))
     const canvas = view.getByTestId('dv-canvas-view')
@@ -654,7 +654,7 @@ describe('CanvasView', () => {
       const [v1] = state.components.plan.plans['p1' as PlanId] ?? []
       if (v1 === undefined) throw new Error('fixture lacks plan p1')
       state.components.plan.plans['p1' as PlanId] = [v1, { ...v1, version: 2, created_by: 'q2' as RecordId }]
-    }, false, OPERATIONS, undefined, { record: 'p1', serial: 1 })
+    }, false, OPERATIONS, undefined, { record: 'p1', take: () => {} })
     const editor = await view.findByTestId('dv-canvas-node-editor')
     expect(editor.getAttribute('aria-label')).toBe(node('plan:p1').getAttribute('aria-label'))
     expect(node('plan:p1').getAttribute('data-node-selected')).toBe('true')
@@ -980,18 +980,21 @@ describe('the opened takes in storage', () => {
 })
 
 describe('the focus', () => {
-  it('opens the node of a record\'s first output, opens nothing for a record without a node, and opens each serial once', async () => {
-    const { view, node, layoutWrites, rerender } = mountCanvas({ focus: { record: 's1', serial: 1 } })
+  it('opens the node of a record\'s first output, opens nothing for a record without a node, and takes each focus once loaded', async () => {
+    const taken: string[] = []
+    const focusOn = (record: string): CanvasFocus => ({ record, take: () => { taken.push(record) } })
+    const { view, node, layoutWrites, rerender } = mountCanvas({ focus: focusOn('s1') })
     // The stored free spots show that the layout and the graph are loaded, so the focus has been read.
     await waitFor(() => { expect(layoutWrites).toHaveLength(1) })
-    expect(view.queryByTestId('dv-canvas-node-editor')).toBeNull()
+    expect([view.queryByTestId('dv-canvas-node-editor'), taken]).toEqual([null, ['s1']])
     // The still x1 grabbed from the export of g2's video is drawn by g2.
-    rerender({ focus: { record: 'x1', serial: 2 } })
+    const still = focusOn('x1')
+    rerender({ focus: still })
     expect((await view.findByTestId('dv-canvas-node-editor')).getAttribute('aria-label')).toBe(node('g2').getAttribute('aria-label'))
     fireEvent.keyDown(document.body, { key: 'Escape' })
-    rerender({ focus: { record: 'x1', serial: 2 } })
-    expect(view.queryByTestId('dv-canvas-node-editor')).toBeNull()
-    rerender({ focus: { record: 'x1', serial: 3 } })
+    rerender({ focus: still })
+    expect([view.queryByTestId('dv-canvas-node-editor'), taken]).toEqual([null, ['s1', 'x1']])
+    rerender({ focus: focusOn('x1') })
     expect((await view.findByTestId('dv-canvas-node-editor')).getAttribute('aria-label')).toBe(node('g2').getAttribute('aria-label'))
   })
 })

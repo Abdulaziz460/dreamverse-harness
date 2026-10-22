@@ -1,6 +1,6 @@
 /**
- * Browser half of the DreamVerse shell: `dvCenter`, which moves the workspace center to a view and hands the view a
- * target; the center workspace in place of DSH's main Conversation, the DreamVerse
+ * Browser half of the DreamVerse shell: `dvCenter`, which shows a view of the open project in the workspace center and
+ * hands the view a request; the center workspace in place of DSH's main Conversation, the DreamVerse
  * navigator and brand in the left sidebar, the DreamVerse theme, the 对话 / 轨迹 right-panel tabs and the right panel's
  * default width, DSH's New Session action redirected into the open project, the `dv:trajectory-focus` link that opens
  * 轨迹 at one tool call, and the Ctrl+Z and Shift+Ctrl+Z keys that undo and redo one step of the open project.
@@ -20,7 +20,7 @@ import { followPanelEntries } from './panels.ts'
 import { applyRightPanelWidth } from './right-panel.ts'
 import { followSlotTabs } from './slot-tabs.ts'
 import type { DvCenter } from './contract/index.ts'
-import { getShell, noteInCenter, refreshLinks, showInCenter } from './store.ts'
+import { getShell, refreshLinks, showInCenter } from './store.ts'
 import { applyTheme } from './theme.ts'
 import { CHAT_ID, ChatTab, chatDefinition, TRAJECTORY_ID, TrajectoryTab, trajectoryDefinition } from './tabs.tsx'
 import { listenHistoryKeys } from './undo-keys.ts'
@@ -41,7 +41,7 @@ const LINKS_POLL_MS = 4000
  */
 export function apply(ctx: ClientContext): void {
   // At apply's top level, never inside an effect: the views and the History panel call it from their own fibers.
-  const center: DvCenter = { show: showInCenter, note: noteInCenter }
+  const center: DvCenter = { show: showInCenter }
   ctx.reflect.provide('dvCenter', center)
   applyTheme(ctx)
   const injected: ShellInjected = { shell: createActions(ctx) }

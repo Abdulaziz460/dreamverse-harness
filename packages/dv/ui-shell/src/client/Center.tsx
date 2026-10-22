@@ -2,9 +2,9 @@
  * The center of the DreamVerse shell, shadowing DSH's `main.conversation`. Without an open project it is the entry
  * page: a DreamVerse headline, the DSH composer, the template chips, and recent project cards, and the chat itself
  * once it starts. With a project open it is the workspace: a top bar (session switcher, the view toggle of the
- * `dv.center.view` entries, right panel open button) above the selected entry, which gets the latest target that
- * `dvCenter.show` or the URL handed it. Every view shows the project's current state, the state at the current position
- * of its history. The left sidebar collapses while a project is open and expands again on the entry page.
+ * `dv.center.view` entries, right panel open button) above the selected entry, which gets the project's center fields
+ * and the request that `dvCenter.show` handed it. Every view shows the project's current state, the state at the
+ * current position of its history. The left sidebar collapses while a project is open and expands again on the entry page.
  *
  * The center also keeps the shell's open project and the DSH main session together: once the client lists are ready
  * it restores the location the URL names, and afterwards it adopts the project of a main session that moves to
@@ -13,7 +13,7 @@
  * @module @dv/ui-shell/Center
  */
 import type { ReactNode } from 'react'
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { ConversationViewsProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
@@ -29,8 +29,8 @@ import { SessionSwitcher } from './SessionSwitcher.tsx'
 import { useSlotTabs } from './slot-tabs.ts'
 import type { ShellLocation } from './store.ts'
 import {
-  applyingLocation, formatLocation, getShell, locationOf, NO_PROJECTS, parseLocation, projectOfSession, refreshLinks, setShell,
-  shellClient, showLocation, startUrlMirror, summaryFields, useShell,
+  applyingLocation, formatLocation, getShell, locationOf, NO_PROJECTS, noteInCenter, parseLocation, projectOfSession, refreshLinks,
+  setShell, shellClient, showLocation, startUrlMirror, useShell,
 } from './store.ts'
 import css from './shell.module.css'
 
@@ -75,7 +75,7 @@ function NoWidthControls(): ReactNode {
 
 /**
  * Move the page to a location the URL names, without adding browser history entries: open its project (and its
- * session), or the entry page, then its center view and that view's target.
+ * session), or the entry page, then its center view and center fields.
  * @param shell - the shell actions.
  * @param links - the project links.
  * @param target - the location.
@@ -93,7 +93,7 @@ function applyLocation(shell: ShellActions, links: WireWorkspaces, target: Shell
     if (restore || projectId !== current.projectId || (target.sessionId !== undefined && target.sessionId !== current.sessionId)) {
       run(() => shell.openProject(projectId, target.sessionId))
     }
-    showLocation(target.view, target.target)
+    showLocation(target)
   })
 }
 
@@ -349,7 +349,8 @@ function WorkspacePage(props: CenterProps & { projectId: string; projectSession:
   const { sessionId, useSessions, projectId, projectSession, shell } = props
   const t = useText()
   const view = useShell(s => s.view)
-  const targets = useShell(s => s.targets)
+  const fields = useShell(s => s.fields)
+  const request = useShell(s => s.request)
   // The registered center views; an unknown view in the URL shows the first one.
   const views = useSlotTabs('dv.center.view')
   const shown = views.find(tab => tab.id === view)?.id ?? views[0]?.id
@@ -364,10 +365,10 @@ function WorkspacePage(props: CenterProps & { projectId: string; projectSession:
   // The chat session the workspace sits beside, recorded as the `session` of the views' edits; none until the main
   // session belongs to this project.
   const session = projectSession ?? null
-  // The switcher's cover: the first clip of the timeline that the view targets name, read again whenever the current
+  // The switcher's cover: the first clip of the timeline that the center fields name, read again whenever the current
   // state is refetched after a project change or another timeline is picked.
-  const fields = useMemo(() => summaryFields(targets), [targets])
   const cover = useProjectSummaries(projectId, state.value, fields)?.get(projectId)?.cover ?? null
+  const note = useCallback((patch: Readonly<Record<string, string | null>>) => { noteInCenter(projectId, patch) }, [projectId])
   const mounted = useSyncExternalStore(shell.mountedSeat.subscribe, shell.mountedSeat.getSnapshot)
   // The right panel's own strip holds its collapse control while it is shown, so the open button sits in the same
   // top-right corner only while the panel is hidden.
@@ -453,7 +454,9 @@ function WorkspacePage(props: CenterProps & { projectId: string; projectSession:
         </div>
       </header>
       <div className={css.viewArea}>
-        {shown !== undefined && props.renderSlot('dv.center.view', { projectId, session, target: targets[shown] ?? null }, { only: shown })}
+        {shown !== undefined && props.renderSlot('dv.center.view', {
+          projectId, session, request: request?.view === shown ? request.request : null, fields, note,
+        }, { only: shown })}
       </div>
     </div>
   )

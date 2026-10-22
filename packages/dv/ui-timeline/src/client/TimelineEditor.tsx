@@ -39,12 +39,13 @@ export interface TimelineEditorProps {
   state: WireState
   /** Run one write and refetch the state; resolves to whether the write succeeded. */
   run: (work: () => Promise<unknown>) => Promise<boolean>
-  /** The selected timeline of the project, or null before one is selected. */
+  /**
+   * The selected timeline of the project, or null before one is selected. The editor shows the project's first timeline
+   * while the selection names none or a timeline that the project lost.
+   */
   selected: string | null
-  /** Select the timeline that the editor shows when the selection names none or a timeline the project lost. */
+  /** Select the timeline that the user picked or created, or the one shown before a create that failed. */
   select: (timelineId: string | null) => void
-  /** Select the timeline that the user picked or created. */
-  choose: (timelineId: string | null) => void
   /** The clip that the editor selects and seeks to once it shows the clip's timeline, or null. */
   clipFocus?: { timelineId: string; clipId: string } | null
   /** Drop {@link TimelineEditorProps.clipFocus} once the editor took it. */
@@ -345,10 +346,8 @@ function rulerSteps(px: number): { tick: number; label: number } {
  * @returns the element.
  */
 export function TimelineEditor(props: TimelineEditorProps): ReactNode {
-  const { client, t, project, session = null, state, run, selected: activeId, select, choose, clipFocus = null, takeClipFocus } = props
+  const { client, t, project, session = null, state, run, selected: activeId, select, clipFocus = null, takeClipFocus } = props
   const timelines = useMemo(() => timelinesOf(state), [state])
-  // A timeline created here is selected before the refetched state lists it.
-  const pendingTimeline = useRef<string | null>(null)
   const timeline = timelines.find(entry => entry.id === activeId) ?? timelines[0] ?? null
   const { clips, total } = useMemo(() => placeTimeline(state, timeline), [state, timeline])
   const assets = useMemo(() => assetIndex(state), [state])
@@ -401,15 +400,6 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
     setChosenClip(null); setPicking(false); setExported(null); setMenu(null); setRenaming(null)
   }, [timelineId])
 
-  // Publish the timeline shown when the shared value names none or a timeline this project no longer has.
-  useEffect(() => {
-    if (activeId !== null && activeId === pendingTimeline.current) {
-      if (timelines.some(entry => entry.id === activeId)) pendingTimeline.current = null
-      return
-    }
-    if (timelineId !== activeId) select(timelineId)
-  }, [activeId, timelineId, timelines, select])
-
   // Select the clip of a center target and seek to its start, once this editor shows its timeline.
   useEffect(() => {
     if (clipFocus === null || clipFocus.timelineId !== timelineId) return
@@ -458,13 +448,11 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   const createTimeline = (): void => {
     const id = nextTimelineId(timelines)
     const name = timelineName({ id, name: '' }, numbered)
-    pendingTimeline.current = id
-    choose(id)
+    select(id)
     void run(() => client.runOperation(request(project, session, { operation: 'timeline.create', params: { timeline: id, assets: [] }, intent: t('intent.create', { name }) })))
       .then((ok) => {
         if (ok) return
-        pendingTimeline.current = null
-        choose(timelineId)
+        select(timelineId)
       })
   }
   const startRename = (entry: Timeline): void => {
@@ -730,7 +718,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
       ) : (
         <button
           key={entry.id} type="button" role="tab" aria-selected={entry === timeline} data-timeline={entry.id}
-          onClick={() => { choose(entry.id) }}
+          onClick={() => { select(entry.id) }}
           onDoubleClick={() => { startRename(entry) }}
           onContextMenu={(event) => {
             event.preventDefault()

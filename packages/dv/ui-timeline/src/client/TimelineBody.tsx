@@ -1,6 +1,6 @@
 /**
  * The right-sidebar tab body: the project and undo bar (`ProjectBar`) for choosing a project, then the timeline editor of
- * that project's current state, on the timeline selection that it shares with the center view.
+ * that project's current state, on the tab body's own timeline selection of each project.
  */
 import { useCallback, useMemo } from 'react'
 import type { ReactNode } from 'react'
@@ -21,11 +21,9 @@ export interface TimelineInjected {
   client: DvClient
   hooks: { selection: HostObservable<TimelineSelection> }
   select: (projectId: string, timelineId: string | null) => void
-  /** Select the timeline that the user picked and record it as the timeline view's center target, which the URL keeps. */
-  choose: (projectId: string, timelineId: string | null) => void
 }
 
-/** The body's composed props: the tab it draws, the API client, the shared timeline selection, and its copy. */
+/** The body's composed props: the tab it draws, the API client, the tab body's timeline selection, and its copy. */
 export type TimelineBodyProps = PropsRuntime<'sidebar.right.pane.tab'> & InjectFace<TimelineInjected> & PropsLocale<'dvTimeline'>
 
 /**
@@ -41,26 +39,24 @@ export function barLabels(t: TimelineBodyProps['t']): ProjectBarLabels {
 }
 
 /** What {@link ProjectTimeline} draws: the body's view session, its chosen project and that project's state. */
-type ProjectTimelineProps = Pick<TimelineBodyProps, 't' | 'useSelection' | 'select' | 'choose'> & {
+type ProjectTimelineProps = Pick<TimelineBodyProps, 't' | 'useSelection' | 'select'> & {
   view: ViewSession
   project: string
   state: WireState
 }
 
 /**
- * The timeline editor of the body's chosen project, on the timeline selection that the body shares.
+ * The timeline editor of the body's chosen project, on the body's timeline selection.
  * @param props - the view session, the project and its state, the copy, and the selection.
  * @returns the element.
  */
-function ProjectTimeline({ view, project, state, t, useSelection, select, choose }: ProjectTimelineProps): ReactNode {
-  const selected = useSelection(selection => selection.timelines[project] ?? null)
-  // A pick in the tab body records the timeline view's center target without showing that view.
+function ProjectTimeline({ view, project, state, t, useSelection, select }: ProjectTimelineProps): ReactNode {
+  const selected = useSelection(selection => selection[project] ?? null)
   const selectHere = useCallback((timelineId: string | null) => { select(project, timelineId) }, [select, project])
-  const chooseHere = useCallback((timelineId: string | null) => { choose(project, timelineId) }, [choose, project])
   return (
     <TimelineEditor
       client={view.client} t={t} project={project} session={view.session} state={state} run={view.run}
-      selected={selected} select={selectHere} choose={chooseHere}
+      selected={selected} select={selectHere}
     />
   )
 }
@@ -71,7 +67,7 @@ function ProjectTimeline({ view, project, state, t, useSelection, select, choose
  *   per kind.
  * @returns the element.
  */
-export function TimelineBody({ client, t, useSelection, select, choose }: TimelineBodyProps): ReactNode {
+export function TimelineBody({ client, t, useSelection, select }: TimelineBodyProps): ReactNode {
   const view = useViewSession(client, 'timeline')
   const labels = useMemo(() => barLabels(t), [t])
   const state = view.state.value
@@ -81,7 +77,7 @@ export function TimelineBody({ client, t, useSelection, select, choose }: Timeli
   else if (state === null || view.project === null) content = <p style={{ padding: 8 }}>{t('loading')}</p>
   else {
     content = (
-      <ProjectTimeline view={view} project={view.project} state={state} t={t} useSelection={useSelection} select={select} choose={choose} />
+      <ProjectTimeline view={view} project={view.project} state={state} t={t} useSelection={useSelection} select={select} />
     )
   }
   return (

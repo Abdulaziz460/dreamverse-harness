@@ -57,14 +57,15 @@ export interface CanvasViewProps {
    *  and `dv.canvas.preview` entries of the asset pool; without it, an entry's editor shows only its header, the asset picker
    *  offers only versioned items, and the asset preview shows nothing. */
   renderSlot?: RenderCanvasSlot
-  /** The record whose node to open, numbered so that a repeat of one record opens it again; none when null or omitted. */
+  /** The record whose node to open once; none when null or omitted. */
   focus?: CanvasFocus | null
 }
 
-/** A request to open the node of a record, such as a History selection. */
+/** A request to open the node of a record, such as a History selection, until the canvas takes it. */
 export interface CanvasFocus {
   record: string
-  serial: number
+  /** Mark the request as handled, so a remounted canvas does not open the node again. */
+  take: () => void
 }
 
 /** The tallest a card grows (larger text at low zoom plus a badge row), used when fitting. */
@@ -421,10 +422,9 @@ export function CanvasView(
     }))
   }, [])
 
-  // Open and center the node of the focused record once the layout and the graph are loaded; each serial opens once.
-  const opened = useRef<number | null>(null)
+  // Open and center the node of the focused record once the layout and the graph are loaded.
   useEffect(() => {
-    if (focus === undefined || focus === null || opened.current === focus.serial || !layoutReady || graph === null) return
+    if (focus === undefined || focus === null || !layoutReady || graph === null) return
     // The record's own node, else the entry node whose version it wrote, else the node of its first output.
     const recordId = focus.record
     const firstOutput = graph.state.components.proj.records.find(record => record.id === recordId)?.outputs[0]
@@ -433,7 +433,7 @@ export function CanvasView(
       ?? graph.nodes.find(candidate => candidate.record?.id === recordId)
       ?? graph.nodes.find(candidate => candidate.type === 'entry' && candidate.entry.records?.includes(recordId) === true)
       ?? graph.nodes.find(candidate => candidate.id === outputNode)
-    opened.current = focus.serial
+    focus.take()
     if (node === undefined) return
     centerOn(node)
     setSelected(node.id)

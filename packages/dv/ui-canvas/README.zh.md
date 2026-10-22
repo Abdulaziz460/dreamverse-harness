@@ -47,7 +47,7 @@ Host 半边不注册任何东西。浏览器半边提供客户端服务 `dvCanva
 | 拖动节点、平移或缩放 | `POST /api/dv/layout`，带以节点 ID 为键的移动位置和视口 |
 | 出现一个没有存储位置的节点 | `POST /api/dv/layout`，带它的位置：默认布局位置，每次下移一行，直到不压住其他卡片 |
 
-每个请求都带 `surface: 'canvas'` 和画布旁边的对话，记录把该对话存为它的 `session`。工作区中间区域把目标 `{ record: <id> }` 交给中间区域视图时，视图打开该记录的节点，例如历史为选中的记录传给 `dvCenter.show({ view: 'canvas', target: { record } })` 的目标。画布把该记录的节点移到中央并打开。记录没有自己的节点时，画布打开它写下的版本所属的条目节点（条目的 `NodeEntry.records`，例如较早版本的记录对应分镜计划），否则打开它第一个产出的节点。每个目标的 `serial` 只打开一次，在布局和状态读到之后打开；记录没有节点的目标不打开任何节点。标签主体不给 `CanvasView` 传 `focus`。
+每个请求都带 `surface: 'canvas'` 和画布旁边的对话，记录把该对话存为它的 `session`。工作区中间区域把请求 `{ record: <id> }` 交给中间区域视图时，视图打开该记录的节点，例如历史为选中的记录传给 `dvCenter.show({ view: 'canvas', target: { record } })` 的目标。画布把该记录的节点移到中央并打开。记录没有自己的节点时，画布打开它写下的版本所属的条目节点（条目的 `NodeEntry.records`，例如较早版本的记录对应分镜计划），否则打开它第一个产出的节点。画布在布局和状态读到之后取走该请求，所以重新挂载的画布不会再次打开该节点；记录没有节点的请求不打开任何节点。标签主体不给 `CanvasView` 传 `focus`。
 
 浮动编辑器打开时位于变暗画布的中央，宽度最多 720 px，高度约为画布的 80%。拖动标题行可移动编辑器；拖动右边缘、下边缘或右下角可调整大小，也可以聚焦右下角的调整手柄后按方向键（每次 16 px）；双击标题行恢复到居中的默认位置和大小。浏览器在 `localStorage` 中为所有节点保存同一个最近的位置和大小，下次打开编辑器时把它放进画布范围内。点击变暗的画布或按 Escape 关闭编辑器；上面叠着第二个编辑器时，同样的操作只关闭上面那个。编辑器打开时从它的节点放大出来，关闭时缩回该节点，变暗的画布同时淡入淡出（`@dv/ui-kit/zoom.ts`）。
 
@@ -71,7 +71,7 @@ Host 半边不注册任何东西。浏览器半边提供客户端服务 `dvCanva
 | [`src/client/dv-canvas.ts`](src/client/dv-canvas.ts) | `dvCanvas` 注册表 |
 | [`src/client/definition.ts`](src/client/definition.ts) | 标签类型 |
 | [`src/client/CanvasBody.tsx`](src/client/CanvasBody.tsx) | 标签主体：项目栏下的 `CanvasView` |
-| [`src/client/CanvasCenter.tsx`](src/client/CanvasCenter.tsx) | 中间区域视图：渲染条目编辑器插槽并打开目标记录节点的 `CanvasView` |
+| [`src/client/CanvasCenter.tsx`](src/client/CanvasCenter.tsx) | 中间区域视图：渲染条目编辑器插槽并打开请求记录节点的 `CanvasView` |
 | [`src/client/CanvasView.tsx`](src/client/CanvasView.tsx) | 画布：平移、缩放、拖动、拖放、布局存储 |
 | [`src/client/graph.ts`](src/client/graph.ts) | 节点、边和默认布局 |
 | [`src/client/NodeCard.tsx`](src/client/NodeCard.tsx)、[`src/client/NodeEditor.tsx`](src/client/NodeEditor.tsx) | 节点卡片和浮动编辑器 |

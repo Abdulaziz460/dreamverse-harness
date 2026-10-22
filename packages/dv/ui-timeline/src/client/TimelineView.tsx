@@ -1,14 +1,14 @@
 /**
  * The timeline editor for one project, without the project bar: the center area's 时间线 view. It reads the project's
  * current state itself and refetches it after every project change and every write; the view's edits go after the
- * current position of the project's history. The view applies the center target that the shell hands it (a timeline,
- * and a clip to select), records the timeline the user picks as the view's center target, and inserts the assets that
- * 插入片段 queued for its project.
+ * current position of the project's history. The view's selected timeline is the `timeline` field of the open project's
+ * center fields, and a pick sets it. A request that the center hands the view selects a timeline and a clip in it, or
+ * inserts an asset (插入片段) once the state is read.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import type { HostObservable, InjectFace, PropsRuntime, Translate } from '@deepseek-ai/dsh-client-ui-slots'
-import type { ViewTarget } from '@dv/ui-shell/contract'
+import type { InjectFace, PropsRuntime, Translate } from '@deepseek-ai/dsh-client-ui-slots'
+import type {} from '@dv/ui-shell/contract'
 import type { DvClient } from '@dv/ui-kit/api.ts'
 import { pickText, useLanguage } from '@dv/ui-kit/locale.ts'
 import type { DvLanguage } from '@dv/ui-kit/locale.ts'
@@ -17,22 +17,15 @@ import { useProjectState } from '@dv/ui-kit/useProject.ts'
 import { TimelineEditor } from './TimelineEditor.tsx'
 import { en, zh } from './locales.ts'
 import type { DvTimelineKey } from './locales.ts'
-import type { TimelineSelection } from './selection.ts'
+import { readTimelineRequest } from './selection.ts'
 import { timelinesOf } from './timelines.ts'
 
-/** What the plugin injects into the center view: the API client, the shared timeline selection and its mutations. */
+/** What the plugin injects into the center view: the API client. */
 export interface TimelineCenterInjected {
   client: DvClient
-  hooks: { selection: HostObservable<TimelineSelection> }
-  select: (projectId: string, timelineId: string | null) => void
-  /** Select the timeline the user picked and record it as the timeline view's center target, which the URL keeps. */
-  choose: (projectId: string, timelineId: string | null) => void
-  applyTarget: (projectId: string, target: ViewTarget) => void
-  takeClipFocus: () => void
-  takeInserts: (projectId: string) => string[]
 }
 
-/** The center view's props: the center's owner data and the injected selection; `t` defaults to the DSH language's copy. */
+/** The center view's props: the center's owner data and the injected client; `t` defaults to the DSH language's copy. */
 export type TimelineViewProps = PropsRuntime<'dv.center.view'> & InjectFace<TimelineCenterInjected>
   & { t?: Translate<DvTimelineKey> }
 
@@ -74,17 +67,17 @@ function insertRequest(
 
 /**
  * The timeline editor of a project's current state.
- * @param props - the center's project, chat session and target, the injected client and selection, and optionally copy.
+ * @param props - the center's project, chat session, request, center fields and note, the injected client, and
+ *   optionally copy.
  * @returns the element.
  */
 export function TimelineView(props: TimelineViewProps): ReactNode {
-  const { projectId, session, target, client, useSelection, select, choose, applyTarget, takeClipFocus, takeInserts } = props
+  const { projectId, session, request, fields, note, client } = props
   const language = useLanguage()
   const t = useMemo(() => props.t ?? copyFor(language), [props.t, language])
   const state = useProjectState(client, projectId)
-  const selected = useSelection(selection => selection.timelines[projectId] ?? null)
-  const clipFocus = useSelection(selection => selection.clipFocus)
-  const inserts = useSelection(selection => selection.inserts)
+  const selected = fields['timeline'] ?? null
+  const asked = useMemo(() => request === null ? null : readTimelineRequest(request.value), [request])
   const [notice, setNotice] = useState<string | null>(null)
   const reload = state.reload
   const run = useCallback(async (work: () => Promise<unknown>): Promise<boolean> => {
@@ -98,22 +91,24 @@ export function TimelineView(props: TimelineViewProps): ReactNode {
       return false
     }
   }, [reload])
+  const select = useCallback((timelineId: string | null) => { note({ timeline: timelineId }) }, [note])
   useEffect(() => {
-    if (target !== null) applyTarget(projectId, target)
-  }, [target, projectId, applyTarget])
-  useEffect(() => {
-    // Insert the queued assets of this project once the state is read; a project without timelines selects the
-    // created `t1`. Assets of other projects wait for a view of their own project.
-    const current = state.value
-    if (current === null || !inserts.some(insert => insert.projectId === projectId)) return
-    for (const asset of takeInserts(projectId)) {
-      const request = insertRequest(projectId, session, current, selected, asset)
-      if (request.operation === 'timeline.create') select(projectId, 't1')
-      void run(() => client.runOperation(request))
+    // A focus request selects its timeline, and the editor takes it once it selected the clip. An insert waits for the
+    // state; a project without timelines selects the created `t1`.
+    if (request === null || asked === null) return
+    if ('insert' in asked) {
+      if (state.value === null) return
+      request.take()
+      const write = insertRequest(projectId, session, state.value, selected, asked.insert)
+      if (write.operation === 'timeline.create') select('t1')
+      void run(() => client.runOperation(write))
+    } else {
+      if (asked.timeline !== selected) select(asked.timeline)
+      if (asked.clip === null) request.take()
     }
-  }, [inserts, state.value, projectId, session, selected, client, run, select, takeInserts])
-  const selectHere = useCallback((timelineId: string | null) => { select(projectId, timelineId) }, [select, projectId])
-  const chooseHere = useCallback((timelineId: string | null) => { choose(projectId, timelineId) }, [choose, projectId])
+  }, [request, asked, state.value, projectId, session, selected, client, run, select])
+  const clipFocus = asked !== null && 'timeline' in asked && asked.clip !== null ? { timelineId: asked.timeline, clipId: asked.clip } : null
+  const takeClipFocus = useCallback(() => { request?.take() }, [request])
   if (state.value === null) {
     return <p style={{ padding: 12, color: 'var(--dv-text-2)', fontSize: 13, lineHeight: '20px' }} role={state.error === null ? undefined : 'alert'}>{state.error === null ? t('loading') : t('error', { message: state.error })}</p>
   }
@@ -129,9 +124,8 @@ export function TimelineView(props: TimelineViewProps): ReactNode {
           state={state.value}
           run={run}
           selected={selected}
-          select={selectHere}
-          choose={chooseHere}
-          clipFocus={clipFocus?.projectId === projectId ? clipFocus : null}
+          select={select}
+          clipFocus={clipFocus}
           takeClipFocus={takeClipFocus}
         />
       </div>
