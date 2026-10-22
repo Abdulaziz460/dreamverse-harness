@@ -29,14 +29,3 @@ export function clockText(seconds: number): string {
   const whole = Math.round(seconds)
   return `${String(Math.floor(whole / 60))}:${String(whole % 60).padStart(2, '0')}`
 }
-
-/**
- * Format seconds as `m:ss.s`.
- * @param seconds - a duration or position.
- * @returns the text.
- */
-export function formatSeconds(seconds: number): string {
-  const minutes = Math.floor(seconds / 60)
-  const rest = seconds - minutes * 60
-  return `${String(minutes)}:${rest < 10 ? '0' : ''}${rest.toFixed(1)}`
-}
