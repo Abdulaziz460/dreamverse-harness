@@ -123,7 +123,14 @@ describe('DvClient', () => {
     }
     expect(await new DvClient(answering(summaries)).listProjectSummaries()).toEqual(summaries)
     expect(await new DvClient(answering(summaries.slice(1))).listProjectSummaries(undefined, 'p2')).toEqual(summaries.slice(1))
-    expect(paths).toEqual(['/api/dv/projects/summary', '/api/dv/projects/summary?project=p2'])
+    // One project's summary sends only the narrowing fields that the route reads; the list of every project sends none.
+    const fields: Readonly<Record<string, string>> = { timeline: 't2', clip: 'cl1' }
+    await new DvClient(answering(summaries.slice(1))).listProjectSummaries(undefined, 'p2', fields)
+    await new DvClient(answering(summaries)).listProjectSummaries(undefined, null, fields)
+    expect(paths).toEqual([
+      '/api/dv/projects/summary', '/api/dv/projects/summary?project=p2', '/api/dv/projects/summary?project=p2&timeline=t2',
+      '/api/dv/projects/summary',
+    ])
     const malformedBodies = [
       { projects: summaries }, [{ ...summaries[0], edited_at: 5 }], [{ ...summaries[1], cover: { video: 1, image: null } }],
       [{ ...summaries[0], cover: 'shot1.mp4' }], [null],

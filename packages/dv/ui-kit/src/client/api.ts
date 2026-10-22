@@ -6,7 +6,7 @@
  */
 import type {
   CanvasLayout, HistoryQuery, OperationRequest, ProjectEvent,
-  ProjectInfo, ProjectRecord, WireHistory, WireLine, WireOperation, WireProject, WireProjectCover, WireProjectSummary,
+  ProjectInfo, ProjectRecord, SummaryQuery, WireHistory, WireLine, WireOperation, WireProject, WireProjectCover, WireProjectSummary,
   WireSession, WireState, WireWorkspaces,
 } from './types.ts'
 import type { WireTaskLabels } from './tool-labels.ts'
@@ -154,15 +154,15 @@ export class DvClient {
    * Read the card summary of every project, or of one project, in one request.
    * @param signal - cancels the request.
    * @param project - the one project to summarize; null summarizes every project.
-   * @param fields - with `project`, query fields that narrow its summary, such as `timeline`, the timeline whose first
-   *   clip is the cover when the project has it.
+   * @param narrow - with `project`, what narrows its summary; the request sends only the fields the route reads.
    * @returns per project, the cover and the last edit time.
    * @throws Error when the response is not a list of summaries.
    */
   async listProjectSummaries(
-    signal?: AbortSignal, project: string | null = null, fields: Readonly<Record<string, string>> = {},
+    signal?: AbortSignal, project: string | null = null, narrow: SummaryQuery = {},
   ): Promise<WireProjectSummary[]> {
-    const query = project === null ? {} : { ...fields, project }
+    const { timeline } = narrow
+    const query = { ...project === null ? {} : { project }, ...project === null || timeline === undefined ? {} : { timeline } }
     const body = await this.get<unknown>('/api/dv/projects/summary', query, signal)
     if (!Array.isArray(body) || !body.every(isProjectSummary)) throw new Error('ui-kit: malformed /api/dv/projects/summary response')
     return body
