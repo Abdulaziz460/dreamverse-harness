@@ -205,6 +205,18 @@ describe('PlanEditor', () => {
     await runtime.dispose()
   })
 
+  it('names a version written in a form that parseInputRef accepts, such as hero@1.0, by its version kind', async () => {
+    const canvas = canvasRegistries()
+    canvas.versionKinds.register(CHARACTERS)
+    const state = fixtureState()
+    const [v1] = state.components.plan.plans['p1' as PlanId] ?? []
+    if (v1 === undefined) throw new Error('fixture lacks plan p1')
+    state.components.plan.plans['p1' as PlanId] = [{ ...v1, references: ['hero@1.0'] }]
+    const { runtime, editor } = await mount(state, canvas)
+    await waitFor(() => { expect(within(editor).getByText('计划参考').textContent).toBe('计划参考Picture 1 · Hero') })
+    await runtime.dispose()
+  })
+
   it('measures a shot prompt again when the chosen version shows a different prompt in the same shot', async () => {
     // jsdom lays out nothing; a prompt box reports a height of 10 px per prompt character.
     vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockImplementation(function (this: HTMLElement) { return (this.textContent ?? '').length * 10 })

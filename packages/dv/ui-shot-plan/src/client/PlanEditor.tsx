@@ -10,7 +10,7 @@ import type { PlanVersion, Shot } from '@dv/shot-plan/types'
 import { assetUrl, type DvClient } from '@dv/ui-kit/api.ts'
 import { AssetMedia } from '@dv/ui-kit/asset-media.tsx'
 import { useText } from '@dv/ui-kit/locale.ts'
-import { isPicture, pictureParts, referenceAssets } from '@dv/ui-kit/references.ts'
+import { isPicture, parseVersionedReference, pictureParts, referenceAssets } from '@dv/ui-kit/references.ts'
 import type { DvCanvas, Registry, VersionKind } from '@dv/ui-kit/registries.ts'
 import { clockText } from '@dv/ui-kit/timeline.ts'
 import { taskLabel, type WireTaskLabels } from '@dv/ui-kit/tool-labels.ts'
@@ -74,8 +74,10 @@ interface NamedReference {
 function namedReferences(state: WireState, references: readonly string[], kinds: readonly VersionKind[]): NamedReference[] {
   let pictures = 0
   return references.flatMap((ref) => {
-    const version = /^(.+)@(\d+)$/.exec(ref)
-    const versionName = version === null ? undefined : kinds.map(kind => kind.name(state, version[1] ?? '', Number(version[2]))).find(name => name !== null)
+    const named = parseVersionedReference(ref)
+    const versionName = named === null
+      ? undefined
+      : kinds.map(kind => kind.name(state, named.id, named.version)).find(name => name !== null)
     return referenceAssets(state, [ref], kinds)
       .map(asset => ({ asset, name: versionName || asset.name, picture: isPicture(asset) ? ++pictures : null }))
   })
