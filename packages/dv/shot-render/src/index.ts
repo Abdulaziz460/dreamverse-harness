@@ -164,10 +164,8 @@ function expandElements(prompt: string, inputs: readonly RequestInput[]): string
  *   one `first_frame` input.
  */
 function renderRequest(
-  facts: RenderModelFacts, params: Record<string, unknown>, inputs: readonly RequestInput[], seed: number | null,
+  facts: RenderModelFacts, params: Record<string, unknown>, inputs: readonly RequestInput[], seed: number,
 ): RenderRequest {
-  /* v8 ignore next -- the declaration keeps the seed, so defineGeneration always passes one. */
-  if (seed === null) throw new Error('shot.render needs a seed.')
   if (text(params['prompt']) === '') throw new Error('shot.render needs a `prompt`.')
   const prompt = expandElements(text(params['prompt']), inputs)
   const references = inputAssets(inputs, 'reference')

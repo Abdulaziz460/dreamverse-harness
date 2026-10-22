@@ -23,8 +23,8 @@ import DvProject, {
 import { afterEach, describe, expect, it } from 'vitest'
 import { defineGeneration, importOne, type GenerationCall, type RequestInput } from '../src/index.ts'
 
-/** The inputs and the seed of each `toRequest` call of the test declarations, oldest first. */
-const seen: Array<{ inputs: readonly RequestInput[]; seed: number | null }> = []
+/** The inputs of each `toRequest` call of the test declarations, oldest first. */
+const seen: Array<readonly RequestInput[]> = []
 
 /** The test primitive service: component `probe`, operation `probe.generate`, tasks `t2v` and `ref2v`. */
 const DvProbeGenerate = defineGeneration({
@@ -50,7 +50,7 @@ const DvProbeGenerate = defineGeneration({
     if (typeof from === 'string') call.request.inputs.push({ role: 'first_frame', ref: { record: brandString<RecordId>(from), output: 0 } })
   },
   toRequest(facts, params, inputs, seed): RenderRequest {
-    seen.push({ inputs, seed })
+    seen.push(inputs)
     const prompt = String(params['prompt'])
     // A prompt cites an input of the call as dv:input/<role>.
     for (const [, role] of prompt.matchAll(/dv:input\/(\w+)/g)) {
@@ -62,7 +62,7 @@ const DvProbeGenerate = defineGeneration({
       inputs.flatMap(input => input.role === role && input.resolved_asset !== null ? [input.resolved_asset] : [])
     return {
       prompt, references: assets('reference'), firstFrame: assets('first_frame')[0] ?? null,
-      frameWidth: 16, frameHeight: 16, numFrames: durationSec * 24, seed: seed ?? 0, extra: {},
+      frameWidth: 16, frameHeight: 16, numFrames: durationSec * 24, seed, extra: {},
     }
   },
   async toOutputs(_ctx, run, result, facts, request) {
@@ -84,8 +84,8 @@ const DvPlainGenerate = defineGeneration({
   tasks: { t2v: { zh: '普通文字', en: 'Plain from text' }, ref2v: { zh: '普通参考', en: 'Plain from references' } },
   label: { zh: '普通生成', en: 'Generate plainly' }, description: 'Generate a plain clip.', params: {}, inputs: {},
   outputs: [{ role: 'clip', type: 'video' }], seed: false,
-  toRequest(_facts, params, inputs, seed): RenderRequest {
-    seen.push({ inputs, seed })
+  toRequest(_facts, params, inputs): RenderRequest {
+    seen.push(inputs)
     if (params['prompt'] === 'boom') throw 'The prompt is a bomb.'
     return { prompt: String(params['prompt']), references: [], firstFrame: null, frameWidth: 16, frameHeight: 16, numFrames: 24, seed: 0, extra: {} }
   },
@@ -298,7 +298,7 @@ describe('defineGeneration', () => {
     const call = fixture.call({ prompt: 'From @[the frame](dv:input/first_frame).' })
     // The citation sees the chained role, and the model check waits for execute.
     expect(await ctx.dvProbeGenerate.check(call, state, ['first_frame'])).toEqual([])
-    expect(seen.at(-1)?.inputs).toEqual([{ role: 'first_frame', ref: null, resolved_asset: null }])
+    expect(seen.at(-1)).toEqual([{ role: 'first_frame', ref: null, resolved_asset: null }])
     expect(await ctx.dvProbeGenerate.check(call, state)).toEqual(['The prompt cites dv:input/first_frame, but the call has no such input.'])
     await expect(ctx.dvProbeGenerate.render(call)).rejects.toThrow(
       'The prompt cites dv:input/first_frame, but the call has no such input. Nothing was generated; change the inputs or params, then call again.')
@@ -412,7 +412,6 @@ describe('defineGeneration', () => {
     const record = ctx.dvProject.getState(project).components.proj.records.at(-1)
     expect(record).toMatchObject({ operation: 'plain.generate', status: 'done', cost: { gpu_seconds: 2 } })
     expect(record?.report ?? {}).not.toHaveProperty('seed')
-    expect(seen.at(-1)?.seed).toBeNull()
     const asset = ctx.dvAssetPool.get(record?.outputs[0] ?? brandString<AssetId>('none'))
     expect(asset).toMatchObject({ name: `${String(record?.id.slice(0, 8))}.plain`, mime: 'text/plain', created_by: record?.id })
     expect(() => importOne({ record: null } as never, { bytes: Buffer.from('x'), mime: 'image/png' }))

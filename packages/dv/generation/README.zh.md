@@ -32,7 +32,7 @@ kind: "package-reference"
 | `primitive`、`tasks`、`label`、`description` | 原语、该原语的每个任务及其中英文标签、操作标签，以及工具描述                               |
 | `params`、`inputs`、`outputs`                | 共享参数以外的参数、输入角色，以及输出；声明可以重述 `prompt` 以描述它                     |
 | `seed`、`toolParams`、`prepareToolCall`      | 对没有种子的模型设为 `false`；仅工具参数，以及检查前对 agent 调用的修改                    |
-| `toRequest`、`toOutputs`                     | 由事实、参数、`RequestInput` 和种子（没有种子时为 null）构建模型请求；把模型结果导入为输出 |
+| `toRequest`、`toOutputs`                     | 由事实、参数和 `RequestInput` 构建模型请求，有种子的声明还由种子构建；把模型结果导入为输出 |
 | `estimate`、`confirmText`、`summarize`       | 必需的、由条目得出的 GPU 估算，确认文本，以及一行记录摘要                                  |
 
 | `GenerationApi` 方法           | 行为                                                                                                  |

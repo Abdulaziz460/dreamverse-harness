@@ -32,7 +32,7 @@ A primitive package declares its row of `PrimitiveTypes` and its tasks in `TaskM
 | `primitive`, `tasks`, `label`, `description` | The primitive, every task of the primitive with its label in Chinese and English, the operation label, and the tool description |
 | `params`, `inputs`, `outputs`                | The params besides the shared ones, the input roles, and the outputs; a declaration may restate `prompt` to describe it         |
 | `seed`, `toolParams`, `prepareToolCall`      | `false` for a model without a seed; tool-only arguments, and the change of an agent call before the check                       |
-| `toRequest`, `toOutputs`                     | Build the model request from facts, params, `RequestInput`s and seed (null without one); import the model result as outputs     |
+| `toRequest`, `toOutputs`                     | Build the model request from facts, params and `RequestInput`s, and from the seed for a seeded declaration; import the model result as outputs |
 | `estimate`, `confirmText`, `summarize`       | The required GPU estimate from the entry, the confirmation text, and the one-line record summary                                |
 
 | `GenerationApi` method         | Behavior                                                                                                                               |
