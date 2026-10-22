@@ -1,21 +1,22 @@
 /**
- * The asset pool as the canvas editors use it, drawn with the asset pool panel of `@dv/ui-asset-pool`: the picker that
- * adds references (the project's characters, locations and styles, then the asset pool with its import drop zone), the
- * preview of one asset, and the thumbnail of an image or a video asset. This file is the canvas's only import of
- * `@dv/ui-asset-pool`. The picker and the preview render on `document.body` and close on Escape before the canvas sees
- * the key, so the editor beneath them stays open.
+ * The asset pool as the canvas editors use it: the picker that adds references (the items of each registered version
+ * kind under the kind's label, then the `dv.canvas.picker` entry at key `assets`, which `@dv/ui-asset-pool` fills
+ * with its asset pool panel and import drop zone), the preview of one asset (the `dv.canvas.preview` entry at key
+ * `assets`, the asset pool's preview), and the thumbnail of an image or a video asset. Without a slot renderer the
+ * picker offers only the items and the preview shows nothing. The picker and the preview render on `document.body`
+ * and close on Escape before the canvas sees the key, so the editor beneath them stays open.
  *
  * @module @dv/ui-canvas/AssetPicker
  */
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { AssetsPanel, Preview } from '@dv/ui-asset-pool/src/client/AssetsPanel.tsx'
-import { assetUrl } from '@dv/ui-kit/api.ts'
+import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
+import { AssetMedia } from '@dv/ui-kit/asset-media.tsx'
 import type { DvClient } from '@dv/ui-kit/api.ts'
+import type { VersionKind } from '@dv/ui-kit/registries.ts'
 import type { Asset, WireState } from '@dv/ui-kit/types.ts'
 import { useZoomPresence } from '@dv/ui-kit/zoom.ts'
-import { bibleItems } from './graph.ts'
 import type { CanvasTranslate } from './NodeCard.tsx'
 
 const overlay: CSSProperties = {
@@ -55,19 +56,6 @@ function useEscapeFirst(active: boolean, onEscape: () => void): void {
   }, [active, onEscape])
 }
 
-/**
- * An image asset as an image and a video asset as its first frame; nothing for another media type or a missing asset.
- * @param props - the asset and the media's style.
- * @returns the element.
- */
-export function AssetMedia(props: { asset: Asset | undefined; style: CSSProperties }): ReactNode {
-  const { asset, style } = props
-  if (asset === undefined) return null
-  if (asset.mime.startsWith('video/')) return <video src={`${assetUrl(asset.id)}#t=0.1`} muted preload="metadata" style={style} />
-  if (asset.mime.startsWith('image/')) return <img src={assetUrl(asset.id)} alt="" style={style} draggable={false} />
-  return null
-}
-
 /** Props of {@link AssetPicker}. */
 export interface AssetPickerProps {
   state: WireState
@@ -76,17 +64,21 @@ export interface AssetPickerProps {
   /** The chat session the canvas sits beside, recorded as the `session` of the picker's imports. */
   session: string | null
   t: CanvasTranslate
-  /** Whether the picker also offers the latest version of each character, location and style. */
-  withBible: boolean
-  /** The references the editor already holds; a story bible version among them is not offered again. */
+  /** The version kinds whose items the picker offers at their newest version, one section per kind; none for a picker of
+   *  assets only. */
+  kinds: readonly VersionKind[]
+  /** The references the editor already holds; an item version among them is not offered again. */
   chosen: readonly string[]
-  /** Receives the picked references in pick order: asset IDs, and `<id>@<version>` for story bible versions. */
+  /** Receives the picked references in pick order: asset IDs, and `<id>@<version>` for item versions. */
   onConfirm: (refs: string[]) => void
   onCancel: () => void
+  /** Renders the `dv.canvas.picker` entry, the asset pool panel; without it the picker offers only the items. */
+  renderSlot?: PropsRenderSlots<'dv.canvas.picker'>['renderSlot']
 }
 
 /**
- * The picker: the project's characters, locations and styles when `withBible`, then the asset pool panel, whose clicks pick assets.
+ * The picker: for each kind of `kinds` that offers an item, a section titled with the kind's label that holds the newest
+ * version of each of its items, then the asset pool panel of the `dv.canvas.picker` entry, whose clicks pick assets.
  * A click toggles an item; the confirm button hands over every picked reference.
  * @param props - the project, the offered kinds, and the callbacks.
  * @returns the dialog.
@@ -99,14 +91,14 @@ export function AssetPicker(props: AssetPickerProps): ReactNode {
     setPicked(current => current.includes(ref) ? current.filter(other => other !== ref) : [...current, ref])
   }
   const assets = new Map(props.state.assets.map(asset => [asset.id, asset]))
-  const bible = props.withBible
-    ? bibleItems(props.state).flatMap(({ id, versions }) => {
-      const latest = versions.at(-1)
-      const ref = latest === undefined ? '' : `${id}@${String(latest.version)}`
-      if (latest === undefined || props.chosen.includes(ref)) return []
-      return [{ ref, name: latest.name || id, cover: assets.get(latest.references[0] ?? '') }]
-    })
-    : []
+  // One section per kind that offers an item, titled with the kind's label.
+  const sections = props.kinds.map(kind => ({
+    kind: kind.kind, title: kind.label(), items: kind.latest(props.state).flatMap(({ id, version }) => {
+      const ref = `${id}@${String(version)}`
+      if (props.chosen.includes(ref)) return []
+      return [{ ref, name: kind.name(props.state, id, version) || id, cover: assets.get(kind.assets(props.state, id, version)[0] ?? '') }]
+    }),
+  })).filter(section => section.items.length > 0)
   const pickedSet = new Set(picked)
   // The asset pool panel marks each tile with `data-asset-id`; the picker rings the picked ones.
   const pickedRing = picked.length === 0
@@ -116,27 +108,27 @@ export function AssetPicker(props: AssetPickerProps): ReactNode {
     <div role="dialog" aria-modal="true" aria-label={t('picker.title')} data-testid="dv-canvas-asset-picker" style={overlay} onClick={onCancel}>
       <div style={dialog} onClick={(event) => { event.stopPropagation() }}>
         <h2 style={{ margin: 0, padding: '16px 16px 0', fontSize: 16, lineHeight: '24px', fontWeight: 600 }}>{t('picker.title')}</h2>
-        {bible.length === 0
-          ? null
-          : (
-            <section style={{ padding: '12px 16px 0' }}>
-              <h3 style={sectionTitle}>{t('picker.bible')}</h3>
-              <div style={grid}>
-                {bible.map(item => (
-                  <button
-                    key={item.ref} type="button" aria-pressed={pickedSet.has(item.ref)} onClick={() => { toggle(item.ref) }}
-                    style={{ ...tile, boxShadow: pickedSet.has(item.ref) ? '0 0 0 2px var(--dv-accent)' : '0 0 0 1px var(--dv-line)' }}
-                  >
-                    <AssetMedia asset={item.cover} style={tileMedia} />
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</span>
-                  </button>
-                ))}
-              </div>
-            </section>
-          )}
+        {sections.map(section => (
+          <section key={section.kind} style={{ padding: '12px 16px 0' }}>
+            <h3 style={sectionTitle}>{section.title}</h3>
+            <div style={grid}>
+              {section.items.map(item => (
+                <button
+                  key={item.ref} type="button" aria-pressed={pickedSet.has(item.ref)} onClick={() => { toggle(item.ref) }}
+                  style={{ ...tile, boxShadow: pickedSet.has(item.ref) ? '0 0 0 2px var(--dv-accent)' : '0 0 0 1px var(--dv-line)' }}
+                >
+                  <AssetMedia asset={item.cover} style={tileMedia} />
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</span>
+                </button>
+              ))}
+            </div>
+          </section>
+        ))}
         <div style={{ flex: 1, minHeight: 0 }}>
           {pickedRing === null ? null : <style>{pickedRing}</style>}
-          <AssetsPanel projectId={props.project} session={props.session} client={props.client} onOpen={(asset) => { toggle(asset.id) }} />
+          {props.renderSlot?.('dv.canvas.picker', {
+            projectId: props.project, session: props.session, client: props.client, onOpen: (asset) => { toggle(asset.id) },
+          }, { entryKey: 'assets' })}
         </div>
         <footer style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '12px 16px', borderTop: '1px solid var(--dv-line)' }}>
           <button type="button" className="dv-canvas-btn" style={{ ...button, border: '1px solid var(--dv-line-strong)', color: 'var(--dv-text)' }} onClick={onCancel}>{t('picker.cancel')}</button>
@@ -153,13 +145,25 @@ export function AssetPicker(props: AssetPickerProps): ReactNode {
   )
 }
 
+/** Props of {@link AssetPreview}. */
+export interface AssetPreviewProps {
+  asset: Asset | null
+  openerOf: (asset: Asset) => Element | null
+  onClose: () => void
+  /** Renders the `dv.canvas.preview` entry, the asset pool's preview; without it nothing shows. */
+  renderSlot?: PropsRenderSlots<'dv.canvas.preview'>['renderSlot']
+}
+
 /**
- * The asset pool's preview of one asset, growing out of the element that opened it and shrinking back into it.
- * @param props - the asset on show or null, the element it grows out of, and the close callback.
+ * The preview of one asset in the `dv.canvas.preview` entry, growing out of the element that opened it and shrinking
+ * back into it.
+ * @param props - the asset on show or null, the element it grows out of, the close callback, and the slot renderer.
  * @returns the preview, or nothing while no asset is on show.
  */
-export function AssetPreview(props: { asset: Asset | null; openerOf: (asset: Asset) => Element | null; onClose: () => void }): ReactNode {
+export function AssetPreview(props: AssetPreviewProps): ReactNode {
   const zoom = useZoomPresence(props.asset, props.openerOf)
   useEscapeFirst(props.asset !== null, props.onClose)
-  return zoom.shown === null ? null : <Preview key={zoom.shown.id} asset={zoom.shown} onClose={props.onClose} zoom={zoom} />
+  if (zoom.shown === null) return null
+  // Keyed by the asset, so the preview of another asset starts fresh.
+  return <Fragment key={zoom.shown.id}>{props.renderSlot?.('dv.canvas.preview', { asset: zoom.shown, onClose: props.onClose, zoom }, { entryKey: 'assets' })}</Fragment>
 }

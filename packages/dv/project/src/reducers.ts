@@ -4,17 +4,20 @@
  * oldest first, through every registered reducer. Project registers its own reducer, {@link projReducer}, for the
  * `proj` slice.
  *
+ * Reference kinds register here too: each answers for the versions of its kind from its owner's slice.
+ *
  * Calls: reads records through the record store and the chain through the history module. Called by the
- * service (`getState`) and the runner (state at a record's parent, character, location and style resolution).
+ * service (`getState`) and the runner (state at a record's parent, version resolution).
  *
  * @module @dv/project/reducers
  */
 import type { RecordStore } from './record-store.ts'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
-import { COMPONENT_KEYS, ProjectError } from './shared.ts'
+import { versionRefOf } from './agent-tools.ts'
+import { ProjectError } from './shared.ts'
 import type {
   AssetId, AssetStore, ComponentStates, ProjectId, ProjectInfo, ProjectRecord, ProjectState, RecordId, RecordInput, RecordInputRef,
-  Reducer,
+  Reducer, ReferenceKindSpec,
 } from './types.ts'
 
 /** The `proj` slice. */
@@ -23,10 +26,10 @@ type ProjSlice = ComponentStates['proj']
 /** A slice of any declared component. */
 type AnySlice = ComponentStates[keyof ComponentStates]
 
-/** The record that created the character, location or style version a reference names; null for any other reference. */
+/** The record that created the version a reference names; null for any other reference. */
 type VersionCreator = (ref: RecordInputRef) => RecordId | null
 
-/** The version lookup without a reducer that defines `createdBy`: no reference names a version. */
+/** The version lookup without reference kinds: no reference names a version. */
 const noVersions: VersionCreator = () => null
 
 /**
@@ -43,8 +46,8 @@ function acceptedRecords(records: ProjectRecord[]): Set<string> {
 }
 
 /**
- * The records an input was produced by: the record that created its resolved asset, and for a character, location or
- * style reference, the record that created that version.
+ * The records an input was produced by: the record that created its resolved asset, and for a version reference, the
+ * record that created that version.
  * @param input - one input of a record.
  * @param created_by - the asset → record map of the slice.
  * @param versionCreator - the version lookup.
@@ -64,7 +67,7 @@ function producersOf(input: RecordInput, created_by: ProjSlice['created_by'], ve
  * producer is superseded or stale. A record is never stale through itself.
  * @param record - the record.
  * @param slice - the slice whose `created_by`, `superseded` and `stale` maps are read.
- * @param versionCreator - finds the producer of a character, location or style reference.
+ * @param versionCreator - finds the producer of a version reference.
  * @returns the record that makes it stale, or undefined.
  */
 function staleReason(
@@ -85,7 +88,7 @@ function staleReason(
  * downstream of a superseded record, and no mark reaches an accepted record or passes through one.
  * @param records - the records, oldest first; producers come before their consumers.
  * @param slice - the `created_by` and `superseded` maps after the newest record.
- * @param versionCreator - finds the producer of a character, location or style reference.
+ * @param versionCreator - finds the producer of a version reference.
  * @returns the stale map.
  */
 function computeStale(
@@ -105,8 +108,8 @@ function computeStale(
  * Apply one record to the `proj` slice (see {@link projReducer}).
  * @param slice - the slice before the record.
  * @param record - the record.
- * @param versionCreator - finds the producer of a character, location or style reference, from the slice of the
- *   reducer that defines `createdBy`, before the record.
+ * @param versionCreator - finds the producer of a version reference, from the slice of the kind's owner, before the
+ *   record.
  * @returns the slice after the record.
  */
 function reduceProj(slice: ProjSlice, record: ProjectRecord, versionCreator: VersionCreator): ProjSlice {
@@ -133,25 +136,29 @@ function reduceProj(slice: ProjSlice, record: ProjectRecord, versionCreator: Ver
  *   replaces the entry);
  * - `superseded`: each ID in a record's `supersedes` → that record;
  * - `stale`: a record R is stale when one of its inputs was produced by a record that is superseded or stale; the
- *   producer of an input is the record that created its `resolved_asset`, and for a character, location or style
- *   reference also the record that created that version (`createdBy` of the reducer that defines it); the value is the
+ *   producer of an input is the record that created its `resolved_asset`, and for a version reference also the record
+ *   that created that version (`createdBy` of its reference kind); the value is the
  *   superseding record (or the record that made the producer stale). When a record supersedes another, every earlier
  *   record that is (transitively) downstream of the superseded one becomes stale.
  *   A `proj.stale_accept` record with `params.record` removes that record's mark and keeps it removed for the rest of
  *   the chain, and records downstream of it are not stale through it.
  * Request records and `proj.*` records other than `proj.stale_accept` change only `records`. The registry reduces the
- * slice with the `createdBy` of the reducer that defines it; `projReducer.reduce` called on its own finds no version
- * producers.
+ * slice with the `createdBy` of the reference kinds; `projReducer.reduce` called on its own finds no version producers.
  */
 export const projReducer: Reducer<'proj'> = {
   initial: () => ({ records: [], stale: {}, superseded: {}, created_by: {} }),
   reduce: (slice, record) => reduceProj(slice, record, noVersions),
 }
 
-/** The registered reducers, and the state computed from them. */
+/** Reads the slice of a component key, given the reducer registered for it. */
+type SliceReader = (key: keyof ComponentStates, reducer: Reducer) => AnySlice
+
+/** The registered reducers and reference kinds, and the state computed from them. */
 export class ReducerRegistry {
   /** Component key → reducer, in registration order. */
   private readonly reducers = new Map<keyof ComponentStates, Reducer>()
+  /** Reference kind → its spec, in registration order. */
+  private readonly kinds = new Map<string, ReferenceKindSpec>()
 
   /**
    * @param store - the record store, read for chains and project metadata.
@@ -159,25 +166,72 @@ export class ReducerRegistry {
   constructor(private readonly store: RecordStore) {}
 
   /**
-   * Register a component's reducer. One reducer per key: a second registration of a key throws `reducer_exists`. At
-   * most one registered reducer defines `createdBy` and `assetsOf`: a second one that defines either throws
-   * `invalid_params`.
+   * Register a component's reducer. One reducer per key: a second registration of a key throws `reducer_exists`.
    * @param key - the component key.
    * @param reducer - the reducer.
    * @returns a function that removes the registration.
    */
   register<K extends keyof ComponentStates>(key: K, reducer: Reducer<K>): () => void {
     if (this.reducers.has(key)) throw new ProjectError('reducer_exists', `A reducer for component ${key} is already registered.`)
-    for (const hook of ['createdBy', 'assetsOf'] as const) {
-      const holder = [...this.reducers].find(([, other]) => other[hook] !== undefined)
-      if (reducer[hook] !== undefined && holder !== undefined) {
-        throw new ProjectError('invalid_params', `The reducer of ${String(holder[0])} already defines ${hook}; ${key} cannot define it too.`)
-      }
-    }
     this.reducers.set(key, reducer)
     return () => {
       if (this.reducers.get(key) === reducer) this.reducers.delete(key)
     }
+  }
+
+  /**
+   * Register a reference kind. One owner per kind: a second registration of a kind throws `kind_exists`.
+   * @param spec - the kind.
+   * @returns a function that removes the registration.
+   */
+  registerKind<K extends keyof ComponentStates>(spec: ReferenceKindSpec<K>): () => void {
+    if (this.kinds.has(spec.kind)) throw new ProjectError('kind_exists', `Reference kind ${spec.kind} is already registered.`)
+    this.kinds.set(spec.kind, spec)
+    return () => {
+      if (this.kinds.get(spec.kind) === spec) this.kinds.delete(spec.kind)
+    }
+  }
+
+  /** @returns the registered reference kinds, in registration order. */
+  listReferenceKinds(): readonly string[] {
+    return [...this.kinds.keys()]
+  }
+
+  /**
+   * The reference kinds that have a version of an ID: those whose `createdBy` answers on their owner's slice.
+   * @param state - a project state.
+   * @param id - the ID, such as `p1`.
+   * @param version - the version number.
+   * @returns the kinds, in registration order.
+   */
+  kindsWithVersion(state: ProjectState, id: string, version: number): string[] {
+    return [...this.kinds.values()].filter((spec) => {
+      const owner = this.ownerSlice(spec, (key, reducer) => sliceOf(state, key, reducer))
+      return owner !== undefined && spec.createdBy(owner, id, version) !== null
+    }).map(spec => spec.kind)
+  }
+
+  /**
+   * The reference kinds that have an ID: those whose `latest` answers on their owner's slice.
+   * @param state - a project state.
+   * @param id - the ID, such as `p1`.
+   * @returns the kinds, in registration order.
+   */
+  kindsWithId(state: ProjectState, id: string): string[] {
+    return this.listReferenceKinds().filter(kind => this.latestVersion(state, kind, id) !== null)
+  }
+
+  /**
+   * The newest version of an ID in one reference kind, from `latest` of the kind on its owner's slice.
+   * @param state - a project state.
+   * @param kind - a reference kind.
+   * @param id - the ID.
+   * @returns the version, or null for an unknown ID, a kind that is not registered, or an owner without a reducer.
+   */
+  latestVersion(state: ProjectState, kind: string, id: string): number | null {
+    const spec = this.kinds.get(kind)
+    const owner = spec === undefined ? undefined : this.ownerSlice(spec, (key, reducer) => sliceOf(state, key, reducer))
+    return spec === undefined || owner === undefined ? null : spec.latest(owner, id)
   }
 
   /**
@@ -222,28 +276,27 @@ export class ReducerRegistry {
   }
 
   /**
-   * The project summary fields of every reducer that defines `agentSummary`, in component key order (keys outside
-   * that list follow in registration order).
+   * The project summary fields of every reducer that defines `agentSummary`: Project's own `proj` slice first, then the
+   * other components in the alphabetical order of their keys, so the order never depends on which plugin mounted first.
    * @param state - a project state.
    * @param assets - the asset store, for asset URLs.
    * @returns one field object per such reducer.
    */
   agentSummaries(state: ProjectState, assets: Pick<AssetStore, 'url'>): Array<Record<string, JsonValue>> {
-    const order = [...COMPONENT_KEYS]
-    const rank = (key: string): number => (order.includes(key) ? order.indexOf(key) : order.length)
-    return [...this.reducers].sort(([a], [b]) => rank(String(a)) - rank(String(b)))
+    const sortKey = (key: string): string => (key === 'proj' ? '' : key)
+    return [...this.reducers].sort(([a], [b]) => sortKey(a).localeCompare(sortKey(b)))
       .flatMap(([key, reducer]) => (
         reducer.agentSummary === undefined ? [] : [reducer.agentSummary(sliceOf(state, key, reducer), assets, state)]))
   }
 
   /**
-   * Apply one record to one slice. Project's own `proj` slice also reads the version producers from the slice of the
-   * reducer that defines `createdBy`, before the record; `proj` is registered first, so `slices` still holds that slice
-   * while `proj` reduces.
+   * Apply one record to one slice. Project's own `proj` slice also reads the version producers from the slices of the
+   * kinds' owners, before the record; `proj` is registered first, so `slices` still holds those slices while `proj`
+   * reduces.
    * @param reducer - the reducer of the slice.
    * @param slice - the slice before the record.
    * @param record - the record.
-   * @param slices - every slice by key; the slice of the reducer that defines `createdBy` is read before the record.
+   * @param slices - every slice by key; the owners' slices are read before the record.
    * @returns the slice after the record.
    */
   private reduceSlice(reducer: Reducer, slice: AnySlice, record: ProjectRecord, slices: Map<keyof ComponentStates, AnySlice>): AnySlice {
@@ -252,43 +305,51 @@ export class ReducerRegistry {
   }
 
   /**
-   * The record that created a version, from `createdBy` of the reducer that defines it.
+   * The record that created a version, from `createdBy` of its reference kind on the owner's slice.
    * @param slices - every slice by key.
-   * @param ref - a character, location or style reference.
-   * @returns the record, or null when no registered reducer defines `createdBy` or the version is unknown.
+   * @param ref - a record input reference.
+   * @returns the record, or null for an unknown version, a kind that is not registered, or another reference.
    */
   private versionCreator(slices: Map<keyof ComponentStates, AnySlice>, ref: RecordInputRef): RecordId | null {
-    for (const [key, reducer] of this.reducers) {
-      if (reducer.createdBy !== undefined) return reducer.createdBy(slices.get(key) ?? reducer.initial(), ref)
-    }
-    return null
+    return this.askKind(ref, (key, owner) => slices.get(key) ?? owner.initial(), (spec, owner, id, n) => spec.createdBy(owner, id, n))
   }
 
   /**
-   * The record that created the version a character, location or style reference names, read from a computed state.
-   * @param state - a project state.
-   * @param ref - a `{character, version}`, `{location, version}` or `{style, version}` reference.
-   * @returns the record, or null when no registered reducer defines `createdBy` or the reference names no known
-   *   version.
-   */
-  versionCreatedBy(state: ProjectState, ref: RecordInputRef): RecordId | null {
-    for (const [key, reducer] of this.reducers) {
-      if (reducer.createdBy !== undefined) return reducer.createdBy(sliceOf(state, key, reducer), ref)
-    }
-    return null
-  }
-
-  /**
-   * The assets a character, location or style reference stands for, from `assetsOf` of the reducer that defines it.
+   * The assets a version reference stands for, from `assetsOf` of its reference kind.
    * @param state - the state at the record's parent.
-   * @param ref - a `{character, version}`, `{location, version}` or `{style, version}` reference.
-   * @returns the assets, or null when no registered reducer defines `assetsOf` or the version is unknown.
+   * @param ref - a version reference.
+   * @returns the assets, or null for an unknown version, a kind that is not registered, or another reference.
    */
   assetsOf(state: ProjectState, ref: RecordInputRef): AssetId[] | null {
-    for (const [key, reducer] of this.reducers) {
-      if (reducer.assetsOf !== undefined) return reducer.assetsOf(sliceOf(state, key, reducer), ref)
-    }
-    return null
+    return this.askKind(ref, (key, reducer) => sliceOf(state, key, reducer), (spec, owner, id, n) => spec.assetsOf(owner, id, n))
+  }
+
+  /**
+   * Ask the reference kind that a version reference names, on its owner's slice.
+   * @param ref - a record input reference.
+   * @param read - reads the owner's slice.
+   * @param ask - the question.
+   * @returns the answer; null for an asset or record reference, a kind that is not registered, or an owner without a
+   *   reducer.
+   */
+  private askKind<T>(
+    ref: RecordInputRef, read: SliceReader, ask: (spec: ReferenceKindSpec, owner: AnySlice, id: string, version: number) => T | null,
+  ): T | null {
+    const named = versionRefOf(ref)
+    const spec = named === null ? undefined : this.kinds.get(named.kind)
+    const owner = spec === undefined ? undefined : this.ownerSlice(spec, read)
+    return named === null || spec === undefined || owner === undefined ? null : ask(spec, owner, named.id, named.version)
+  }
+
+  /**
+   * The slice a reference kind answers from.
+   * @param spec - the kind.
+   * @param read - reads a slice by key.
+   * @returns the slice of the kind's owner, or undefined when the owner has no reducer.
+   */
+  private ownerSlice(spec: ReferenceKindSpec, read: SliceReader): AnySlice | undefined {
+    const reducer = this.reducers.get(spec.component)
+    return reducer === undefined ? undefined : read(spec.component, reducer)
   }
 }
 

@@ -5,7 +5,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-slots'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
-    /** Timeline editor copy: timeline tabs, viewer, toolbar, tracks, and the project bar. */
+    /** Timeline editor copy: timeline tabs, viewer, toolbar, tracks, the project bar, and the canvas badge of a trimmed clip. */
     dvTimeline: DvTimelineKey
   }
 }
@@ -72,6 +72,7 @@ export const zh = {
   'track.fileDrop': '时间线轨道只接受素材库里的视频。请先在对话里导入文件，再从素材库拖到轨道上。',
   'track.playhead': '播放头',
   'track.resize': '拖动调整轨道区高度',
+  'badge.trim': '已裁剪',
   'intent.create': '在时间线里新建 {name}',
   'intent.rename': '把时间线改名为 {name}',
   'intent.delete': '在时间线里删除 {name}',
@@ -145,6 +146,7 @@ export const en = {
   'track.fileDrop': 'The timeline track takes videos from the asset pool only. Import the file in the chat first, then drag it from the asset pool.',
   'track.playhead': 'Playhead',
   'track.resize': 'Drag to resize the track area',
+  'badge.trim': 'Trimmed',
   'intent.create': 'Create {name} in the timeline',
   'intent.rename': 'Rename the timeline to {name}',
   'intent.delete': 'Delete {name} in the timeline',

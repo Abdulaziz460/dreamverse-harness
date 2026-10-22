@@ -176,6 +176,7 @@ function Thumb(props: { asset: Asset; onOpen: (asset: Asset) => void }): ReactNo
 export function Preview(props: { asset: Asset; onClose: () => void; zoom: ZoomPresence<Asset> }): ReactNode {
   const { asset, onClose } = props
   const t = useText()
+  const projectId = useCurrentProject()
   // When the asset pool could not read the dimensions at import, read them from the loaded media.
   const [loadedSize, setLoadedSize] = useState<{ width: number; height: number } | null>(null)
   const width = asset.width ?? loadedSize?.width ?? null
@@ -219,7 +220,7 @@ export function Preview(props: { asset: Asset; onClose: () => void; zoom: ZoomPr
           <span className={css.name}>{asset.name}</span>
           <span className={css.factText}>{facts.join(' · ')}</span>
           <span style={{ flex: 1 }} />
-          {video ? <button type="button" className={css.button} onClick={() => { dispatchWorkspaceEvent(DV_TIMELINE_INSERT_EVENT, { assetId: asset.id }); onClose() }}>{t('插入片段', 'Insert clip')}</button> : null}
+          {video && projectId !== null ? <button type="button" className={css.button} onClick={() => { dispatchWorkspaceEvent(DV_TIMELINE_INSERT_EVENT, { projectId, assetId: asset.id }); onClose() }}>{t('插入片段', 'Insert clip')}</button> : null}
           <button type="button" className={css.button} onClick={() => { dispatchCompose({ text: t('使用这个素材：', 'Use this asset: '), refs: [{ kind: 'asset', id: asset.id, label: asset.name, assetId: asset.id }] }); onClose() }}>{t('让智能体使用', 'Ask the agent to use it')}</button>
           <button type="button" className={css.button} onClick={onClose}>{t('关闭', 'Close')}</button>
         </div>

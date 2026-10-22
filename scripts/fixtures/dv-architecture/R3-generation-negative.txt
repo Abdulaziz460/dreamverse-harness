@@ -1,0 +1,4 @@
+--- packages/dv/shot-render/src/index.ts
+ctx.dvProject.registerComponent('shot')
+--- packages/dv/image-generate/src/index.ts
+export const declaration = defineGeneration({ component: 'image', operation: 'shot.render' })

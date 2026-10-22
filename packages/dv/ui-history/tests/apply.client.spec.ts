@@ -1,9 +1,13 @@
 // @vitest-environment jsdom
-/** The plugin's registrations, the tab opening on `dv:history-focus`, and their removal when the plugin goes. */
+/**
+ * The plugin's registrations, the `dvHistory` service, the tab opening on `dv:history-focus`, and their removal when the
+ * plugin goes.
+ */
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { SidebarRightTabRegistry } from '@deepseek-ai/dsh-client-ui-sidebar-right/src/client/tab-registry.ts'
 import { DvClient } from '@dv/ui-kit/api.ts'
+import type { HistoryRow } from '@dv/ui-kit/registries.ts'
 import { DV_HISTORY_FOCUS_EVENT } from '@dv/ui-kit/workspace-events.ts'
 import { HistoryTabBody } from '../src/client/HistoryPanel.tsx'
 import { HISTORY_ID, HISTORY_KIND } from '../src/client/definition.ts'
@@ -13,7 +17,7 @@ import { apply as hostApply } from '../src/index.ts'
 interface Recorded {
   name: string
   key: string
-  inject: () => { client: unknown }
+  inject: () => { client: unknown; rows: unknown }
   component: unknown
 }
 
@@ -39,7 +43,7 @@ async function boot() {
   ctx.provide('sidebarRight', { openTab: (kind: string) => { opened.push(kind) } } as never)
   const fiber = ctx.plugin({ inject: [...inject], apply })
   await fiber.await()
-  return { tabs, registered, opened, fiber }
+  return { ctx, tabs, registered, opened, fiber }
 }
 
 const focus = (): void => { window.dispatchEvent(new CustomEvent(DV_HISTORY_FOCUS_EVENT, { detail: { session: 's1', toolCall: 'c1' } })) }
@@ -61,9 +65,20 @@ describe('ui-history apply', () => {
     expect(opened).toEqual([HISTORY_KIND])
   })
 
+  it('provides dvHistory, whose rows reach the tab body and leave on disposal', async () => {
+    const { ctx, registered } = await boot()
+    const row: HistoryRow = { match: 'story.approve', subject: () => [' p1 v1', ' p1 v1'] }
+    const dispose = ctx.dvHistory.rows.register(row)
+    expect(registered[0]?.inject().rows).toBe(ctx.dvHistory.rows)
+    expect(ctx.dvHistory.rows.list()).toEqual([row])
+    dispose()
+    expect(ctx.dvHistory.rows.list()).toEqual([])
+  })
+
   it('removes everything when the plugin is disposed', async () => {
-    const { tabs, registered, opened, fiber } = await boot()
+    const { ctx, tabs, registered, opened, fiber } = await boot()
     await fiber.dispose()
+    expect(ctx.get('dvHistory')).toBeUndefined()
     expect(tabs.get(HISTORY_KIND)).toBeUndefined()
     expect(registered).toEqual([])
     focus()

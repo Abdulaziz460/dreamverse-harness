@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to let the agent look at project assets without changing the project. It registers two read operations with `dvProject`: `inspect.image`, where the harness's default model answers a question about an image asset, and `inspect.asset`, where ffprobe reads an asset's duration, frame size, codec, and audio presence through `dvFfmpeg`. `dvProject` turns them into the agent tools `dv_inspect_image` and `dv_inspect_asset`. Both write no record; the answer is the result's report. The component has no reducer.
+Use this package to let the agent look at project assets without changing the project. It registers two read operations with `dvProject`: `inspect.image`, where the harness's default model answers a question about an image asset, and `inspect.asset`, where ffprobe reads an asset's duration, frame size, codec, and audio presence through `dvFfmpeg`. `dvProject` turns them into the agent tools `dv_inspect_image` and `dv_inspect_asset`. Both write no record; the answer is the result's report. The component has no reducer. The operations declare the labels that the interface shows in place of their tool names: 检查画面 / Inspect image and 检查素材 / Inspect asset.
 
 ## Table of Contents
 

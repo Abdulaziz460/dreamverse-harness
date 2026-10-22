@@ -39,8 +39,9 @@ import type {} from '@deepseek-ai/dsh-system-prompt'
 import type {} from '@deepseek-ai/dsh-tools'
 import z from '@deepseek-ai/schemastery'
 import { PROMPT_SECTION, projectContext } from './agent-context.ts'
-import { AgentTools, parseInputs, turnOf } from './agent-tools.ts'
+import { AgentTools, parseInputRef, parseInputs, turnOf } from './agent-tools.ts'
 import { History } from './history.ts'
+import type { OperationSpec } from './operation-types.ts'
 import { projTools, type ProjToolDeps } from './proj-tools.ts'
 import { RecordStore } from './record-store.ts'
 import { projReducer, ReducerRegistry } from './reducers.ts'
@@ -50,17 +51,18 @@ import { ProjectError } from './shared.ts'
 import { Sessions } from './sessions.ts'
 import { Subscriptions } from './subscriptions.ts'
 import type {
-  AssetId, AssetStore, ComponentStates, ProjectLine, HistoryEntry, HistoryQuery, OperationSpec,
+  AssetId, AssetStore, ComponentStates, ProjectLine, HistoryEntry, HistoryQuery,
   ProjectEvent, ProjectId, ProjectInfo, ProjectRecord, ProjectState, RecordId, RecordInputRef, RecordOrigin, Reducer,
-  RunRequest, RunResult, SessionId,
+  ReferenceKindSpec, RunRequest, RunResult, SessionId,
 } from './types.ts'
 
 export * from './types.ts'
+export * from './operation-types.ts'
 export { ProjectError } from './shared.ts'
 export {
   citedAsset, citedInput, elementCitationUri, parsePromptCitations, promptAssets, replacePromptCitations, type PromptCitation,
 } from './citations.ts'
-export { formatInputRef, sessionOf, toolNameOf, type OperationToolValue } from './agent-tools.ts'
+export { formatInputRef, sessionOf, toolNameOf, versionRefOf, type OperationToolValue } from './agent-tools.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -68,6 +70,10 @@ declare module '@deepseek-ai/cordis' {
     dvProject: DvProject
   }
 }
+
+/** The keys that the other arms of a record input reference use (`{asset}`, `{record, output}`, `version`); no
+ *  reference kind may take one. */
+const RESERVED_KINDS = { asset: true, record: true, version: true }
 
 /** `dvProject` plugin configuration. */
 export interface Config {
@@ -146,12 +152,14 @@ export default class DvProject extends Service {
       confirmGpuSecondsThreshold: config.confirmGpuSecondsThreshold,
       listOperations: () => this.listOperations(),
       currentState: project => this.getState(project),
-      versionCreatedBy: (state, ref) => this.reducers.versionCreatedBy(state, ref),
+      listReferenceKinds: () => this.reducers.listReferenceKinds(),
+      kindsWithVersion: (state, id, version) => this.reducers.kindsWithVersion(state, id, version),
       run: request => this.run(request),
       getRecord: (project, record) => this.getRecord(project, record),
       listHistory: query => this.listHistory(query),
     })
     this.store.load()
+    this.runner.registerComponent('proj')
     this.reducers.register('proj', projReducer)
     // The project summary that the `dv_proj_*` tools return and the `dv:project` prompt section shows.
     const projToolDeps: ProjToolDeps = {
@@ -362,11 +370,22 @@ export default class DvProject extends Service {
   }
 
   /**
+   * Register a component's key; a plugin calls it inside `ctx.effect` before it registers the component's reducer and
+   * operations. The core keeps no list of components: every built-in and added plugin registers its own key in the same
+   * way, and Project registers its own key `proj`.
+   * @param key - the component key, such as `timeline`.
+   * @returns a function that removes the key. Throws `component_exists`.
+   */
+  registerComponent(key: string): () => void {
+    return this.runner.registerComponent(key)
+  }
+
+  /**
    * Register an operation and, while the DSH `tools` registry is mounted, its agent tool `dv_<name with _>`; a
    * component calls it from its plugin inside `ctx.effect` and returns the disposer.
    * @param spec - the operation.
-   * @returns a function that removes the operation and its tool. Throws `operation_exists`, or `invalid_params` for
-   *   an unknown component key, a name that does not start with `<component>.`, or a `confirm` other than `never`
+   * @returns a function that removes the operation and its tool. Throws `operation_exists`, or `invalid_params` for an
+   *   unregistered component key, a name that does not start with `<component>.`, or a `confirm` other than `never`
    *   without `confirmSummary`.
    */
   registerOperation(spec: OperationSpec): () => void {
@@ -385,20 +404,86 @@ export default class DvProject extends Service {
   }
 
   /**
-   * Register a component's reducer for its state slice; a component calls it inside `ctx.effect`.
+   * Register a component's reducer for its state slice; a component calls it inside `ctx.effect`, after
+   * `registerComponent`.
    * @param key - the component key, declared in `ComponentStates`.
    * @param reducer - the reducer.
-   * @returns a function that removes it. Throws `reducer_exists`.
+   * @returns a function that removes it. Throws `reducer_exists`, or `invalid_params` for an unregistered component key.
    */
   registerReducer<K extends keyof ComponentStates>(key: K, reducer: Reducer<K>): () => void {
+    if (!this.runner.hasComponent(key)) {
+      throw new ProjectError('invalid_params', `A reducer names the component '${key}', which no plugin registered.`)
+    }
     return this.reducers.register(key, reducer)
   }
 
   /**
-   * The assets a character, location or style version stands for, read through `assetsOf` of the reducer that defines it.
+   * Register a reference kind, whose versions inputs name as `<id>@<version>`; a plugin calls it inside `ctx.effect`,
+   * after `registerComponent` of the owning key. Every operation tool is rebuilt, because its `inputs` text lists the
+   * kinds.
+   * @param spec - the kind and how its owner answers for one version.
+   * @returns a function that removes the kind. Throws `kind_exists`, or `invalid_params` for an unregistered component key
+   *   or the kind `asset`, `record` or `version`.
+   */
+  registerReferenceKind<K extends keyof ComponentStates>(spec: ReferenceKindSpec<K>): () => void {
+    if (Object.hasOwn(RESERVED_KINDS, spec.kind)) {
+      throw new ProjectError('invalid_params', `Reference kind ${spec.kind} is reserved: an input reference uses that key itself.`)
+    }
+    if (!this.runner.hasComponent(spec.component)) {
+      const message = `Reference kind ${spec.kind} names the component '${spec.component}', which no plugin registered.`
+      throw new ProjectError('invalid_params', message)
+    }
+    const remove = this.reducers.registerKind(spec)
+    this.refreshTools()
+    return () => {
+      remove()
+      this.refreshTools()
+    }
+  }
+
+  /** @returns the registered reference kinds in registration order, for agent text. */
+  listReferenceKinds(): readonly string[] {
+    return this.reducers.listReferenceKinds()
+  }
+
+  /**
+   * The reference kinds that have an ID. IDs are unique across kinds: a kind owner's create refuses an ID that this
+   * lists.
+   * @param state - the state to look in, normally the state at the create's parent.
+   * @param id - the ID, such as `p1`.
+   * @returns the kinds whose `latest` knows the ID, in registration order.
+   */
+  kindsWithId(state: ProjectState, id: string): readonly string[] {
+    return this.reducers.kindsWithId(state, id)
+  }
+
+  /**
+   * The newest version of an ID in one reference kind, from the kind's `latest`.
+   * @param state - the state to look in, normally the project's current state.
+   * @param kind - a reference kind.
+   * @param id - the ID.
+   * @returns the version, or null for an unknown ID or a kind that is not registered.
+   */
+  latestVersion(state: ProjectState, kind: string, id: string): number | null {
+    return this.reducers.latestVersion(state, kind, id)
+  }
+
+  /**
+   * Parse one reference text: `<record>#<n>` names output n of a record, `<id>@<n>` version n of the one reference
+   * kind that has it, anything else an asset.
+   * @param text - the reference text.
+   * @param state - the state the version is looked up in, normally the project's current state.
+   * @returns the reference. Throws `invalid_inputs` for a version that no kind, or more than one kind, has.
+   */
+  parseReference(text: string, state: ProjectState): RecordInputRef {
+    return parseInputRef(text, state, this.reducers)
+  }
+
+  /**
+   * The assets a version stands for, read through `assetsOf` of its reference kind.
    * @param state - the state to read the version in, normally the project's current state.
    * @param ref - a versioned input reference.
-   * @returns the version's assets, or null for an unknown version or when no reducer answers.
+   * @returns the version's assets, or null for an unknown version or a kind that is not registered.
    */
   assetsOf(state: ProjectState, ref: RecordInputRef): AssetId[] | null {
     return this.reducers.assetsOf(state, ref)
@@ -406,19 +491,19 @@ export default class DvProject extends Service {
 
   /**
    * Turn the `inputs` argument of a tool call or a view request into run inputs: `<record>#<n>` names output n of a
-   * record, `<id>@<n>` a character, location or style version, anything else an asset.
+   * record, `<id>@<n>` a version of a reference kind, anything else an asset.
    * @param operation - a registered operation name.
    * @param raw - role → reference text or a list of them; undefined for none.
    * @param state - the state the references are read against, normally the project's current state.
    * @param callerName - the name the error messages give the call: the tool name for an agent tool call, the operation
    *   name (the default) for a view request or a call made by another operation.
    * @returns the inputs. Throws `unknown_operation`, or an `Error` naming the role and `callerName` for an unknown role,
-   *   a list on a single role, or a missing required role, or an `Error` for an unknown version.
+   *   a list on a single role, or a missing required role, or `invalid_inputs` for an unknown or ambiguous version.
    */
   parseInputs(operation: string, raw: unknown, state: ProjectState, callerName: string = operation): RunRequest['inputs'] {
     const spec = this.listOperations().find(candidate => candidate.name === operation)
     if (spec === undefined) throw new ProjectError('unknown_operation', `Operation ${operation} is not registered.`)
-    return parseInputs(spec, raw, state, (at, ref) => this.reducers.versionCreatedBy(at, ref), callerName)
+    return parseInputs(spec, raw, state, this.reducers, callerName)
   }
 
   /**
@@ -471,5 +556,13 @@ export default class DvProject extends Service {
   private addTool(spec: OperationSpec): void {
     if (this.registerOperationTool === null) return
     this.toolDisposers.set(spec.name, this.registerOperationTool(spec))
+  }
+
+  /** Rebuild the agent tool of every operation, whose `inputs` text lists the registered reference kinds. */
+  private refreshTools(): void {
+    for (const spec of this.listOperations()) {
+      this.toolDisposers.get(spec.name)?.()
+      this.addTool(spec)
+    }
   }
 }

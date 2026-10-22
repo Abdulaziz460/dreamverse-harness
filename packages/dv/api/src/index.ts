@@ -15,6 +15,7 @@ import type { ConnectionFetchRoute } from '@deepseek-ai/dsh-client-connection'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import type { ProjectId } from '@dv/project'
 import type {} from '@dv/asset-pool'
+import type {} from '@dv/models'
 import { answer, ApiHandlers, ApiRequestError, type ApiServices, requireProject } from './api.ts'
 import { assetImportRoutes } from './asset-import.ts'
 import { serveEventStream } from './events.ts'
@@ -66,6 +67,7 @@ export const ROUTES = {
   projectSummaries: '/api/dv/projects/summary',
   state: '/api/dv/state',
   operations: '/api/dv/operations',
+  tasks: '/api/dv/tasks',
   operation: '/api/dv/operation',
   undo: '/api/dv/undo',
   redo: '/api/dv/redo',
@@ -140,6 +142,8 @@ export default class DvApi extends Service {
         fetch: request => answer(() => api.getState(query(request, 'project'))),
       },
       { path: ROUTES.operations, methods: ['GET'], requestBody: 'buffered', fetch: () => answer(() => api.listOperations()) },
+      // The model catalog is optional: without it no task has a label.
+      { path: ROUTES.tasks, methods: ['GET'], requestBody: 'buffered', fetch: () => answer(() => this.ctx.get('dvModels')?.taskLabels() ?? {}) },
       { path: ROUTES.operation, methods: ['POST'], requestBody: 'buffered', fetch: withBody(body => api.runOperation(body)) },
       { path: ROUTES.undo, methods: ['POST'], requestBody: 'buffered', fetch: withBody(body => api.undo(body)) },
       { path: ROUTES.redo, methods: ['POST'], requestBody: 'buffered', fetch: withBody(body => api.redo(body)) },

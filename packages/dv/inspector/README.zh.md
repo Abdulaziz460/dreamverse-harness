@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-使用本包让智能体查看项目素材而不改变项目。它向 `dvProject` 注册两个只读操作：`inspect.image`，由 harness 的默认模型回答关于一个图片素材的问题；`inspect.asset`，经 `dvFfmpeg` 用 ffprobe 读取素材的时长、画面尺寸、编码和是否有音频。`dvProject` 把它们变成智能体工具 `dv_inspect_image` 和 `dv_inspect_asset`。两者都不写记录；回答就是结果的报告。该组件没有归约函数。
+使用本包让智能体查看项目素材而不改变项目。它向 `dvProject` 注册两个只读操作：`inspect.image`，由 harness 的默认模型回答关于一个图片素材的问题；`inspect.asset`，经 `dvFfmpeg` 用 ffprobe 读取素材的时长、画面尺寸、编码和是否有音频。`dvProject` 把它们变成智能体工具 `dv_inspect_image` 和 `dv_inspect_asset`。两者都不写记录；回答就是结果的报告。该组件没有归约函数。这两个操作声明界面代替其工具名显示的标签：检查画面 / Inspect image 和 检查素材 / Inspect asset。
 
 ## 目录
 

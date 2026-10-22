@@ -3,10 +3,15 @@ import type { AddressInfo } from 'node:net'
 import { Context } from '@deepseek-ai/cordis'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { WebRoute, WebUpgradeRoute } from '@deepseek-ai/dsh-host-webserver'
-import type { AssetId, CharacterId, ProjectId, RecordId } from '@dv/project'
+import type { AssetId, ProjectId, RecordId } from '@dv/project'
+import type { CharacterId } from '@dv/character'
 import { afterEach, describe, expect, it } from 'vitest'
 import VhStream, { SegmentBroadcaster, type StreamFrame } from '../src/index.ts'
 import { startBase } from '../../../dv/api/tests/support.ts'
+
+declare module '@dv/project' {
+  interface ReferenceKinds { character: CharacterId }
+}
 
 const PROJECT = brandString<ProjectId>('p1')
 const OP = brandString<RecordId>('op-1')
@@ -136,12 +141,14 @@ describe('shot.render with a live stream', () => {
       intent: 'import',
     })
     await fixture.project.run({
-      ...user, project: projectId, operation: 'bible.character_create', inputs: imported.outputs.map(asset => ({ role: 'reference', ref: { asset } })), params: { character: 'c1', name: 'Lead' },
+      ...user, project: projectId, operation: 'character.create', inputs: imported.outputs.map(asset => ({ role: 'reference', ref: { asset } })), params: { character: 'c1', name: 'Lead' },
       intent: 'character',
     })
+    // The slot that the starter record gave the render becomes the segment index.
     const { record: shot } = await fixture.project.run({
       ...user, project: projectId, operation: 'shot.render', inputs: [{ role: 'reference', ref: { character: brandString<CharacterId>('c1'), version: 1 } }],
-      params: { modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', prompt: 'Picture 1 waves', duration_sec: 1, shot: 3 }, intent: 'shot',
+      params: { modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', prompt: 'Picture 1 waves', duration_sec: 1 }, intent: 'shot',
+      started_by: { record: OP, slot: 3 },
     })
     if (shot === null) throw new Error('shot.render wrote no record')
     expect(shot.status).toBe('done')

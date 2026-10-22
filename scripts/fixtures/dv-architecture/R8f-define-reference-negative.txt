@@ -1,0 +1,4 @@
+--- packages/dv/character/src/index.ts
+export default class DvCharacter extends defineReference({ service: 'dvCharacter', component: 'character' }) {}
+--- packages/bundle/dv/skills/video-directing/SKILL.md
+Create each person with `dv_character_create`.

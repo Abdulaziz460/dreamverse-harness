@@ -4,8 +4,7 @@
 import { describe, expect, it } from 'vitest'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import {
-  citedAsset, citedInput, elementCitationUri, parsePromptCitations, promptAssets, replacePromptCitations, type CharacterId, type LocationId,
-  type StyleId, type AssetId,
+  citedAsset, citedInput, elementCitationUri, parsePromptCitations, promptAssets, replacePromptCitations, type AssetId,
 } from '../src/index.ts'
 
 const PROMPT = '@[Mia · front](dv:asset/a1) meets @[Bo](dv:asset/b%2F2) by @[the lake](dv:element/e1@2), then @[Mia](dv:asset/a1) waves'
@@ -27,9 +26,9 @@ describe('prompt citations', () => {
     expect(citedInput('dv:input/first_frame')).toBe('first_frame')
     expect(citedInput('dv:asset/a1')).toBeNull()
     // A prompt cites an element without its version; the input reference names the version.
-    expect(elementCitationUri({ character: brandString<CharacterId>('c 1'), version: 2 })).toBe('dv:character/c%201')
-    expect(elementCitationUri({ location: brandString<LocationId>('l1'), version: 1 })).toBe('dv:location/l1')
-    expect(elementCitationUri({ style: brandString<StyleId>('s1'), version: 1 })).toBe('dv:style/s1')
+    expect(elementCitationUri({ test_character: 'c 1', version: 2 })).toBe('dv:test_character/c%201')
+    expect(elementCitationUri({ test_location: 'l1', version: 1 })).toBe('dv:test_location/l1')
+    expect(elementCitationUri({ test_style: 's1', version: 1 })).toBe('dv:test_style/s1')
     expect(elementCitationUri({ asset: brandString<AssetId>('a1') })).toBeNull()
     expect(promptAssets(PROMPT)).toEqual(['a1', 'b/2'])
     expect(promptAssets('a cat')).toEqual([])

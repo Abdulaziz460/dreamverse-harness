@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to turn the DSH web app into DreamVerse. With no project open, the center shows the entry page: the chat composer, the template chips, recent projects, and 探索 / Explore. 探索 shows one tab per entry that other plugins register in the `dv.explore` slot that the center declares, labeled and ordered by the entry, such as the MCP tab of `@dv/ui-mcp-presets` and the 技能 / Skills tab of `@dv/ui-skills`, and the selected tab's body; it is expanded until 收起 / Show less folds it, and absent while no plugin registers an entry. With a project open, it shows the canvas or the timeline editor, switched by 画布 | 时间线 / Canvas | Timeline, and the left sidebar starts collapsed. The left sidebar shows the navigator: 新建项目 / Create project, 首页 / Home, the DSH sidebar pages (插件 / Plugins, MCP, 技能 / Skills, and any other `sidebar.panellist` entry), and the project → chat session tree. Every navigation of the shell closes an open sidebar page, so 首页 leaves Plugins or MCP. The right panel gets the 对话 / Chat and 轨迹 / Trajectory tabs. The shell also injects the DreamVerse theme: the `--dv-*` variables that every DreamVerse package draws with, and DSH's alias variables pointed at the same palette. Outside text fields, Ctrl+Z (Cmd+Z on macOS) moves the open project one step back and Shift+Ctrl+Z (Shift+Cmd+Z) one step forward; these keys move the current position of the history list and write no record.
+Use this package to turn the DSH web app into DreamVerse. With no project open, the center shows the entry page: the chat composer, the template chips, recent projects, and 探索 / Explore. 探索 shows one tab per entry that other plugins register in the `dv.explore` slot that the center declares, labeled and ordered by the entry, such as the MCP tab of `@dv/ui-mcp-presets` and the 技能 / Skills tab of `@dv/ui-skills`, and the selected tab's body; it is expanded until 收起 / Show less folds it, and absent while no plugin registers an entry. With a project open, it shows one view of the project, and the left sidebar starts collapsed. The views are the entries that other plugins register in the `dv.center.view` slot that the center declares, one tab of the view control each, labeled and ordered by the entry: 画布 / Canvas of `@dv/ui-canvas` and 时间线 / Timeline of `@dv/ui-timeline`. The left sidebar shows the navigator: 新建项目 / Create project, 首页 / Home, the DSH sidebar pages (插件 / Plugins, MCP, 技能 / Skills, and any other `sidebar.panellist` entry), and the project → chat session tree. Every navigation of the shell closes an open sidebar page, so 首页 leaves Plugins or MCP. The right panel gets the 对话 / Chat and 轨迹 / Trajectory tabs. The shell also injects the DreamVerse theme: the `--dv-*` variables that every DreamVerse package draws with, and DSH's alias variables pointed at the same palette. Outside text fields, Ctrl+Z (Cmd+Z on macOS) moves the open project one step back and Shift+Ctrl+Z (Shift+Cmd+Z) one step forward; these keys move the current position of the history list and write no record.
 
 ## Table of Contents
 
@@ -24,14 +24,14 @@ Use this package to turn the DSH web app into DreamVerse. With no project open, 
 <a id="use-this-package"></a>
 ## Use this package
 
-Mount the plugin in a profile that stacks `dsh-web-app` (which provides the sidebars, the session and Workspace services, and the client module loader) and `@dv/api` (which serves the routes the shell calls). Mount `@dv/ui-asset-pool` and `@dv/ui-history` too: the right-panel button and the right-panel guide open their tabs. Build the browser bundle first: `pnpm run build` writes `lib/client.js`.
+Mount the plugin in a profile that stacks `dsh-web-app` (which provides the sidebars, the session and Workspace services, and the client module loader) and `@dv/api` (which serves the routes the shell calls). Mount `@dv/ui-asset-pool` and `@dv/ui-history` too: the right-panel button and the right-panel guide open their tabs. Mount `@dv/ui-canvas` and `@dv/ui-timeline` as well: they register the 画布 and 时间线 views of the center. Build the browser bundle first: `pnpm run build` writes `lib/client.js`.
 
 ```yaml
 - id: dv-ui-shell
   name: '@dv/ui-shell'
 ```
 
-The Host half registers nothing. The browser half registers the center, the navigator, and the DreamVerse wordmark as the brand name at priority -1 over DSH's entries, the `dv-chat` and `dv-trajectory` tab types with their tab bodies, and the right-panel guide that offers 对话, 素材库, 历史, and 轨迹. It also hides DSH chrome that DreamVerse does not use (the welcome notice, the sidebar's brand mark, New Session button, the page list of the expanded sidebar (the navigator lists those pages; the collapsed rail keeps their icons), the composer statistics, the context meter, and the host slash commands) rewords a few DSH strings, and shows the DreamVerse icon in the browser tab in place of DSH's. The workspace top bar shows the session switcher (the project cover, the project name, and the chat session title; its menu offers 首页 / Home, 新建项目 / Create project, the project's chat sessions with 新建会话 / New chat, and the other projects), the 画布 | 时间线 / Canvas | Timeline control, and the right-panel button, a 16 px icon button labelled 打开右侧面板 / Open the right panel that opens 对话 / Chat, 素材库 / Asset pool, and 历史 / History. The button shows only while the right panel is collapsed (`ctx.sidebarRight.expanded`), in the corner where the panel's own collapse control sits while the panel is shown. The right panel opens 448 px wide, enough for its three tabs and the active tab's close button, until the user drags its edge. The entry page shows the headline 今天想拍点什么？ / What are we making today?, the disabled 从模板开始 / Start from a template chips, and the two newest projects as cover cards (全部项目 / All projects shows the rest). These parts leave the page when the first message is sent, so the message's bubble shows in the chat while the turn starts. The URL hash has the form `#project=<id>&view=timeline&timeline=t2&session=<id>`, so a reload, Back, and Forward restore the location.
+The Host half registers nothing. The browser half registers the center, the navigator, and the DreamVerse wordmark as the brand name at priority -1 over DSH's entries, the `dv-chat` and `dv-trajectory` tab types with their tab bodies, and the right-panel guide that offers 对话, 素材库, 历史, and 轨迹. It also hides DSH chrome that DreamVerse does not use (the welcome notice, the sidebar's brand mark, New Session button, the page list of the expanded sidebar (the navigator lists those pages; the collapsed rail keeps their icons), the composer statistics, the context meter, and the host slash commands) rewords a few DSH strings, and shows the DreamVerse icon in the browser tab in place of DSH's. The workspace top bar shows the session switcher (the project cover, the project name, and the chat session title; its menu offers 首页 / Home, 新建项目 / Create project, the project's chat sessions with 新建会话 / New chat, and the other projects), the view control (画布 | 时间线 / Canvas | Timeline), and the right-panel button, a 16 px icon button labelled 打开右侧面板 / Open the right panel that opens 对话 / Chat, 素材库 / Asset pool, and 历史 / History. The button shows only while the right panel is collapsed (`ctx.sidebarRight.expanded`), in the corner where the panel's own collapse control sits while the panel is shown. The right panel opens 448 px wide, enough for its three tabs and the active tab's close button, until the user drags its edge. The entry page shows the headline 今天想拍点什么？ / What are we making today?, the disabled 从模板开始 / Start from a template chips, and the two newest projects as cover cards (全部项目 / All projects shows the rest). These parts leave the page when the first message is sent, so the message's bubble shows in the chat while the turn starts. The URL hash has the form `#project=<id>&view=timeline&timeline=t2&session=<id>`, so a reload, Back, and Forward restore the location. `view` is the `id` of the shown `dv.center.view` entry; without it the center shows `canvas`, and an id that no entry has shows the first view.
 
 | Gesture | Request or event |
 | --- | --- |
@@ -45,12 +45,12 @@ The Host half registers nothing. The browser half registers the center, the navi
 | Delete a project (row menu, then the confirmation) | `POST /api/dv/projects/delete` (the project moves to the trash directory); the linked Workspace is deleted and an open project returns to 首页 |
 | Rename or delete a chat session (row menu) | DSH's session rename, or archive with its activity stopped |
 | A main session that sits in a project's Workspace without a binding | `POST /api/dv/workspaces/bind` |
-| 插入片段 / Insert clip in the 素材库 panel (`dv:timeline-insert` `{assetId}`) | `POST /api/dv/operation` with `timeline.clip_insert` at the end of the selected timeline (else the first one), or `timeline.create` of `t1` holding the clip when the current state has no timeline, `surface: 'timeline'`; then the timeline view shows |
-| `dv:canvas-focus` | the canvas view shows |
-| `dv:timeline-focus` `{timelineId, clipId}` | the timeline is selected and the timeline view shows |
+| 插入片段 / Insert clip in the 素材库 panel (`dv:timeline-insert` `{projectId, assetId}`) | the `timeline` view shows; its editor (`@dv/ui-timeline`) inserts the clip |
+| `dv:canvas-focus` | the `canvas` view shows |
+| `dv:timeline-focus` `{timelineId, clipId}` | the timeline is selected and the `timeline` view shows |
 | `dv:trajectory-focus` `{session, toolCall}` | the main session moves to `session`, then 轨迹 opens scrolled to that tool call |
 
-The workspace sends the chat session to the canvas and the timeline editor only while the main session belongs to the open project; until then their edits carry no chat session. Every change of the open project is published as `dv:current-project` for the other DreamVerse bundles.
+The workspace renders the shown view with the owner props `projectId` (the open project) and `session` (the chat session, only while the main session belongs to the open project, else null); until then the view's edits carry no chat session. Every change of the open project is published as `dv:current-project` for the other DreamVerse bundles.
 
 -----
 
@@ -69,7 +69,7 @@ The workspace sends the chat session to the canvas and the timeline editor only 
 | [`src/client/index.ts`](src/client/index.ts) | Registrations, the New Session and first-use default Workspace overrides, the links poll, and the `dv:trajectory-focus` listener |
 | [`src/client/actions.ts`](src/client/actions.ts) | `ShellActions`: create, open, rename, and delete projects and chat sessions, the entry page, and the right-panel tabs |
 | [`src/client/store.ts`](src/client/store.ts) | The shared state (open project, view, timeline, main session, links), the URL hash mirror, and the session → project lookup |
-| [`src/client/Center.tsx`](src/client/Center.tsx) | The center: URL restore, the entry page, template chips, recent projects, the workspace top bar, the views, and the window event listeners |
+| [`src/client/Center.tsx`](src/client/Center.tsx) | The center: URL restore, the entry page, template chips, recent projects, the workspace top bar, the shown center view, and the window event listeners |
 | [`src/client/SessionSwitcher.tsx`](src/client/SessionSwitcher.tsx) | The session switcher button and menu of the workspace top bar |
 | [`src/client/cover.tsx`](src/client/cover.tsx) | Project covers and last edit times read from `/api/dv/projects/summary` |
 | [`src/client/sessions.ts`](src/client/sessions.ts) | The chat sessions of one project, shared by the navigator and the session switcher |
@@ -79,13 +79,12 @@ The workspace sends the chat session to the canvas and the timeline editor only 
 | [`src/client/icons.tsx`](src/client/icons.tsx) | The shell's 16 px stroke icons |
 | [`src/client/Navigator.tsx`](src/client/Navigator.tsx) | The left navigator and the brand name |
 | [`src/client/panels.ts`](src/client/panels.ts) | The DSH sidebar page entries, mirrored for the navigator |
-| [`src/client/explore.ts`](src/client/explore.ts) | The 探索 tabs mirrored from the `dv.explore` entries |
+| [`src/client/slot-tabs.ts`](src/client/slot-tabs.ts) | The 探索 tabs and the view control's tabs, mirrored from the `dv.explore` and `dv.center.view` entries |
 | [`src/client/tabs.tsx`](src/client/tabs.tsx) | The 对话 and 轨迹 tab types and bodies |
 | [`src/client/undo-keys.ts`](src/client/undo-keys.ts) | `historyKey` and `listenHistoryKeys`: the window listener that calls `/api/dv/undo` on Ctrl+Z (Cmd+Z) and `/api/dv/redo` on Shift+Ctrl+Z (Shift+Cmd+Z) |
 | [`src/client/chrome.tsx`](src/client/chrome.tsx) | Hidden and reworded DSH chrome, the right-panel guide, and tab titles that follow the interface language |
 | [`src/client/logo.ts`](src/client/logo.ts) | The DreamVerse logo's SVG path data: the sidebar wordmark and the browser tab mark |
 | [`src/client/InlineRename.tsx`](src/client/InlineRename.tsx) | The inline title field and the ⋯ row menu |
-| [`src/client/views.ts`](src/client/views.ts) | The canvas and timeline views, imported from their packages' sources into this bundle |
 | [`src/client/shell.module.css`](src/client/shell.module.css) | Styles of the center, the navigator, and the tabs |
 | [`src/client/chrome.module.css`](src/client/chrome.module.css) | Styles of the right-panel guide |
 
@@ -97,17 +96,17 @@ The workspace sends the chat session to the canvas and the timeline editor only 
 ## Further Exploration
 
 - [`@dv/api`](../api/README.md) — the project, Workspace, binding, and operation routes.
-- [`@dv/ui-canvas`](../ui-canvas/README.md) — the canvas the center shows.
-- [`@dv/ui-timeline`](../ui-timeline/README.md) — the timeline editor the center shows.
+- [`@dv/ui-canvas`](../ui-canvas/README.md) — the canvas, registered as the center's 画布 view.
+- [`@dv/ui-timeline`](../ui-timeline/README.md) — the timeline editor, registered as the center's 时间线 view; it inserts the clips of 插入片段 / Insert clip.
 - [`@dv/ui-history`](../ui-history/README.md) — the History tab and the `dv:trajectory-focus` link.
-- [`@dv/ui-kit`](../ui-kit/README.md) — the API client, the wire types, the window events, and the current project and timeline.
+- [`@dv/ui-kit`](../ui-kit/README.md) — the API client, the wire types, the window events, the current project and timeline, and the `dv.center.view` slot type.
 
 -----
 
 <a id="model-experience"></a>
 ## Model Experience
 
-Indirectly, through `@dv/project`; the session bindings the shell saves and the records its 插入片段 / Insert clip writes reach the model only through the `dv:project` prompt section and the `dv_proj_*` and operation tools of [`@dv/project`](../project/README.md).
+Indirectly, through `@dv/project`; the session bindings the shell saves reach the model only through the `dv:project` prompt section and the `dv_proj_*` and operation tools of [`@dv/project`](../project/README.md).
 
 #### KV Cache effect
 

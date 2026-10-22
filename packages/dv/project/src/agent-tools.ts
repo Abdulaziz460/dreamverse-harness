@@ -1,7 +1,7 @@
 /**
  * The agent tools of operations: the shared helper that turns each registered operation into its DSH tool
  * `dv_<operation name with _>`. A tool call is one `run` as the agent: the `reason` argument is the record's intent,
- * `inputs` names assets, character, location and style versions, or outputs of earlier records by role, and the
+ * `inputs` names assets, versions of the registered reference kinds, or outputs of earlier records by role, and the
  * result names the record, its outputs with their URLs, and the records the call scheduled. Image outputs also reach
  * the model as image blocks through the attachment service.
  *
@@ -26,10 +26,12 @@ import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import { defineTool, type ParameterSchemaSpec, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-session-projection'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
+import type { OperationSpec, OperationToolCall } from './operation-types.ts'
 import type { Sessions } from './sessions.ts'
+import { ProjectError } from './shared.ts'
 import type {
-  AssetId, AssetStore, CharacterId, HistoryEntry, HistoryQuery, LocationId, OperationSpec, OperationToolCall, ProjectId, ProjectRecord,
-  ProjectState, RecordId, RecordInputRef, RecordOrigin, RunRequest, RunResult, SessionId, StyleId, TurnId,
+  AssetId, AssetStore, HistoryEntry, HistoryQuery, ProjectId, ProjectRecord, ProjectState, RecordId,
+  RecordInputRef, RecordOrigin, RunRequest, RunResult, SessionId, TurnId,
 } from './types.ts'
 
 /** What the agent tools read and call. */
@@ -43,8 +45,10 @@ export interface AgentToolDeps {
   listOperations(): OperationSpec[]
   /** The service's read of the project's current state, which every write follows. */
   currentState(project: ProjectId): ProjectState
-  /** The record that created a character, location or style version, or null for an unknown version. */
-  versionCreatedBy(state: ProjectState, ref: RecordInputRef): RecordId | null
+  /** The registered reference kinds, in registration order. */
+  listReferenceKinds(): readonly string[]
+  /** The reference kinds that have version `version` of `id` in the state, in registration order. */
+  kindsWithVersion(state: ProjectState, id: string, version: number): string[]
   run(request: RunRequest): Promise<RunResult>
   getRecord(project: ProjectId, record: RecordId): ProjectRecord
   listHistory(query: HistoryQuery): HistoryEntry[]
@@ -81,6 +85,9 @@ const CONFIRM_PARAMS: Record<OperationSpec['confirm'], ParameterSchemaSpec> = {
   },
 }
 
+/** The reference kinds as reference parsing reads them. */
+export type ReferenceKindLookup = Pick<AgentToolDeps, 'listReferenceKinds' | 'kindsWithVersion'>
+
 /** The value every operation tool returns to the model. */
 const RESULT_SCHEMA = {
   type: 'object',
@@ -101,7 +108,7 @@ const RESULT_SCHEMA = {
     },
     scheduled: {
       type: 'array', required: true, items: { type: 'string' },
-      description: 'Records this call scheduled, such as the shots of an approved plan.',
+      description: 'Records this call scheduled to run later, after the records they wait for.',
     },
     params: { type: 'json', required: true, description: 'The recorded params.' },
     report: {
@@ -156,14 +163,14 @@ export function turnOf(ctx: Context, exec: Pick<ToolRunContext, 'agent'>): TurnI
 
 /**
  * Turn one input reference text into a record input reference: `<record>#<n>` names output n of a record,
- * `<id>@<n>` names version n of a character, location or style, and anything else names an asset.
+ * `<id>@<n>` names version n of the one reference kind that has it, and anything else names an asset.
  * @param ref - the reference text.
  * @param state - the state the version is looked up in.
- * @param versionCreatedBy - the version lookup of the reducer that defines `createdBy`.
+ * @param kinds - the registered reference kinds.
  * @returns the reference.
- * @throws Error for `<id>@<n>` that names no known character, location or style version.
+ * @throws ProjectError `invalid_inputs` for `<id>@<n>` that no reference kind, or more than one, has.
  */
-function parseInputRef(ref: string, state: ProjectState, versionCreatedBy: AgentToolDeps['versionCreatedBy']): RecordInputRef {
+export function parseInputRef(ref: string, state: ProjectState, kinds: ReferenceKindLookup): RecordInputRef {
   const hash = ref.lastIndexOf('#')
   const output = hash > 0 ? Number(ref.slice(hash + 1)) : Number.NaN
   if (Number.isInteger(output) && output >= 0) return { record: brandString<RecordId>(ref.slice(0, hash)), output }
@@ -171,25 +178,38 @@ function parseInputRef(ref: string, state: ProjectState, versionCreatedBy: Agent
   const version = at > 0 ? Number(ref.slice(at + 1)) : Number.NaN
   if (!Number.isInteger(version)) return { asset: brandString<AssetId>(ref) }
   const id = ref.slice(0, at)
-  const candidates: RecordInputRef[] = [
-    { character: brandString<CharacterId>(id), version }, { location: brandString<LocationId>(id), version },
-    { style: brandString<StyleId>(id), version },
-  ]
-  const found = candidates.find(candidate => versionCreatedBy(state, candidate) !== null)
-  if (found === undefined) throw new Error(`Unknown character, location, or style version '${ref}'.`)
-  return found
+  const [kind, ...others] = kinds.kindsWithVersion(state, id, version)
+  const known = kinds.listReferenceKinds().join(', ') || 'none'
+  if (kind === undefined) throw new ProjectError('invalid_inputs', `Unknown version '${ref}'; reference kinds: ${known}.`)
+  if (others.length > 0) {
+    throw new ProjectError('invalid_inputs', `Version '${ref}' names more than one reference kind: ${[kind, ...others].join(', ')}.`)
+  }
+  const fields: Record<string, string | number> = { [kind]: id, version }
+  return fields as RecordInputRef
+}
+
+/**
+ * The reference kind, ID and version of a version reference.
+ * @param ref - a record input reference.
+ * @returns them, or null for an asset or a record output.
+ */
+export function versionRefOf(ref: RecordInputRef): { kind: string; id: string; version: number } | null {
+  if ('asset' in ref || 'record' in ref) return null
+  const fields: Record<string, string | number> = ref
+  const kind = Object.keys(fields).find(key => key !== 'version')
+  return kind === undefined ? null : { kind, id: String(fields[kind]), version: Number(fields['version']) }
 }
 
 /**
  * Write one record input reference as the text that {@link parseInputRef} reads back.
  * @param ref - the reference.
- * @returns an asset ID, `<record>#<output>`, or `<id>@<version>` for a character, location or style version.
+ * @returns an asset ID, `<record>#<output>`, or `<id>@<version>` for a version.
  */
 export function formatInputRef(ref: RecordInputRef): string {
   if ('asset' in ref) return ref.asset
   if ('record' in ref) return `${ref.record}#${String(ref.output)}`
-  const id = 'character' in ref ? ref.character : 'location' in ref ? ref.location : ref.style
-  return `${id}@${String(ref.version)}`
+  const named = versionRefOf(ref)
+  return named === null ? JSON.stringify(ref) : `${named.id}@${String(named.version)}`
 }
 
 /**
@@ -197,15 +217,15 @@ export function formatInputRef(ref: RecordInputRef): string {
  * @param spec - the operation.
  * @param raw - role → reference text or a list of them; undefined for none.
  * @param state - the state the references are read against.
- * @param versionCreatedBy - the version lookup of the reducer that defines `createdBy`.
+ * @param kinds - the registered reference kinds.
  * @param callerName - the name the error messages give the call: the tool name for an agent tool call, the operation
  *   name for a view request.
  * @returns the inputs in argument order.
  * @throws Error naming the role and `callerName` for an unknown role, a list on a single role, a non-string reference,
- *   or a missing required role; Error for an unknown character, location or style version.
+ *   or a missing required role; ProjectError `invalid_inputs` for an unknown or ambiguous version.
  */
 export function parseInputs(
-  spec: OperationSpec, raw: unknown, state: ProjectState, versionCreatedBy: AgentToolDeps['versionCreatedBy'], callerName: string,
+  spec: OperationSpec, raw: unknown, state: ProjectState, kinds: ReferenceKindLookup, callerName: string,
 ): RunRequest['inputs'] {
   const inputs: RunRequest['inputs'] = []
   if (raw !== undefined) {
@@ -221,7 +241,7 @@ export function parseInputs(
         if (typeof ref !== 'string' || ref === '') {
           throw new Error(`Input "${role}" of ${callerName} must be <asset>, <record>#<output>, or <id>@<version>.`)
         }
-        inputs.push({ role, ref: parseInputRef(ref, state, versionCreatedBy) })
+        inputs.push({ role, ref: parseInputRef(ref, state, kinds) })
       }
     }
   }
@@ -255,13 +275,25 @@ export function callProject(argument: unknown, bound: ProjectId | null): Project
 }
 
 /**
+ * The registered reference kinds as one phrase of agent text, such as "test_location, test_style or test_character".
+ * @param kinds - the kinds in registration order.
+ * @returns the phrase; empty when no kind is registered.
+ */
+export function kindListText(kinds: readonly string[]): string {
+  return [kinds.slice(0, -1).join(', '), ...kinds.slice(-1)].filter(part => part !== '').join(' or ')
+}
+
+/**
  * The params every operation tool shares, as the model sees them.
  * @param spec - the operation.
+ * @param kinds - the registered reference kinds, which the `inputs` text lists.
  * @returns the shared params.
  */
-function sharedParams(spec: OperationSpec): ParameterSchemaSpec {
+function sharedParams(spec: OperationSpec, kinds: readonly string[]): ParameterSchemaSpec {
+  // The `inputs` text names `<id>@<version>` only while a reference kind is registered, such as "a prop version".
+  const versionText = kinds.length === 0 ? '' : `, or <id>@<version> (a ${kindListText(kinds)} version; dv_proj_state lists IDs)`
   const roles = Object.entries(spec.inputs).map(([role, input]) => `${role}${input.required === true ? '' : '?'}: ${input.type}`
-    + `${input.many === true ? '[]' : ''}${input.bible === true ? ' (<asset> or <id>@<version>)' : ''}`)
+    + `${input.many === true ? '[]' : ''}${input.versioned === true ? ' (<asset> or <id>@<version>)' : ''}`)
   return {
     reason: {
       type: 'string', required: true,
@@ -273,16 +305,16 @@ function sharedParams(spec: OperationSpec): ParameterSchemaSpec {
     ...Object.keys(spec.inputs).length === 0 ? {} : {
       inputs: {
         type: 'object', additionalProperties: true,
-        description: 'Input references by role: <asset> (an asset ID), <record>#<output> (an output of an earlier record), or '
-          + `<id>@<version> (a character, location or style version such as c1@1); a list for roles marked []. Roles: ${roles.join('; ')}.`,
+        description: 'Input references by role: <asset> (an asset ID), <record>#<output> (an output of an earlier record)'
+          + `${versionText}; a list for roles marked []. Roles: ${roles.join('; ')}.`,
       },
     },
     ...spec.readOnly === true ? {} : {
       supersedes: {
         type: 'array', items: { type: 'string' },
-        description: 'Records whose outputs this call replaces, such as an earlier take of the shot; their consumers become stale.',
+        description: 'Records whose outputs this call replaces, such as an earlier take; their consumers become stale.',
       },
-      based_on: { type: 'string', description: 'The record this call is a changed copy of; takes of one shot share it.' },
+      based_on: { type: 'string', description: 'The record this call is a changed copy of; the takes of one original share it.' },
     },
   }
 }
@@ -324,7 +356,7 @@ export class AgentTools {
   define(spec: OperationSpec): ToolDefinition {
     const name = toolNameOf(spec)
     const parameters: ParameterSchemaSpec = {
-      ...spec.params, ...spec.toolParams, ...CONFIRM_PARAMS[spec.confirm], ...sharedParams(spec),
+      ...spec.params, ...spec.toolParams, ...CONFIRM_PARAMS[spec.confirm], ...sharedParams(spec, this.deps.listReferenceKinds()),
     }
     // The description ends with where the operation runs and whether it writes a record or reuses earlier results.
     const hints = [
@@ -366,7 +398,7 @@ export class AgentTools {
     const supersedes = args['supersedes']
     const request: RunRequest = {
       ...origin, project, operation: spec.name, params,
-      inputs: parseInputs(spec, args['inputs'], state, this.deps.versionCreatedBy, toolNameOf(spec)),
+      inputs: parseInputs(spec, args['inputs'], state, this.deps, toolNameOf(spec)),
       signal: exec.signal,
       ...basedOn === undefined ? {} : { based_on: brandString<RecordId>(basedOn) },
       ...Array.isArray(supersedes) ? { supersedes: supersedes.map(id => brandString<RecordId>(String(id))) } : {},
@@ -415,7 +447,7 @@ export class AgentTools {
         ? `${name} needs the user's agreement.`
         : `${name} would bring this turn to about ${String(Math.round(total))} GPU seconds, above the ${String(threshold)} s budget.`,
       'What it will do:', summary.text, `Estimated GPU time: about ${String(Math.round(summary.gpu_seconds))} s.`,
-      'Show this to the user and ask in the conversation, with the question in bold (for example **Render these shots now?**). '
+      'Show this to the user and ask in the conversation, with the question in bold (for example **Run this now?**). '
         + `Wait for the user's answer, then call again with ${flag}: true.`,
     ].join('\n'))
   }

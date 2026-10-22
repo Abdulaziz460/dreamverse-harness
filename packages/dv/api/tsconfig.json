@@ -30,6 +30,9 @@
       "path": "../../dv/asset-pool"
     },
     {
+      "path": "../../dv/models"
+    },
+    {
       "path": "../../dv/project"
     },
     {
@@ -37,9 +40,6 @@
     },
     {
       "path": "../../dv/shot-render"
-    },
-    {
-      "path": "../../dv/story-bible"
     },
     {
       "path": "../../dv/timeline"

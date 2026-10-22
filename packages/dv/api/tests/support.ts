@@ -1,7 +1,7 @@
 /**
  * Mounting for the API, chat references, stream, bundle and e2e specs: the real Project service, asset pool, `dvFfmpeg`,
- * the Story bible, Shot plan, Shot render and Timeline components, and optionally the DSH tool registry, over a temporary
- * root, with the model catalog and a fake `fastvideo` model `fasth3` for task `ref2v`.
+ * the Character, Location, Style, Shot plan, Shot render and Timeline components, and optionally the DSH tool
+ * registry, over a temporary root, with the model catalog and a fake `fastvideo` model `fasth3` for task `ref2v`.
  */
 import { execFile } from 'node:child_process'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -13,12 +13,14 @@ import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import DvAssetPool from '@dv/asset-pool'
+import DvCharacter from '@dv/character'
 import DvFfmpeg from '@dv/ffmpeg'
+import DvLocation from '@dv/location'
 import DvProject from '@dv/project'
 import DvModels, { type ModelEntry, type RenderModelFacts, type RenderRequest, type RenderStreamEvent } from '@dv/models'
 import DvShotPlan from '@dv/shot-plan'
 import DvShotRender from '@dv/shot-render'
-import DvStoryBible from '@dv/story-bible'
+import DvStyle from '@dv/style'
 import DvTimeline from '@dv/timeline'
 
 /** The ffmpeg and ffprobe the fixtures use; the native build on this host, overridable for other machines. */
@@ -179,7 +181,9 @@ export async function startBase(options: BaseFixtureOptions = {}): Promise<BaseF
   await context.plugin(DvAssetPool, { root: join(root, 'assets'), publicBaseUrl: options.publicBaseUrl ?? '' }).await()
   await context.plugin(DvTimeline).await()
   await context.plugin(DvShotPlan).await()
-  await context.plugin(DvStoryBible).await()
+  await context.plugin(DvCharacter).await()
+  await context.plugin(DvLocation).await()
+  await context.plugin(DvStyle).await()
   await context.plugin(DvShotRender).await()
   let calls = 0
   return {

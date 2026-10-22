@@ -1,0 +1,17 @@
+{
+  "extends": "../../../tsconfig.base.client.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "lib/types",
+    "tsBuildInfoFile": "lib/tsconfig.client.tsbuildinfo",
+    // RenderStreamEvent types its bytes as the Node global Buffer.
+    "types": ["node"]
+  },
+  "include": [
+    "src/types.ts"
+  ],
+  "references": [
+    { "path": "../../util/values" },
+    { "path": "../project/tsconfig.client.json" }
+  ]
+}

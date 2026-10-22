@@ -1,0 +1,28 @@
+{
+  "name": "@dv/character",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The character component of DreamVerse: people who must look the same across shots, with their reference images, as versions that shots name as <id>@<version>.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./types": "./src/types.ts",
+    "./package.json": "./package.json"
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh-brand": "workspace:*",
+    "@dv/project": "workspace:*",
+    "@dv/reference-kit": "workspace:*"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "workspace:~"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/dsh-llm": "workspace:*",
+    "@deepseek-ai/dsh-skill": "workspace:*",
+    "@deepseek-ai/dsh-system-prompt": "workspace:*",
+    "@deepseek-ai/dsh-tools": "workspace:*",
+    "@types/node": "^22.20.0"
+  }
+}

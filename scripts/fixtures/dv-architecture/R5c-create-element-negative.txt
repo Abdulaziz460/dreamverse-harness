@@ -1,0 +1,3 @@
+--- packages/dv/ui-shell/src/client/theme.ts
+const tag = document.createElement('style')
+const found = document.querySelector('style')

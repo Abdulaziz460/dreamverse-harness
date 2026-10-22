@@ -1,0 +1,4 @@
+--- packages/dv/test-ref/src/index.ts
+export default class TestRef extends defineReference({ service: 'dvTestRef', component: 'test_ref' }) {}
+--- packages/dv/record/src/index.ts
+export default class DvRecord extends defineReference({ service: 'dvRecord', component: 'record' }) {}

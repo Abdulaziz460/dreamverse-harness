@@ -6,7 +6,6 @@
  *
  * @module @dv/ui-asset-pool/library
  */
-import { isRenderOperation } from '@dv/ui-kit/state.ts'
 import type { ProjectAsset, WireState } from '@dv/ui-kit/types.ts'
 
 /** The panel's view of one project's assets: every image and video once, grouped, newest first. */
@@ -15,12 +14,12 @@ export interface AssetLibrary {
   images: ProjectAsset[]
   /** Assets whose media type is `video/*`. */
   videos: ProjectAsset[]
-  /** Images that a `shot.render` record made. */
+  /** Images whose producer record (`created_by`) also output a video, such as the last frame of a rendered shot. */
   extracted: ProjectAsset[]
 }
 
 /**
- * Group a project's images and videos, with the images of shot renders apart; assets of other media types are left out.
+ * Group a project's images and videos, with the images of video generations apart; assets of other media types are left out.
  * @param current - the project's current state.
  * @returns the groups.
  */
@@ -28,6 +27,7 @@ export function assetLibrary(current: WireState): AssetLibrary {
   const assets = [...current.assets].sort((a, b) => b.created_at.localeCompare(a.created_at))
   const images = assets.filter(asset => asset.mime.startsWith('image/'))
   const videos = assets.filter(asset => asset.mime.startsWith('video/'))
-  const rendered = (asset: ProjectAsset): boolean => isRenderOperation(asset.made_by)
+  const videoProducers = new Set(videos.map(video => video.created_by))
+  const rendered = (asset: ProjectAsset): boolean => asset.created_by !== null && videoProducers.has(asset.created_by)
   return { images: images.filter(asset => !rendered(asset)), videos, extracted: images.filter(rendered) }
 }

@@ -1,0 +1,5 @@
+--- packages/dv/project/src/types.ts
+type OperationValueType = 'image' | 'video' | 'audio'
+export const block = { type: 'image', attachment }
+--- packages/dv/image-generate/src/index.ts
+export const spec = { component: 'image' }

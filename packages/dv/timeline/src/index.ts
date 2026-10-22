@@ -12,7 +12,8 @@
  * The operations that add clips assign the new clip IDs and store them in the record's `report.clips`; the `timeline`
  * reducer folds the records into the `timeline` slice. `timeline.create` and `timeline.update` declare the `clip` input
  * role in `pendingInputRoles`: a clip input may name a render that is not done, and the clip is a placeholder until
- * the render is done. `dvProject` turns each operation into its agent tool
+ * the render is done. A workflow lays clips out with the service method `layout` and reads the newest layout record of
+ * a timeline with `lastWrite`. `dvProject` turns each operation into its agent tool
  * (`dv_timeline_create`, `dv_timeline_clip_move`, `dv_timeline_export`, ...). While the DSH skill registry is mounted,
  * the component registers the `timeline-editing` skill: the user's editing phrasings mapped to the exact `dv_*` calls.
  *
@@ -23,12 +24,14 @@ import { Service, type Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-skill'
 import z from '@deepseek-ai/schemastery'
 import { brandString } from '@deepseek-ai/dsh-brand'
-import type { OperationContext, OperationResult, OperationSpec, ProjectId, ProjectRecord } from '@dv/project'
+import type { OperationContext, OperationResult, OperationSpec, ProjectId, ProjectRecord, ProjectState, RecordId } from '@dv/project'
 import { exportOperation, exportTimeline } from './export.ts'
-import { addedClipCount, clipProblem, namedTimeline, OPERATIONS, reportedClips, timelineReducer } from './reducer.ts'
-import type { ClipId, Timeline } from './types.ts'
+import {
+  addedClipCount, clipProblem, laidOutTimeline, namedTimeline, nextTimelineId, OPERATIONS, reportedClips, timelineReducer,
+} from './reducer.ts'
+import type { ClipId, LayoutCall, Timeline, TimelineId } from './types.ts'
 
-export type { Clip, ClipId, ClipStatus, Timeline, TimelineId, TimelineState } from './types.ts'
+export type { Clip, ClipId, ClipStatus, LayoutCall, Timeline, TimelineId, TimelineState } from './types.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -112,7 +115,7 @@ function shown(value: unknown): string {
  */
 function edit(
   spec: Pick<OperationSpec, 'name' | 'description' | 'params' | 'summarize'>
-    & Partial<Pick<OperationSpec, 'inputs' | 'version' | 'pendingInputRoles'>>,
+    & Partial<Pick<OperationSpec, 'inputs' | 'version' | 'pendingInputRoles' | 'label'>>,
   execute: OperationSpec['execute'],
 ): OperationSpec {
   return {
@@ -131,6 +134,7 @@ export default class DvTimeline extends Service {
 
   constructor(ctx: Context) {
     super(ctx, 'dvTimeline')
+    ctx.effect(() => ctx.dvProject.registerComponent('timeline'), 'dvTimeline component')
     ctx.effect(() => ctx.dvProject.registerReducer('timeline', timelineReducer), 'dvTimeline reducer')
     for (const spec of [...this.operations(), exportOperation(ctx)]) {
       ctx.effect(() => ctx.dvProject.registerOperation(spec), `dvTimeline ${spec.name}`)
@@ -151,6 +155,39 @@ export default class DvTimeline extends Service {
    */
   exportTimeline(timeline: Timeline, dir: string): Promise<string> {
     return exportTimeline(this.ctx, timeline, dir)
+  }
+
+  /**
+   * Lay clips out on a timeline with one record: `timeline.update` of `call.timeline` when the state holds it, else
+   * `timeline.create` of the next free ID (`t<n>` one above the highest number in use, `t1` in a project without
+   * timelines). The record runs at once, copies the call's origin and `started_by`, and has the param `timeline` only.
+   * A clip whose producer is not done is a placeholder until it is done.
+   * @param call - the origin, the project, the timeline (null for a new one) and the clips in playback order.
+   * @returns the record and the timeline it lays the clips on.
+   */
+  async layout(call: LayoutCall): Promise<{ record: RecordId; timeline: TimelineId }> {
+    const { timeline: requested, clips, ...request } = call
+    const slice = this.ctx.dvProject.getState(call.project).components.timeline
+    const kept = slice.timelines.find(entry => entry.id === requested)?.id
+    const timeline = kept ?? nextTimelineId(slice)
+    const result = await this.ctx.dvProject.run({
+      ...request, operation: kept === undefined ? OPERATIONS.create : OPERATIONS.update, params: { timeline },
+      inputs: clips.map(ref => ({ role: 'clip', ref })),
+    })
+    /* v8 ignore next -- the edit operations are not read-only, so a run always returns its record. */
+    if (result.record === null) throw new Error('A timeline layout returned no record.')
+    return { record: result.record.id, timeline }
+  }
+
+  /**
+   * The newest finished record that set the clips of a timeline: a done `timeline.create` or `timeline.update` that
+   * names it (a create without the param names `t1`), among the records up to the state's position.
+   * @param state - the project state.
+   * @param timeline - the timeline.
+   * @returns the record, or null when no such record exists.
+   */
+  lastWrite(state: ProjectState, timeline: TimelineId): ProjectRecord | null {
+    return state.components.proj.records.findLast(record => record.status === 'done' && laidOutTimeline(record) === timeline) ?? null
   }
 
   /**
@@ -194,6 +231,7 @@ export default class DvTimeline extends Service {
     return [
       edit({
         name: OPERATIONS.create,
+        label: { zh: '新建时间线', en: 'Create timeline' },
         description: 'Create a timeline (one edited video of the project) from clips in order. Pass a new `timeline` ID (t2, t3, ...) '
           + 'and a `name`; omit the ID for the project\'s first timeline, t1. To replace the clips of an existing timeline, call '
           + 'dv_timeline_update. An empty `assets` list makes an empty timeline.',
@@ -208,6 +246,7 @@ export default class DvTimeline extends Service {
       }, execute),
       edit({
         name: OPERATIONS.update,
+        label: { zh: '修改时间线', en: 'Update timeline' },
         description: 'Replace all clips of an existing timeline with clips in order; its name stays. Every clip gets a new clip ID.',
         inputs: LAYOUT.inputs,
         pendingInputRoles: [...LAYOUT.pendingInputRoles],
@@ -216,6 +255,7 @@ export default class DvTimeline extends Service {
       }, execute),
       edit({
         name: OPERATIONS.rename,
+        label: { zh: '重命名时间线', en: 'Rename timeline' },
         version: '1',
         description: 'Change the name of a timeline.',
         params: {
@@ -226,6 +266,7 @@ export default class DvTimeline extends Service {
       }, execute),
       edit({
         name: OPERATIONS.delete,
+        label: { zh: '删除时间线', en: 'Delete timeline' },
         version: '1',
         description: 'Delete a whole timeline from the project. Its clip assets stay in the project. Only call this when the user '
           + 'asked to delete the timeline.',
@@ -234,6 +275,7 @@ export default class DvTimeline extends Service {
       }, execute),
       edit({
         name: OPERATIONS.insert,
+        label: { zh: '插入片段', en: 'Insert clip' },
         description: 'Insert an asset as a clip into a timeline at a position (1 = first); later clips shift. Use at = clip count + 1 '
           + 'to append. Inserting into a timeline that does not exist creates it. The clip gets a new clip ID.',
         params: {
@@ -245,18 +287,21 @@ export default class DvTimeline extends Service {
       }, execute),
       edit({
         name: OPERATIONS.move,
+        label: { zh: '移动片段', en: 'Move clip' },
         description: 'Move a clip to another position on its timeline (1 = first); the other clips shift.',
         params: { ...CLIP_PARAM, to: { type: 'integer', required: true, description: 'The position the clip takes.' } },
         summarize: record => `clip ${shown(record.params['clip'])} moved to ${shown(record.params['to'])}`,
       }, execute),
       edit({
         name: OPERATIONS.remove,
+        label: { zh: '移除片段', en: 'Remove clip' },
         description: 'Take a clip out of its timeline; later clips shift. The asset stays in the project.',
         params: { ...CLIP_PARAM },
         summarize: record => `clip ${shown(record.params['clip'])} removed`,
       }, execute),
       edit({
         name: OPERATIONS.split,
+        label: { zh: '拆分片段', en: 'Split clip' },
         description: 'Split one clip in two at a time inside its asset (seconds from the asset\'s start, not from the timeline\'s '
           + 'start). Both parts play the same asset: the first keeps the clip ID and ends at at_sec, the second gets a new clip ID '
           + 'and starts there.',
@@ -268,6 +313,7 @@ export default class DvTimeline extends Service {
       }, execute),
       edit({
         name: OPERATIONS.trim,
+        label: { zh: '裁剪片段', en: 'Trim clip' },
         description: 'Set the in and out points of a clip (seconds inside its asset) without changing the asset; no file is created. '
           + 'An omitted point plays from the asset\'s start or to its end.',
         params: {
@@ -279,6 +325,7 @@ export default class DvTimeline extends Service {
       }, execute),
       edit({
         name: OPERATIONS.replace,
+        label: { zh: '替换片段', en: 'Replace clip' },
         description: 'Put a different asset in a clip; the clip keeps its ID and its in and out points reset.',
         params: { ...CLIP_PARAM, asset: { type: 'string', required: true, description: 'The asset ID.' } },
         summarize: record => `clip ${shown(record.params['clip'])} replaced`,

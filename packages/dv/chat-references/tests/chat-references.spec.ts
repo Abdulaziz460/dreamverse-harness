@@ -10,7 +10,8 @@ import type { FileAttachmentRef, ImageAttachmentRef, SaveImageAttachment } from 
 import { brandString } from '@deepseek-ai/dsh-brand'
 import { createUserMessage, ToolCallId, type UserMessage } from '@deepseek-ai/dsh-llm'
 import type { ToolExecutionResult } from '@deepseek-ai/dsh-tools'
-import type { AssetId, CharacterId, ProjectId, RecordOrigin, RunRequest, SessionId } from '@dv/project'
+import type { AssetId, ProjectId, RecordOrigin, RunRequest, SessionId } from '@dv/project'
+import type { CharacterId } from '@dv/character'
 import { afterEach, describe, expect, it } from 'vitest'
 import DvChatReferences from '../src/index.ts'
 import { startBase, type BaseFixture } from '../../api/tests/support.ts'
@@ -125,22 +126,22 @@ describe('mention expansion', () => {
     })
     const reference: RunRequest['inputs'] = picture.outputs.map(asset => ({ role: 'reference', ref: { asset } }))
     await fixture.project.run({
-      ...user, project: info.id, operation: 'bible.character_create', inputs: reference, params: { character: 'c1', name: 'Lead' },
+      ...user, project: info.id, operation: 'character.create', inputs: reference, params: { character: 'c1', name: 'Lead' },
     })
     const update = await fixture.project.run({
       actor: 'agent', surface: 'chat', session, turn: null, tool_call: 'call-update', intent: 'rename the lead',
-      project: info.id, operation: 'bible.character_update', inputs: reference, params: { character: 'c1', name: 'Lead renamed' },
+      project: info.id, operation: 'character.update', inputs: reference, params: { character: 'c1', name: 'Lead renamed' },
     })
 
     const messages = await preStep('make @[Lead](dv:character/c1) wave')
+    const assets = picture.outputs.join(', ')
     expect(messages).toHaveLength(2)
     expect(messages[1]?.source).toMatchObject({ kind: 'dv-mentions' })
-    expect(textOf(messages[1])).toContain('character c1@2 "Lead renamed"')
-    expect(textOf(messages[1])).toContain('pass it as input c1@2')
+    expect(textOf(messages[1])).toContain(`character c1@2, reference assets [${assets}]; pass it as input c1@2`)
     // After an undo of the update, the mention reads version 1 again.
     await fixture.project.undo(info.id)
-    expect(fixture.project.getState(info.id).components.bible.characters[brandString<CharacterId>('c1')]).toHaveLength(1)
-    expect(textOf((await preStep('make @[Lead](dv:character/c1) wave'))[1])).toContain('character c1@1 "Lead"')
+    expect(fixture.project.getState(info.id).components.character[brandString<CharacterId>('c1')]).toHaveLength(1)
+    expect(textOf((await preStep('make @[Lead](dv:character/c1) wave'))[1])).toContain(`character c1@1, reference assets [${assets}]`)
     expect(update.record?.status).toBe('done')
     // A message without mentions enters unchanged.
     expect(await preStep('hello')).toHaveLength(1)

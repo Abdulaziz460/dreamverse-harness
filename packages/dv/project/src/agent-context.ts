@@ -1,9 +1,9 @@
 /**
  * The `dv:project` system-prompt section: what the agent of a chat session reads about its project at every step.
  * The section holds Project's general rules (the history list, undo and redo, confirmation, stale records, and how to name
- * records, assets, versions and clips), then the project summary of the current state: the same summary
- * that `dv_proj_state` returns, with the fields each component's reducer adds through `Reducer.agentSummary`. It holds
- * nothing that the user cannot see in the views or the conversation.
+ * records, assets, versions of the registered reference kinds and other items), then the project summary of the current
+ * state: the same summary that `dv_proj_state` returns, with the fields each component's reducer adds through
+ * `Reducer.agentSummary`. It holds nothing that the user cannot see in the views or the conversation.
  *
  * Calls the `dvProject` service's public reads and the project summary of the `proj-tools` module. Called by the
  * service, which registers the section while the DSH `systemPrompt` service is mounted.
@@ -12,14 +12,19 @@
  */
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type DvProject from './index.ts'
+import { kindListText } from './agent-tools.ts'
 import { projectSummary, type ProjToolDeps } from './proj-tools.ts'
 import type { SessionId } from './types.ts'
 
 /** The name of the system-prompt section. */
 export const PROMPT_SECTION = 'dv:project'
 
-/** Project's rules, which apply whether or not a project is bound. */
-const RULES = [
+/** How the naming rule names a version: as one of the registered reference kinds; nothing while no kind is registered. */
+const versionNaming = (kinds: readonly string[]): string =>
+  kinds.length === 0 ? '' : `a ${kindListText(kinds)} version as <id>@<version>, `
+
+/** Project's rules, which apply whether or not a project is bound; the naming rule lists the registered reference kinds. */
+const rules = (kinds: readonly string[]): string => [
   'DreamVerse project rules:',
   '- Every call of yours and every edit of the user is a step of the project history at once; the user does not accept changes.',
   '- To roll back ("撤销 / 回到之前 / 撤销到… / 回到上一版 / roll back / go back to"), call dv_proj_undo: without to it goes back one '
@@ -28,7 +33,7 @@ const RULES = [
     + 'so when the user may still want them, ask before you change anything. Never rebuild an earlier state with new edits when '
     + 'the user asked to go back.',
   '- Name things by the IDs in the project summary: a record by its record ID, an output of a record as <record>#<n>, '
-    + 'a character, location or style version as <id>@<version>, an asset by its asset ID, a clip by its clip ID. '
+    + `${versionNaming(kinds)}an asset by its asset ID, and any other item by the ID that the summary gives it. `
     + 'The user points at things with + → 引用 or dv: mentions, which reach you as these IDs. '
     + 'When the user\'s words fit more than one thing and no mention names it, ask which one instead of guessing.',
   '- When a tool refuses a call because it needs the user\'s agreement, show the user what the refusal says the call will do and '
@@ -47,10 +52,11 @@ const RULES = [
 export function projectContext(project: DvProject, deps: ProjToolDeps, sessionId: string | undefined): string {
   const session = sessionId === undefined ? null : brandString<SessionId>(sessionId)
   const projectId = session === null ? null : project.sessionProject(session)
-  if (projectId === null) return `${RULES}\n\nNo project is bound to this conversation yet: start the work with dv_proj_create.`
+  const ruleText = rules(project.listReferenceKinds())
+  if (projectId === null) return `${ruleText}\n\nNo project is bound to this conversation yet: start the work with dv_proj_create.`
   const summary = projectSummary(project, deps, projectId, project.getState(projectId), null)
   return [
-    RULES, '',
+    ruleText, '',
     `This conversation belongs to project ${projectId}: do all work in it and never call dv_proj_create or dv_proj_open.`,
     'Project summary of the current state, as dv_proj_state returns it:',
     JSON.stringify(summary, null, 1),

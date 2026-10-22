@@ -1,0 +1,4 @@
+--- packages/dv/image-generate/src/index.ts
+export const declaration = defineGeneration({ component: 'image', operation: 'image.generate' })
+--- packages/dv/sglang/src/index.ts
+export const spec = { component: 'image' }

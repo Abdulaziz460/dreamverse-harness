@@ -1,5 +1,6 @@
 /**
- * The project canvas as a standalone component: an infinite surface of story bible, asset, plan, and take nodes. Drag
+ * The project canvas as a standalone component: an infinite surface of asset and take nodes, and the entries of the node
+ * types registered in `dvCanvas`, each drawn with the default card. Drag
  * empty space to pan, scroll to zoom around the cursor, drag a node to move it, click a node to select it and open its
  * editor panel, which grows out of the node and shrinks back into it on close (`@dv/ui-kit/zoom.ts`). Closing the
  * editor keeps the node selected (the accent ring); a click on empty canvas with no editor open
@@ -13,26 +14,31 @@
  * browser starts with every finished take counted as opened. The canvas draws the project's current state and
  * follows every change of it; its writes go after the current position of the project's history. Colors come from the
  * `--dv-*` theme variables that `@dv/ui-shell` defines, so the canvas follows the app's light and dark themes. An image
- * or video that no take or story bible node shows has a node only while it is on the project's canvas (the `asset`
+ * or video that no take or entry node shows has a node only while it is on the project's canvas (the `asset`
  * slice's `placed`): dropping a 素材 tile on the canvas runs `asset.place` with its node under the pointer, dropping
  * image and video files imports them with `place`, and the asset node's "从画布移除" runs `asset.unplace`. Each of these
  * is a record, so History lists it and undo takes it back.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { CSSProperties, DragEvent as ReactDragEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import { DvClient } from '@dv/ui-kit/api.ts'
 import { useLanguage } from '@dv/ui-kit/locale.ts'
-import type { CanvasViewport, NodePosition, OperationRequest } from '@dv/ui-kit/types.ts'
+import { formatInputRef } from '@dv/ui-kit/references.ts'
+import type { DvCanvas, Registry } from '@dv/ui-kit/registries.ts'
+import type { WireTaskLabels } from '@dv/ui-kit/tool-labels.ts'
+import type { CanvasViewport, NodePosition, OperationRequest, WireState } from '@dv/ui-kit/types.ts'
 import { DV_ASSET_DRAG_TYPE, DV_CANVAS_FOCUS_EVENT } from '@dv/ui-kit/workspace-events.ts'
 import type { DvWorkspaceEventMap } from '@dv/ui-kit/workspace-events.ts'
 import { readStored, writeStored } from '@dv/ui-kit/storage.ts'
-import { useProjectState } from '@dv/ui-kit/useProject.ts'
+import { useOperations, useProjectState, useTaskLabels } from '@dv/ui-kit/useProject.ts'
 import { useZoomPresence } from '@dv/ui-kit/zoom.ts'
-import { buildCanvasGraph, freePositions, NODE_WIDTH, planShotFrames, referenceText, ROW } from './graph.ts'
+import { createDvCanvas } from './dv-canvas.ts'
+import { buildCanvasGraph, freePositions, NODE_WIDTH, ROW, slotFrames } from './graph.ts'
 import type { CanvasEdge, CanvasNode } from './graph.ts'
 import { NodeCard, nodeHeight, nodeTitle } from './NodeCard.tsx'
 import type { CanvasTranslate } from './NodeCard.tsx'
 import { NodeEditor } from './NodeEditor.tsx'
+import type { RenderCanvasSlot } from './NodeEditor.tsx'
 import { en, zh } from './locales.ts'
 
 /** Props of {@link CanvasView}. */
@@ -45,6 +51,12 @@ export interface CanvasViewProps {
   session?: string | null
   /** The `dvCanvas` translate; when omitted, the dictionary of the DSH interface language that `<html lang>` names. */
   t?: CanvasTranslate
+  /** The `dvCanvas` registries that plugin UI halves fill for this view; without them, every take is a free take. */
+  canvas?: DvCanvas
+  /** Renders the canvas's slots in its editors: the `dv.canvas.editor` entry of an entry node, and the `dv.canvas.picker`
+   *  and `dv.canvas.preview` entries of the asset pool; without it, an entry's editor shows only its header, the asset picker
+   *  offers only versioned items, and the asset preview shows nothing. */
+  renderSlot?: RenderCanvasSlot
 }
 
 /** The tallest a card grows (larger text at low zoom plus a badge row), used when fitting. */
@@ -57,10 +69,23 @@ const DRAG_THRESHOLD = 4
 const SAVE_DELAY_MS = 500
 /** The zoom ref of a stacked editor, which opens and closes without the zoom transition. */
 const noZoom = (element: HTMLElement | null): void => { void element }
+/** The task labels while `GET /api/dv/tasks` loads or after it failed: every task shows its name. */
+const NO_TASK_LABELS: WireTaskLabels = {}
 
-/** Edge stroke per kind: the kind color of the node the edge leaves (a reference leaves a character or an asset). */
+/** Edge stroke per kind: the type color of the node the edge leaves (a reference leaves an entry or an asset). */
 const EDGE_COLOR: Record<CanvasEdge['kind'], string> = {
-  reference: 'var(--dv-kind-character)', first_frame: 'var(--dv-kind-take)', plan: 'var(--dv-kind-plan)', take: 'var(--dv-kind-take)',
+  reference: 'var(--dv-kind-character)', first_frame: 'var(--dv-kind-take)', chain: 'var(--dv-kind-plan)', take: 'var(--dv-kind-take)',
+}
+/** The registries of a view mounted without `dvCanvas`: empty, so every take is a free take. */
+const NO_CANVAS = createDvCanvas()
+
+/**
+ * @param registry - a registry.
+ * @returns its descriptors, read again on each change.
+ */
+function useRegistry<D>(registry: Registry<D>): readonly D[] {
+  const subscribe = useCallback((listener: () => void) => registry.subscribe(listener), [registry])
+  return useSyncExternalStore(subscribe, () => registry.list())
 }
 /** Canvas dot grid pitch at 100%, in canvas units. */
 const GRID = 20
@@ -129,7 +154,7 @@ const SEEN_KEY = 'dv-canvas-seen:'
  * @returns whether the node is a take whose render finished with an image or a video.
  */
 function isFinishedTake(node: CanvasNode): boolean {
-  return node.kind === 'take' && !node.flags.rendering && (node.video !== null || node.thumb !== null)
+  return node.type === 'take' && !node.flags.rendering && (node.video !== null || node.thumb !== null)
 }
 
 /**
@@ -182,14 +207,22 @@ function withoutKeys<V>(map: ReadonlyMap<string, V>, keys: readonly string[]): M
 
 /**
  * The canvas.
- * @param props - the project, chat session, and optional client and translate.
+ * @param props - the project, chat session, and optional client, translate, registries and editor slot.
  * @returns the element.
  */
-export function CanvasView({ projectId, client: given, session = null, t: givenT }: CanvasViewProps): ReactNode {
+export function CanvasView(
+  { projectId, client: given, session = null, t: givenT, canvas = NO_CANVAS, renderSlot }: CanvasViewProps,
+): ReactNode {
   const client = useMemo(() => given ?? new DvClient(), [given])
   const language = useLanguage()
   const t = givenT ?? translates[language]
   const base = useProjectState(client, projectId)
+  const operations = useOperations(client)
+  const taskLabels = useTaskLabels(client)
+  const anchors = useRegistry(canvas.chainAnchors)
+  const inUse = useRegistry(canvas.takesInUse)
+  const nodeTypes = useRegistry(canvas.nodeTypes)
+  const versionKinds = useRegistry(canvas.versionKinds)
   // This view's placements whose record the project state does not show yet: asset ID → on the canvas.
   const [inFlight, setInFlight] = useState<ReadonlyMap<string, boolean>>(new Map())
   // The project's canvas, with this view's placements in flight already applied.
@@ -225,15 +258,15 @@ export function CanvasView({ projectId, client: given, session = null, t: givenT
   // The previous project's state stays loaded until the next project's arrives; the canvas draws only this project's.
   const graph = useMemo(() => {
     if (base.value === null || base.value.project.id !== projectId) return null
-    return { state: base.value, ...buildCanvasGraph(base.value, placed) }
-  }, [base.value, placed, projectId])
-  // Each plan node's latest version and its shots' frames, for the plan card's version label, mini grid, and duration.
-  // Memoized on the graph, because a pan or zoom re-renders the view on every pointer move.
-  const plans = useMemo(() => new Map(graph === null ? [] : graph.nodes.flatMap((node) => {
-    const latest = node.planId === undefined ? undefined : graph.state.components.plan.plans[node.planId]?.at(-1)
-    if (latest === undefined || node.planId === undefined) return []
-    return [[node.id, { latest, frames: planShotFrames(graph.nodes, node.planId, latest.shots.length) }] as const]
-  })), [graph])
+    return {
+      state: base.value, ...buildCanvasGraph(base.value, placed, operations.value ?? [], language, anchors, inUse, nodeTypes, versionKinds),
+    }
+  }, [base.value, placed, projectId, operations.value, language, anchors, inUse, nodeTypes, versionKinds])
+  // The frame grid of each entry with slots. Memoized on the graph, because a pan or zoom re-renders the view on every
+  // pointer move.
+  const grids = useMemo(() => new Map(graph === null ? [] : graph.nodes.flatMap(node => node.type === 'entry' && node.entry.slots !== undefined
+    ? [[node.id, { frames: slotFrames(graph.nodes, node.id, node.entry.slots) }] as const]
+    : [])), [graph])
 
   const [positions, setPositions] = useState<Record<string, NodePosition>>({})
   const [viewport, setViewport] = useState<CanvasViewport>({ x: 40, y: 40, zoom: 1 })
@@ -367,13 +400,13 @@ export function CanvasView({ projectId, client: given, session = null, t: givenT
   }, [])
   useEffect(() => {
     if (pendingFocus === null || !layoutReady || graph === null) return
-    // The record's own node, else the story bible or plan node whose version it wrote, else the node of its first output.
+    // The record's own node, else the entry node whose version it wrote, else the node of its first output.
     const recordId = pendingFocus
     const firstOutput = graph.state.components.proj.records.find(record => record.id === recordId)?.outputs[0]
     const outputNode = firstOutput === undefined ? undefined : graph.assetNodes[firstOutput]
     const node = graph.nodes.find(candidate => candidate.id === recordId)
       ?? graph.nodes.find(candidate => candidate.record?.id === recordId)
-      ?? graph.nodes.find(candidate => graph.state.components.plan.plans[candidate.planId ?? '']?.some(version => version.created_by === recordId))
+      ?? graph.nodes.find(candidate => candidate.type === 'entry' && candidate.entry.records?.includes(recordId) === true)
       ?? graph.nodes.find(candidate => candidate.id === outputNode)
     pendingFocus = null
     if (node === undefined) return
@@ -427,7 +460,7 @@ export function CanvasView({ projectId, client: given, session = null, t: givenT
   useEffect(() => {
     const awaited = awaitedRender.current
     if (awaited === null || graph === null) return
-    const node = graph.nodes.find(candidate => candidate.kind === 'take' && candidate.record?.based_on === awaited.basedOn && !awaited.known.has(candidate.id))
+    const node = graph.nodes.find(candidate => candidate.type === 'take' && candidate.record?.based_on === awaited.basedOn && !awaited.known.has(candidate.id))
     if (node === undefined) return
     settleAwaited()
     setEditing(null)
@@ -586,7 +619,7 @@ export function CanvasView({ projectId, client: given, session = null, t: givenT
     if (record === null || operation === null) return
     setRetryingFrom(record.id)
     startRender({
-      project: projectId, operation, inputs: record.inputs.map(input => ({ role: input.role, ref: referenceText(input.ref) })),
+      project: projectId, operation, inputs: record.inputs.map(input => ({ role: input.role, ref: formatInputRef(input.ref) })),
       params: record.params, surface: 'canvas', intent: t('intent.retryTake', { title: nodeTitle(node, t) }), based_on: record.id,
       ...session === null ? {} : { session },
     }).catch((error: unknown) => { setNotice(t('error', { message: error instanceof Error ? error.message : String(error) })) })
@@ -668,7 +701,7 @@ export function CanvasView({ projectId, client: given, session = null, t: givenT
     content = <p style={{ ...centered, pointerEvents: 'none' }}>{t('canvas.empty')}</p>
   } else {
     const byId = new Map(graph.nodes.map(node => [node.id, node]))
-    const heightOf = (node: CanvasNode): number => nodeHeight(node, plans.get(node.id)?.frames.some(frame => frame !== null) === true)
+    const heightOf = (node: CanvasNode): number => nodeHeight(node, grids.get(node.id)?.frames.some(frame => frame !== null) === true)
     // The selected node's edges are drawn last, so they stay on top of the others.
     const touchesSelected = (edge: CanvasEdge): boolean => selected !== null && (edge.from === selected || edge.to === selected)
     const edges = [...graph.edges.filter(edge => !touchesSelected(edge)), ...graph.edges.filter(touchesSelected)]
@@ -703,7 +736,7 @@ export function CanvasView({ projectId, client: given, session = null, t: givenT
         </svg>
         {[...graph.nodes.filter(node => node.id !== topNode), ...graph.nodes.filter(node => node.id === topNode)].map((node) => {
           const position = positionOf(node)
-          const plan = plans.get(node.id)
+          const grid = grids.get(node.id)
           return (
             <NodeCard
               key={node.id}
@@ -714,8 +747,8 @@ export function CanvasView({ projectId, client: given, session = null, t: givenT
               zoom={viewport.zoom}
               t={t}
               onPointerDown={onNodeDown(node)}
-              {...plan === undefined ? {} : { plan: plan.latest, frames: plan.frames }}
-              {...node.kind === 'take' && node.flags.failed ? { onRetry: () => { retryTake(node) }, retrying: retryingFrom === node.id } : {}}
+              {...grid === undefined ? {} : { frames: grid.frames }}
+              {...node.type === 'take' && node.flags.failed ? { onRetry: () => { retryTake(node) }, retrying: retryingFrom === node.id } : {}}
               unseen={seenIds !== null && isFinishedTake(node) && !seenIds.has(node.id)}
             />
           )
@@ -734,6 +767,22 @@ export function CanvasView({ projectId, client: given, session = null, t: givenT
     setSelected(null)
     void run(() => changePlacement(assetId, false))
   }
+  /** The props that the editor of the open node and the stacked editor share. */
+  const sharedEditorProps = (state: WireState) => ({
+    state,
+    operations: operations.value ?? [],
+    taskLabels: taskLabels.value ?? NO_TASK_LABELS,
+    versionKinds,
+    client,
+    project: projectId,
+    session,
+    t,
+    ...renderSlot === undefined ? {} : { renderSlot },
+    run,
+    onRender: startRender,
+    onRemoveFromCanvas: removeFromCanvas,
+    onOpenNode: setStacked,
+  })
   return (
     <div
       ref={container}
@@ -770,16 +819,8 @@ export function CanvasView({ projectId, client: given, session = null, t: givenT
               key={editingNode.id}
               node={editingNode}
               zoomRef={editorZoom.targetRef}
-              state={graph.state}
-              client={client}
-              project={projectId}
-              session={session}
-              t={t}
+              {...sharedEditorProps(graph.state)}
               onClose={() => { setEditing(null) }}
-              run={run}
-              onRender={startRender}
-              onRemoveFromCanvas={removeFromCanvas}
-              onOpenNode={setStacked}
             />
           </>
         )
@@ -793,16 +834,8 @@ export function CanvasView({ projectId, client: given, session = null, t: givenT
               key={`stacked:${stackedNode.id}`}
               node={stackedNode}
               zoomRef={noZoom}
-              state={graph.state}
-              client={client}
-              project={projectId}
-              session={session}
-              t={t}
+              {...sharedEditorProps(graph.state)}
               onClose={() => { setStacked(null) }}
-              run={run}
-              onRender={startRender}
-              onRemoveFromCanvas={removeFromCanvas}
-              onOpenNode={setStacked}
             />
           </div>
         )

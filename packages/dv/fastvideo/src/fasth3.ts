@@ -53,8 +53,8 @@ export const FASTH3: { [T in TaskId]?: ServedTask } = {
     promptProblems: fasth3PromptProblems,
     skill: {
       name: 'fasth3-reference-prompting',
-      description: 'Model limits and prompt rules for dv_shot_render with model fasth3 for task ref2v: reference images, '
-        + 'videos and audio, how the prompt names them, and how a shot continues the previous one.',
+      description: 'Model limits and prompt rules for model fasth3 for task ref2v: reference images, videos and audio, '
+        + 'how the prompt names them, and how a shot continues the previous one.',
       file: 'fasth3-reference-prompting.md',
     },
   },
@@ -67,8 +67,8 @@ export const FASTH3: { [T in TaskId]?: ServedTask } = {
     assignReferenceLabels: assignFasth3ReferenceLabels,
     skill: {
       name: 'fasth3-text-prompting',
-      description: 'Model limits and prompt rules for dv_shot_render with model fasth3 for task t2v: the three prompt fields, '
-        + 'shot changes, camera motion, speakers and dialogue, sound and music.',
+      description: 'Model limits and prompt rules for model fasth3 for task t2v: the three prompt fields, shot changes, '
+        + 'camera motion, speakers and dialogue, sound and music.',
       file: 'fasth3-text-prompting.md',
     },
   },

@@ -31,14 +31,14 @@ Mount the plugin in a profile that stacks `dsh-web-app` (which provides the righ
   name: '@dv/ui-asset-pool'
 ```
 
-The Host half registers nothing. The browser half registers the `dv-asset-pool` tab type (a page the Sidebar's guide offers as "Asset pool") and the tab body under its own id `@dv/ui-asset-pool`. The tab stays mounted while another tab is in front.
+The Host half registers nothing. The browser half registers the `dv-asset-pool` tab type (a page the Sidebar's guide offers as "Asset pool") and the tab body under its own id `@dv/ui-asset-pool`. The tab stays mounted while another tab is in front. It also fills two keyed slots of the canvas of `@dv/ui-canvas` at key `assets` (their `SlotMap` entries are in `@dv/ui-kit/registries.ts`): `dv.canvas.picker` with `AssetsPanel`, the panel inside the canvas's asset picker, whose thumbnail clicks pick assets, and `dv.canvas.preview` with `Preview`, the canvas's preview of one asset.
 
 | Gesture | Request or event |
 | --- | --- |
 | Open the panel, any project change | `GET /api/dv/state` for the project's current state, refetched on every `/dv/events` event |
 | Drop images or videos on the drop zone, or click it to choose files | `POST /api/dv/assets/import` once per image or video file with `surface=asset_pool` and the tab's chat session; the `asset.import` record is a step after the project's current position. The zone imports no other file and shows 「<name>」不是图片或视频，没有导入。 / "<name>" is not an image or a video, so it was not imported. for each one |
 | Drag a thumbnail | a drag that carries the asset ID as `application/x-dv-asset`; the canvas moves the asset's node to the drop point, the timeline inserts a clip at the drop position |
-| 插入片段 / Insert clip in the preview of a video | `dv:timeline-insert` `{assetId}`; the shell appends the clip to the timeline selected in the editor (else the first timeline, else a new timeline `t1`) and shows the timeline |
+| 插入片段 / Insert clip in the preview of a video, while a project is open | `dv:timeline-insert` `{projectId, assetId}` with the open project; the shell shows the timeline view, whose editor (`@dv/ui-timeline`) appends the clip to the timeline selected in the editor (else the first timeline, else a new timeline `t1`) |
 | 让智能体使用 / Ask the agent to use it in the preview | `dv:compose` with the text 使用这个素材： / "Use this asset: " and the asset as an `@` reference; the composer fills its draft and sends nothing |
 
 Thumbnails and the preview load the asset files from `GET /dv/assets/<AssetId>`.
@@ -53,13 +53,13 @@ The panel lists every image and video that the state lists in `assets` (every as
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-`assetLibrary` groups the assets of the state, each asset once, into images and videos; an image whose `made_by` is a shot render operation goes to `extracted`. The state already carries this project's own import name and time of each asset (`ProjectAsset`), because the asset pool keeps the name and time of the first import of identical bytes in any project. The preview reads the width and height from the loaded media when the asset pool could not read them at import, and renders on `document.body` so the right Sidebar cannot cover its buttons; Escape or a click outside closes it. With the `onOpen` prop, a click on a thumbnail calls it instead of opening the preview; the asset picker of `@dv/ui-canvas` passes it and reuses the exported `Preview`.
+`assetLibrary` groups the assets of the state, each asset once, into images and videos; an image whose producer record (`created_by`) also output a video, such as the last frame of a rendered shot, goes to `extracted`. The state already carries this project's own import name and time of each asset (`ProjectAsset`), because the asset pool keeps the name and time of the first import of identical bytes in any project. The preview reads the width and height from the loaded media when the asset pool could not read them at import, and renders on `document.body` so the right Sidebar cannot cover its buttons; Escape or a click outside closes it. With the `onOpen` prop, a click on a thumbnail calls it instead of opening the preview; the canvas passes it to the `dv.canvas.picker` entry. The entries register while the canvas declares the slots, and leave with the plugin.
 
 | File | Content |
 | --- | --- |
 | [`src/index.ts`](src/index.ts) | The Host half, which registers nothing |
 | [`src/css-modules.d.ts`](src/css-modules.d.ts) | The type of the CSS Module imports |
-| [`src/client/index.ts`](src/client/index.ts) | Registrations of the tab type and the tab body |
+| [`src/client/index.ts`](src/client/index.ts) | Registrations of the tab type, the tab body, and the entries of the canvas's picker and preview slots |
 | [`src/client/definition.ts`](src/client/definition.ts) | The tab type |
 | [`src/client/AssetsPanel.tsx`](src/client/AssetsPanel.tsx) | The panel, the drop zone, the thumbnail grids by section, the preview, and the tab body |
 | [`src/client/AssetsPanel.module.css`](src/client/AssetsPanel.module.css) | Styles of the panel and the preview |

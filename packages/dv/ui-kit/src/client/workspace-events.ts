@@ -26,8 +26,8 @@ export const DV_TIMELINE_FOCUS_EVENT = 'dv:timeline-focus'
 
 /** Event names and their `detail` fields. */
 export interface DvWorkspaceEventMap {
-  /** Insert an asset into the current timeline. */
-  'dv:timeline-insert': { assetId: string }
+  /** Insert asset `assetId` into the current timeline of project `projectId`. */
+  'dv:timeline-insert': { projectId: string; assetId: string }
   /** Switch the center to the canvas and focus the node of a record. */
   'dv:canvas-focus': { recordId: string }
   /** Open the History panel and select the record that tool call `toolCall` of chat session `session` wrote. */

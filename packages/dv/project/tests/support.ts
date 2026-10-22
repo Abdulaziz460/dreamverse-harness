@@ -1,7 +1,7 @@
 /**
  * Shared fixtures of the `@dv/project` unit tests: a temporary store root, record origins, in-memory asset stores,
  * a module set wired the same way as the `dvProject` service, without a Cordis context, and the `test_bible` slice
- * of the test reducers that answer `createdBy` and `assetsOf`.
+ * that the test reference kinds answer `createdBy` and `assetsOf` from.
  */
 import { createHash } from 'node:crypto'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
@@ -16,29 +16,45 @@ import { Runner, type RunnerAssets } from '../src/runner.ts'
 import { Scheduler } from '../src/scheduler.ts'
 import { Subscriptions } from '../src/subscriptions.ts'
 import type {
-  AssetId, AssetStore, ProjectEvent, ProjectId, RecordId, RecordInputRef, RecordOrigin, SessionId, TurnId,
+  AssetId, AssetStore, ProjectEvent, ProjectId, RecordId, RecordOrigin, ReferenceKindSpec, SessionId, TurnId,
 } from '../src/types.ts'
 
 declare module '@dv/project' {
   interface ComponentStates {
     /**
-     * The slice of the test reducers that stand in for Story bible: the assets and the creating record of each
-     * version, by {@link versionKey}.
+     * The slice of the test reducers that stand in for the reference noun plugins: the assets and the creating record
+     * of each version, by {@link versionKey}.
      */
     test_bible?: { assets: Record<string, AssetId[]>; creators: Record<string, RecordId> }
   }
+  /** The test reference kinds that the tests name in version references, with `string` IDs; they answer from `test_bible`. */
+  interface ReferenceKinds { test_character: string; test_location: string; test_style: string }
 }
 
 /**
- * The `test_bible` key of a character, location or style version.
- * @param ref - an input reference.
- * @returns `<kind>:<id>@<version>`, or null for an asset or a record output.
+ * The `test_bible` key of one version.
+ * @returns `<kind>:<id>@<version>`.
  */
-export function versionKey(ref: RecordInputRef): string | null {
-  if ('character' in ref) return `character:${ref.character}@${ref.version}`
-  if ('location' in ref) return `location:${ref.location}@${ref.version}`
-  if ('style' in ref) return `style:${ref.style}@${ref.version}`
-  return null
+export function versionKey(kind: string, id: string, version: number): string {
+  return `${kind}:${id}@${version}`
+}
+
+/**
+ * A reference kind that answers from the `test_bible` slice.
+ * @param kind - the kind, such as `test_character`.
+ * @returns the spec.
+ */
+export function testKind(kind: string): ReferenceKindSpec<'test_bible'> {
+  return {
+    kind, component: 'test_bible',
+    assetsOf: (slice, id, version) => slice?.assets[versionKey(kind, id, version)] ?? null,
+    createdBy: (slice, id, version) => slice?.creators[versionKey(kind, id, version)] ?? null,
+    latest(slice, id) {
+      let version = 0
+      while (slice?.creators[versionKey(kind, id, version + 1)] !== undefined) version += 1
+      return version === 0 ? null : version
+    },
+  }
 }
 
 /**
@@ -148,6 +164,9 @@ export interface ProjectModules {
   events: Array<{ project: ProjectId; event: ProjectEvent }>
 }
 
+/** The component keys that the fake operations of the Project tests use. */
+export const STAND_IN_COMPONENTS = ['asset', 'bible', 'plan', 'shot', 'timeline', 'inspect']
+
 /**
  * Build the module set on a temporary root, load it, and register the `proj` reducer.
  * @param limits - the scheduler limits; defaults to one `gpu` and four `cpu`.
@@ -172,6 +191,8 @@ export function startModules(limits = { cpu: 4, gpu: 1 }): ProjectModules {
     return holder.runner.execute(project, record)
   }, limits)
   const runner = new Runner({ store, reducers, scheduler, assets })
+  // The fake operations of these tests stand in for the components that DreamVerse plugins register.
+  for (const key of STAND_IN_COMPONENTS) runner.registerComponent(key)
   holder.scheduler = scheduler
   holder.runner = runner
   store.load()

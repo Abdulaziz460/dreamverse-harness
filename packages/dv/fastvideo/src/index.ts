@@ -5,8 +5,9 @@
  * client of `@dv/fastvideo-generation-client` sends each render as one `POST /v1/streamv2/generate`, with the references
  * first and the first frame after them, each as its media type and bytes read from `dvAssetPool`, and with each citation
  * of a reference in the prompt replaced by the label that the served model gives the reference. Each entry describes
- * the inputs and `extra` parameters it accepts in `schema()` and checks both in `validateGenerationRequest`. While the
- * DSH skill registry is mounted, the plugin registers the prompt skill of every registered entry.
+ * in `schema()` the durations, aspect ratios and resolutions of its server and the inputs and `extra` parameters it
+ * accepts, and checks the inputs and `extra` in `validateGenerationRequest`. Each entry carries the prompt skill of its
+ * model and task, which the catalog registers.
  *
  * Served models: `fasth3` (MiniMax H3 as FastH3), for task `ref2v` (FastH3 Ref2VA) and task `t2v` (FastH3 8-Step V2).
  *
@@ -15,7 +16,6 @@
 import { readFileSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import type { Context } from '@deepseek-ai/cordis'
-import type {} from '@deepseek-ai/dsh-skill'
 import { validateArgs, type ParameterSchemaSpec } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import z from '@deepseek-ai/schemastery'
@@ -211,7 +211,7 @@ function modelEntry(ctx: Context, model: string, task: TaskId, server: TaskServe
   const served = SERVED[model]?.[task]
   /* v8 ignore next -- checkConfig refuses unknown models and tasks before any entry is built. */
   if (served === undefined) throw new Error(`dv-fastvideo serves no model "${model}" for task "${task}".`)
-  const { inputs, extra, assignReferenceLabels } = served
+  const { inputs, extra, assignReferenceLabels, skill } = served
   const client = new DvFastvideoGeneration(ctx.isolate('dvFastvideoGeneration'), { baseUrl: server.baseUrl })
   return {
     modality: 'video',
@@ -220,6 +220,10 @@ function modelEntry(ctx: Context, model: string, task: TaskId, server: TaskServe
     model,
     description: served.description,
     gpuSecondsPerVideoSecond: server.gpuSecondsPerVideoSecond,
+    promptSkill: {
+      name: skill.name, description: skill.description,
+      content: readFileSync(new URL(`../skills/${skill.file}`, import.meta.url), 'utf8'),
+    },
     async facts(): Promise<RenderModelFacts> {
       const facts = await client.model()
       return {
@@ -229,8 +233,12 @@ function modelEntry(ctx: Context, model: string, task: TaskId, server: TaskServe
       }
     },
     async schema(): Promise<JsonValue> {
+      const capabilities = await client.model()
       return {
-        inputs: describeInputs(inputs, deriveInputLimits(inputs, await client.model())),
+        duration_sec: { min: capabilities.minSegmentDurationSec, max: capabilities.maxSegmentDurationSec },
+        aspect_ratios: capabilities.aspectRatios,
+        resolutions: capabilities.resolutions,
+        inputs: describeInputs(inputs, deriveInputLimits(inputs, capabilities)),
         extra: JSON.parse(JSON.stringify(extra)) as JsonValue,
       }
     },
@@ -270,8 +278,7 @@ function modelEntry(ctx: Context, model: string, task: TaskId, server: TaskServe
 }
 
 /**
- * Register one entry into `ctx.dvModels` per configured model and task, and the prompt skill of each while the DSH skill
- * registry is mounted.
+ * Register one entry into `ctx.dvModels` per configured model and task.
  * @param ctx - the plugin context.
  * @param config - the validated configuration.
  * @throws Error when the config names a model or task this plugin does not serve.
@@ -284,16 +291,4 @@ export function apply(ctx: Context, config: Config): void {
     const entry = modelEntry(ctx, model, task, server)
     ctx.effect(() => ctx.dvModels.register(entry), `dvModels ${model} ${task}`)
   }
-  const skills = configured.map(({ model, task }) => {
-    const skill = (SERVED[model]?.[task] as ServedTask).skill
-    return {
-      name: skill.name, description: skill.description, source: 'runtime',
-      content: readFileSync(new URL(`../skills/${skill.file}`, import.meta.url), 'utf8'),
-      // The agent's own procedure: the model loads it, and the composer's / menu and the Skills page do not list it.
-      invocation: { modelInvocable: true, userInvocable: false },
-    }
-  })
-  ctx.inject(['skills'], (child) => {
-    for (const definition of skills) child.effect(() => child.skills.register(definition), `dvModels ${definition.name}`)
-  })
 }

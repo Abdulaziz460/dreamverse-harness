@@ -1,7 +1,8 @@
 /**
  * The canvas as a right-Sidebar tab body: the project and undo bar (`ProjectBar`) above a {@link CanvasView} of the
- * selected project's current state.
- * Hosts that place the canvas in the center mount {@link CanvasView} directly.
+ * selected project's current state. The body declares no canvas slot and passes no slot renderer, so its entry editors
+ * show only their header, its asset picker lists only the version items, and an asset chip opens no preview; the center
+ * view (`CanvasCenter.tsx`) renders the `dv.canvas.editor`, `dv.canvas.picker` and `dv.canvas.preview` entries.
  */
 import { useMemo } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
@@ -10,6 +11,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type { DvClient } from '@dv/ui-kit/api.ts'
 import { ProjectBar } from '@dv/ui-kit/ProjectBar.tsx'
 import type { ProjectBarLabels } from '@dv/ui-kit/ProjectBar.tsx'
+import type { DvCanvas } from '@dv/ui-kit/registries.ts'
 import { useViewSession } from '@dv/ui-kit/useView.ts'
 import { CanvasView } from './CanvasView.tsx'
 import type {} from './locales.ts'
@@ -17,9 +19,11 @@ import type {} from './locales.ts'
 /** What the plugin hands the body beside the standard props of its DSH UI slot. */
 export interface CanvasInjected {
   client: DvClient
+  /** The `dvCanvas` registries that the plugin provides. */
+  canvas: DvCanvas
 }
 
-/** The body's composed props: the tab it draws, the API client, and its copy. */
+/** The body's composed props: the tab it draws, the API client, the canvas registries, and its copy. */
 export type CanvasBodyProps = PropsRuntime<'sidebar.right.pane.tab'> & CanvasInjected & PropsLocale<'dvCanvas'>
 
 const root: CSSProperties = { display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, fontSize: 12, lineHeight: '16px' }
@@ -38,10 +42,11 @@ export function barLabels(t: CanvasBodyProps['t']): ProjectBarLabels {
 
 /**
  * The body.
- * @param props - the API client and the copy; the tab information is unused because the canvas keeps one page per kind.
+ * @param props - the API client, the canvas registries and the copy; the tab information is unused because the canvas
+ *   keeps one page per kind.
  * @returns the element.
  */
-export function CanvasBody({ client, t }: CanvasBodyProps): ReactNode {
+export function CanvasBody({ client, canvas, t }: CanvasBodyProps): ReactNode {
   const view = useViewSession(client, 'canvas')
   const labels = useMemo(() => barLabels(t), [t])
   let content: ReactNode
@@ -50,7 +55,7 @@ export function CanvasBody({ client, t }: CanvasBodyProps): ReactNode {
   else {
     content = (
       <div style={{ flex: 1, minHeight: 0 }}>
-        <CanvasView projectId={view.project} client={client} session={view.session} t={t} />
+        <CanvasView projectId={view.project} client={client} session={view.session} t={t} canvas={canvas} />
       </div>
     )
   }

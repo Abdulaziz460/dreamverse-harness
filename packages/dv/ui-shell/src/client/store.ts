@@ -27,8 +27,8 @@ export interface ShellState {
   sessionId: string | undefined
   /** The project open in the center, or null on the entry page. The main session follows it. */
   projectId: string | null
-  /** The center view while a project is open. */
-  view: 'canvas' | 'timeline'
+  /** The `id` of the `dv.center.view` entry that the center shows while a project is open, such as 'timeline'. */
+  view: string
   /** The timeline selected in the open project, or null before the timeline editor or the URL names one. */
   timeline: string | null
   links: WireWorkspaces | null
@@ -37,7 +37,7 @@ export interface ShellState {
 /** The location fields of the URL hash. */
 export interface ShellLocation {
   projectId: string | null
-  view: 'canvas' | 'timeline'
+  view: string
   timeline: string | null
   sessionId: string | undefined
 }
@@ -51,7 +51,7 @@ export function parseLocation(hash: string): ShellLocation {
   const params = new URLSearchParams(hash.replace(/^#/, ''))
   return {
     projectId: params.get('project'),
-    view: params.get('view') === 'timeline' ? 'timeline' : 'canvas',
+    view: params.get('view') ?? 'canvas',
     timeline: params.get('timeline'),
     sessionId: params.get('session') ?? undefined,
   }

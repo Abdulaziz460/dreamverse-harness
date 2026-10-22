@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to give the web application a timeline editor beside the chat. The editor shows one tab per timeline, a viewer that plays the selected timeline across its clips, and one video track whose clips are as wide as they play and are marked when stale. You move, trim, split, and remove clips on the track, and insert assets from the asset pool by dropping them there or choosing them with ＋. The `dv-timeline` tab type of the right Sidebar wraps the editor in the project bar; `TimelineView` is the shell's center 时间线 view. Both show the project's current state and follow it when it changes.
+Use this package to give the web application a timeline editor beside the chat. The editor shows one tab per timeline, a viewer that plays the selected timeline across its clips, and one video track whose clips are as wide as they play and are marked when stale. You move, trim, split, and remove clips on the track, and insert assets from the asset pool by dropping them there or choosing them with ＋. The `dv-timeline` tab type of the right Sidebar wraps the editor in the project bar; `TimelineView` is the 时间线 / Timeline view of the shell's center (`dv.center.view`). Both show the project's current state and follow it when it changes.
 
 ## Table of Contents
 
@@ -33,7 +33,7 @@ The editor also has a toolbar and a ruler, and each clip carries its producer's 
   name: '@dv/ui-timeline'
 ```
 
-The Host half registers nothing. The browser half registers the `dv-timeline` tab type (offered by the Sidebar's guide page as "Timeline"), the `dvTimeline` locale namespace in Chinese and English, and the tab body under its own id `@dv/ui-timeline`. A `dv:timeline-focus` window event with `{timelineId, clipId}` makes the editor select that clip of the timeline and move the playhead to its start.
+The Host half registers nothing. The browser half registers the `dv-timeline` tab type (offered by the Sidebar's guide page as "Timeline"), the `dvTimeline` locale namespace in Chinese and English, and the tab body under its own id `@dv/ui-timeline`. It registers `TimelineView` as the `dv.center.view` entry `timeline` (order 1, labeled with the tab type's label 时间线 / Timeline), which edits the project of the center's owner prop `projectId` and writes for the chat session of its owner prop `session`. While the canvas service `dvCanvas` of `@dv/ui-canvas` is present, it also registers a `TakesInUse` under the same id: it uses, for each clip of every timeline, the render the clip waits for (`source.record`), else the producer of the clip's asset, so the canvas draws the takes that the timelines play; and it puts the badge 已裁剪 / Trimmed on the asset of each clip with an in or out point. While the History service `dvHistory` of `@dv/ui-history` is present, it registers the `HistoryRow` `timeline.`: it adds no subject to the label of a timeline record, and its `focus` sends `dv:timeline-focus` with the record's timeline and clip. The timeline is the record's `timeline` param, else the timeline of its `clip` param (each clip belongs to the timeline of the record that assigned it; a split adds to the split clip's timeline), else `t1` for a `timeline.create` without one; the clip is the `clip` param, else the first clip the record assigned. A record whose timeline is not found focuses nothing. While `@dv/ui-composer` provides `dvMentions`, it also registers the mention kind `clip` (ID `@dv/ui-timeline`, section 片段 / Clips, order 0, so the `@` menu lists clips before every other kind): each clip of each timeline as 时间线 1 · 片段 2 / Timeline 1 · Clip 2 (for an unnamed timeline), with the first 40 characters of the prompt of the record that made the clip's asset (for a placeholder clip, the render it waits for), and as its thumbnail that record's image output, else the clip's asset. A `dv:timeline-focus` window event with `{timelineId, clipId}` makes the editor select that clip of the timeline and move the playhead to its start. A `dv:timeline-insert` window event with `{projectId, assetId}` (插入片段 / Insert clip in the 素材库 panel, which also makes the shell show this view) makes a mounted `TimelineView` of that project insert the asset once it has read the state, as `timeline.clip_insert` at the end of the selected timeline (else the first one), or as `timeline.create` of `t1` holding the clip when the state has no timeline; the module keeps a request until a view of its project mounts.
 
 | Gesture | Record |
 | --- | --- |
@@ -65,9 +65,12 @@ The DOM carries test IDs `dv-timeline-body`, `dv-timeline-editor`, `dv-timeline-
 | [`src/client/index.ts`](src/client/index.ts) | Registrations |
 | [`src/client/definition.ts`](src/client/definition.ts) | The tab type |
 | [`src/client/TimelineBody.tsx`](src/client/TimelineBody.tsx) | The tab body: project bar and editor |
-| [`src/client/TimelineView.tsx`](src/client/TimelineView.tsx) | The center view: state and writes |
+| [`src/client/TimelineView.tsx`](src/client/TimelineView.tsx) | The center view: state, writes, and the inserts that `dv:timeline-insert` requests |
 | [`src/client/TimelineEditor.tsx`](src/client/TimelineEditor.tsx) | The editor: tabs, viewer, toolbar, ruler, tracks, gestures |
-| [`src/client/timelines.ts`](src/client/timelines.ts) | Clip placement, drop position, timecode |
+| [`src/client/timelines.ts`](src/client/timelines.ts) | `timelinesOf(state)` (the timelines of the `timeline` slice, `[]` while `@dv/timeline` is not loaded), clip placement, drop position, timecode |
+| [`src/client/takes-in-use.ts`](src/client/takes-in-use.ts) | The `TakesInUse` of the canvas: clip records and trim badges |
+| [`src/client/history-row.ts`](src/client/history-row.ts) | The `HistoryRow` of timeline records: the timeline of each clip and the focus of a selected record |
+| [`src/client/mention.ts`](src/client/mention.ts) | The clip mention kind of the composer's `@` menu |
 | [`src/client/first-frame.ts`](src/client/first-frame.ts) | The first frame of a video, read once per page; a track clip without a still image repeats it across its width |
 | [`src/client/player.ts`](src/client/player.ts) | Continuous playback across clips |
 | [`src/client/waveform.ts`](src/client/waveform.ts) | Audio decoding, peak envelopes, and waveform bars of the 原声 track |

@@ -1,0 +1,15 @@
+diff --git a/packages/dv/shot-render/src/index.ts b/packages/dv/shot-render/src/index.ts
+index 1111111111..2222222222 100644
+--- a/packages/dv/shot-render/src/index.ts
++++ b/packages/dv/shot-render/src/index.ts
+@@ -111,2 +111,2 @@ const RENDER_PARAMS = {
+-  references: 'character@<n>, location@<n> or style@<n>',
+-  reference: 'a character, location or style version',
++  references: 'version references such as <id>@<n>',
++  reference: 'a version of a registered reference kind',
+@@ -431,2 +431,3 @@ function describeReferences() {
+-    'Cite a character, location or style by version.',
+-    'Each reference adds its assets.',
++    'Cite a reference by its version.',
++    'Each reference adds the assets of its version.',
++    'An unknown version fails the call.',

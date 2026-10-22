@@ -84,6 +84,7 @@ export default class DvInspector extends Service {
 
   constructor(ctx: Context, private readonly config: Config) {
     super(ctx, 'dvInspector')
+    ctx.effect(() => ctx.dvProject.registerComponent('inspect'), 'dvInspector component')
     ctx.effect(() => ctx.dvProject.registerOperation(this.assetOperation()), 'dvInspector inspect.asset')
     ctx.inject(['llm', 'agentDefaultModel', 'attachments'], (child) => {
       child.effect(() => {
@@ -152,6 +153,7 @@ export default class DvInspector extends Service {
       name: 'inspect.image',
       component: 'inspect',
       version: '1',
+      label: { zh: '检查画面', en: 'Inspect image' },
       description: 'Look at an image asset (a still, a reference, the last frame of a shot) and answer a question about it with the '
         + 'default model. To look at a video, grab a still of it with dv_asset_grab_still first.',
       inputs: { image: { type: 'image', required: true, description: 'The image asset.' } },
@@ -177,6 +179,7 @@ export default class DvInspector extends Service {
       name: 'inspect.asset',
       component: 'inspect',
       version: '1',
+      label: { zh: '检查素材', en: 'Inspect asset' },
       description: 'Read the duration, frame size, codec, and audio presence of a video, audio, or image asset.',
       inputs: { asset: { type: 'any', required: true, description: 'The asset.' } },
       params: {},

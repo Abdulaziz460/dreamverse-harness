@@ -1,0 +1,32 @@
+diff --git a/packages/dv/asset-pool/src/index.ts b/packages/dv/asset-pool/src/index.ts
+index 0000000001..0000000002 100644
+--- a/packages/dv/asset-pool/src/index.ts
++++ b/packages/dv/asset-pool/src/index.ts
+@@ -12 +12,2 @@ export const name = 'asset-pool'
+-export const inject = ['dvProject']
++export const inject = ['dvProject', 'dvModels']
++export const usesModels = true
+diff --git a/packages/dv/inspector/src/index.ts b/packages/dv/inspector/src/index.ts
+index 0000000003..0000000004 100644
+--- a/packages/dv/inspector/src/index.ts
++++ b/packages/dv/inspector/src/index.ts
+@@ -12 +12,2 @@ export const name = 'inspector'
+-export const inject = ['dvProject']
++export const inject = ['dvProject', 'dvModels']
++export const usesModels = true
+diff --git a/packages/dv/story-bible/src/index.ts b/packages/dv/story-bible/src/index.ts
+index 0000000005..0000000006 100644
+--- a/packages/dv/story-bible/src/index.ts
++++ b/packages/dv/story-bible/src/index.ts
+@@ -12 +12,2 @@ export const name = 'story-bible'
+-export const inject = ['dvProject']
++export const inject = ['dvProject', 'dvModels']
++export const usesModels = true
+diff --git a/packages/dv/timeline/src/index.ts b/packages/dv/timeline/src/index.ts
+index 0000000007..0000000008 100644
+--- a/packages/dv/timeline/src/index.ts
++++ b/packages/dv/timeline/src/index.ts
+@@ -12 +12,2 @@ export const name = 'timeline'
+-export const inject = ['dvProject']
++export const inject = ['dvProject', 'dvModels']
++export const usesModels = true

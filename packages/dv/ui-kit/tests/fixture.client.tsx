@@ -1,9 +1,17 @@
 /**
- * A project state the view tests share: one character, one approved plan whose shots were rendered and put on a
- * timeline, a failed export, and a running retake as the last record. Also a scripted `fetch` that answers the
- * `/api/dv` routes from such a state and records every write.
+ * A project state the view tests share: the record that created character `hero` (the state holds no noun slice), one
+ * approved plan whose shots were rendered and put on a timeline, a failed export, and a running retake as the last
+ * record. Also a scripted `fetch` that answers the `/api/dv` routes from such a state and records every write.
  */
-import type { OperationRequest, ProjectAsset, ProjectRecord, WireOperation, WireProject, WireState } from '../src/client/types.ts'
+import type { AssetId, RecordId } from '@dv/project/types'
+import type { PlanId } from '@dv/shot-plan/types'
+import type { ClipId, TimelineId } from '@dv/timeline/types'
+import type { WireReferenceVersion } from '../src/client/reference-kit.tsx'
+import type { WireTaskLabels } from '../src/client/tool-labels.ts'
+import type { ComponentStates, OperationRequest, ProjectAsset, ProjectRecord, WireOperation, WireProject, WireState } from '../src/client/types.ts'
+
+// The slice of the test-only reference noun `test_ref`.
+declare module '../src/client/types.ts' { interface ComponentStates { test_ref: Record<string, WireReferenceVersion[]> } }
 
 /**
  * A record with defaults for everything a test does not set.
@@ -42,15 +50,18 @@ export function asset(
 /** The project of the fixture. */
 export const PROJECT: WireProject = { id: 'p1', title: 'Demo', created_at: '2026-10-05T00:00:00Z' }
 
+/** The fixture state: a wire state that holds the `plan` and `timeline` slices and no noun slice. */
+export type FixtureState = WireState & { components: Pick<ComponentStates, 'plan' | 'timeline'> }
+
 /**
  * The shared state.
  * @returns a fresh copy.
  */
-export function fixtureState(): WireState {
+export function fixtureState(): FixtureState {
   const hero = { role: 'reference', ref: { character: 'hero', version: 1 }, resolved_asset: 'ref.png' }
   const records = [
     record({ id: 'u1', operation: 'asset.import', params: { name: 'ref.png' }, outputs: ['ref.png'] }),
-    record({ id: 'e1', operation: 'bible.character_create', params: { character: 'hero', name: 'Hero' } }),
+    record({ id: 'e1', operation: 'character.create', params: { character: 'hero', name: 'Hero' } }),
     record({
       id: 'p1', turn: 't2', actor: 'agent', operation: 'plan.create', params: { shots: [{ prompt: 'hero walks', modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3' }, { prompt: 'hero turns', modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3' }] },
       report: { plan: 'p1', version: 1 },
@@ -94,19 +105,13 @@ export function fixtureState(): WireState {
           'export-last.png': 'x1',
         },
       },
-      bible: {
-        characters: { hero: [{ id: 'hero', version: 1, name: 'Hero', description: 'A tired detective.', references: ['ref.png'], created_by: 'e1' }] },
-        locations: {},
-        styles: {},
-      },
-      plan: { plans: { p1: [{ version: 1, shots: [{ prompt: 'hero walks', modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3' }, { prompt: 'hero turns', modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', continue_previous: true }], created_by: 'p1', approved_by: 'a1' }] } },
-      shot: { takes: { g1: ['g1', 'g3'] }, roots: { g3: 'g1' } },
+      plan: { plans: { ['p1' as PlanId]: [{ version: 1, shots: [{ prompt: 'hero walks', modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3' }, { prompt: 'hero turns', modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', continue_previous: true }], created_by: 'p1' as RecordId }] } },
       asset: { placed: [] },
       timeline: {
         timelines: [{
-          id: 't1', name: '', clips: [
-            { id: 'cl1', asset: 'shot1.mp4', source: null, in_sec: null, out_sec: null },
-            { id: 'cl2', asset: 'shot2.mp4', source: null, in_sec: 1, out_sec: 4 },
+          id: 't1' as TimelineId, name: '', clips: [
+            { id: 'cl1' as ClipId, asset: 'shot1.mp4' as AssetId, source: null, in_sec: null, out_sec: null },
+            { id: 'cl2' as ClipId, asset: 'shot2.mp4' as AssetId, source: null, in_sec: 1, out_sec: 4 },
           ],
         }],
       },
@@ -123,10 +128,29 @@ export function fixtureState(): WireState {
   }
 }
 
+/**
+ * A copy of a state that holds the test-only reference noun `test_ref`: its slice holds the versions of `hero`, and the
+ * record `e1` that wrote them is the one record `test_ref.create`.
+ * @param state - a state such as {@link fixtureState}.
+ * @returns the copy.
+ */
+export function withTestRef<S extends WireState>(state: S): S {
+  const proj = state.components.proj
+  const create = record({ id: 'e1', operation: 'test_ref.create', params: { test_ref: 'hero', name: 'Hero' } })
+  return {
+    ...state,
+    components: {
+      ...state.components,
+      proj: { ...proj, records: proj.records.map(entry => entry.id === create.id ? create : entry) },
+      test_ref: { hero: [{ id: 'hero', version: 1, name: 'Hero', description: 'A tired detective.', references: ['ref.png'], created_by: create.id }] },
+    },
+  }
+}
+
 /** The operation declarations the fixture's records use. */
 export const OPERATIONS: WireOperation[] = [
   {
-    name: 'shot.render', version: '1', description: 'One shot.', inputs: { reference: { type: 'image', description: 'reference images', many: true, bible: true } },
+    name: 'shot.render', version: '1', description: 'One shot.', inputs: { reference: { type: 'image', description: 'reference images', many: true, versioned: true } },
     params: {
       prompt: { type: 'string', required: true, description: 'What happens.' }, seed: { type: 'integer', description: 'Seed.' },
       aspect: { type: 'string', enum: ['16:9', '9:16'] }, loop: { type: 'boolean' }, extra: { type: 'object' },
@@ -143,6 +167,12 @@ export const OPERATIONS: WireOperation[] = [
   },
 ]
 
+/** The task labels of the video declaration, as the model catalog serves them at `GET /api/dv/tasks`. */
+export const TASK_LABELS: WireTaskLabels = {
+  t2v: { zh: '文字生成', en: 'From text' },
+  ref2v: { zh: '参考图生成', en: 'From references' },
+}
+
 /** Every POST the scripted fetch received, by path. */
 export interface Recorded {
   path: string
@@ -154,6 +184,7 @@ export interface ScriptedRoutes {
   projects?: WireProject[]
   state?: WireState | (() => WireState)
   operations?: WireOperation[]
+  tasks?: WireTaskLabels
   /** Answer a POST; return `{status, body}` or throw. Default echoes a done record. */
   post?: (path: string, body: unknown) => { status: number; body: unknown }
 }
@@ -190,6 +221,7 @@ export function scriptedFetch(routes: ScriptedRoutes = {}): { fetch: typeof fetc
         return Promise.resolve(json(typeof state === 'function' ? state() : state))
       }
       case '/api/dv/operations': return Promise.resolve(json(routes.operations ?? OPERATIONS))
+      case '/api/dv/tasks': return Promise.resolve(json(routes.tasks ?? TASK_LABELS))
       default: return Promise.resolve(json({ error: `no route ${url.pathname}` }, 404))
     }
   }

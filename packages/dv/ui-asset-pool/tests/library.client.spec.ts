@@ -1,4 +1,4 @@
-/** The asset pool panel's listing over synthetic project states: media groups, order, and render stills by `made_by`. */
+/** The asset pool panel's listing over synthetic project states: media groups, order, and the stills of video producers. */
 import { describe, expect, it } from 'vitest'
 import type { ProjectAsset, WireState } from '../../ui-kit/src/client/types.ts'
 import { fixtureState } from '../../ui-kit/tests/fixture.client.tsx'
@@ -6,8 +6,10 @@ import { assetLibrary } from '../src/client/library.ts'
 
 describe('assetLibrary over a synthetic state', () => {
   /** An asset as the project sees it. */
-  const asset = (id: string, mime: string, madeBy: string | null, createdAt = '2026-01-01T00:00:00.000Z'): ProjectAsset => ({
-    id, mime, name: id, size_bytes: 10, created_by: null, created_at: createdAt, width: null, height: null, duration_sec: null,
+  const asset = (
+    id: string, mime: string, madeBy: string | null, createdAt = '2026-01-01T00:00:00.000Z', createdBy: string | null = null,
+  ): ProjectAsset => ({
+    id, mime, name: id, size_bytes: 10, created_by: createdBy, created_at: createdAt, width: null, height: null, duration_sec: null,
     made_by: madeBy,
   })
   /**
@@ -30,13 +32,15 @@ describe('assetLibrary over a synthetic state', () => {
     expect([...library.images, ...library.videos, ...library.extracted].map(row => row.id)).not.toContain('notes')
   })
 
-  it('lists the images that shot renders made under extracted, and grabbed stills and referenced images under images', () => {
+  it('lists the images whose producer also output a video under extracted, and grabbed stills, image-only outputs and referenced images under images', () => {
     const library = assetLibrary(stateOf([
-      ...assets, asset('shot1-last', 'image/png', 'shot.render'), asset('shot2-last', 'image/png', 'shot.render'),
-      asset('grabbed', 'image/png', 'asset.grab_still'), asset('referenced', 'image/png', null),
+      ...assets, asset('shot1', 'video/mp4', 'shot.render', undefined, 'g1'), asset('shot1-last', 'image/png', 'shot.render', undefined, 'g1'),
+      asset('shot2', 'video/mp4', 'shot.render', undefined, 'g2'), asset('shot2-last', 'image/png', 'shot.render', undefined, 'g2'),
+      asset('grabbed', 'image/png', 'asset.grab_still', undefined, 'x1'), asset('cat', 'image/png', 'image.generate', undefined, 'i1'),
+      asset('referenced', 'image/png', null),
     ]))
     expect(library.extracted.map(row => row.id).sort()).toEqual(['shot1-last', 'shot2-last'])
-    expect(library.images.map(row => row.id).sort()).toEqual(['grabbed', 'img', 'referenced'])
+    expect(library.images.map(row => row.id).sort()).toEqual(['cat', 'grabbed', 'img', 'referenced'])
   })
 
   it('keeps the name and time the project gave each asset', () => {

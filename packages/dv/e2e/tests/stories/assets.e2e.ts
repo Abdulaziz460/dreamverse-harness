@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { crc32, deflateSync } from 'node:zlib'
 import type { Browser, BrowserContext, Locator, Page } from 'playwright'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import type { ProjectRecord, WireState } from '@dv/ui-kit/types.ts'
+import type { ProjectRecord, WireState } from '../wire-state.ts'
 import { bootHarness, escapeRegExp, playwright, waitFor, type BootedHarness } from '../harness.ts'
 import { assetIdOf, startScriptedModel, type ScriptedModel, type ScriptedRule } from '../scripted-model.ts'
 
@@ -56,7 +56,8 @@ const RULES: ScriptedRule[] = [
         shots: [{ prompt: '广告镜头一', duration_sec: 1, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3' }],
       } }] }),
       // The story's project is new, so its first plan is p1.
-      { calls: [{ name: 'dv_plan_approve', args: { reason: '用户同意', plan: 'p1', user_approved: true } }] },
+      { calls: [{ name: 'dv_story_preview', args: { reason: '预览计划', plan: 'p1' } }] },
+      { calls: [{ name: 'dv_story_approve', args: { reason: '用户同意', plan: 'p1', user_approved: true } }] },
       { calls: [{ name: 'dv_proj_wait', args: {} }] },
     ],
     endText: '镜头已渲染。',

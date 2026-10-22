@@ -12,8 +12,8 @@ export const DV_COMPOSE_EVENT = 'dv:compose'
 
 /** One project item the composer inserts as an `@` reference. */
 export interface DvComposeRef {
-  /** What `id` names: a record, a character, a location, a style, or an asset. */
-  kind: 'record' | 'character' | 'location' | 'style' | 'asset'
+  /** What `id` names: `record`, `asset`, or a reference kind of the project, such as `character`. */
+  kind: string
   id: string
   /** The chip label the user sees, such as `镜头 2` or `Hero`. */
   label: string

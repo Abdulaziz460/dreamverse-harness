@@ -138,6 +138,7 @@ export function exportOperation(ctx: Context): OperationSpec {
     name: EXPORT_OPERATION,
     component: 'timeline',
     version: '1',
+    label: { zh: '导出时间线', en: 'Export timeline' },
     description: 'Export a timeline to one video: each clip with an in or out point is trimmed to that range, and all clips are '
       + 'joined in timeline order.',
     inputs: {},

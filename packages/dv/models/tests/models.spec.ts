@@ -15,7 +15,7 @@ import SkillRegistry from '@deepseek-ai/dsh-skill'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import { afterEach, describe, expect, it } from 'vitest'
-import DvModels, { formatModelKey, type ModelEntry, type RenderModelFacts, type TaskId } from '../src/index.ts'
+import DvModels, { formatModelKey, modelKey, type ModelEntry, type RenderModelFacts, type TaskId } from '../src/index.ts'
 
 /** The facts every fake entry reports. */
 const FACTS: RenderModelFacts = {
@@ -33,6 +33,9 @@ function entry(task: TaskId, provider: string, model: string): ModelEntry {
     render: () => { throw new Error('not rendered in this test') },
   }
 }
+
+/** The prompt skill of the fake model `gamma` for task t2v. */
+const GAMMA_SKILL = { name: 'gamma-prompting', description: 'Prompt rules for model gamma for task t2v.', content: '# Gamma' }
 
 /** The test provider plugin: registers `alpha` of provider `test` for t2v and ref2v, and `beta` of provider `other` for t2v. */
 const Provider = {
@@ -142,18 +145,81 @@ describe('dvModels', () => {
     expect(refs.value).toEqual([{ modality: 'video', task: 'ref2v', provider: 'test', model: 'alpha', description: 'alpha for ref2v' }])
   })
 
-  it('answers dv_models_get with one entry\'s durations, aspect ratios, resolutions and schema, and names an unknown key', async () => {
+  it('answers dv_models_get with one entry\'s key, description and schema, and names an unknown key', async () => {
     const ctx = await start()
     const result = await call(ctx, 'dv_models_get', { modality: 'video', task: 'ref2v', provider: 'test', model: 'alpha' })
     if (result.isError) throw new Error(result.error.message)
     expect(result.value).toEqual({
       modality: 'video', task: 'ref2v', provider: 'test', model: 'alpha', description: 'alpha for ref2v',
-      facts: { duration_sec: { min: 4, max: 8 }, aspect_ratios: ['16:9'], resolutions: ['720p'] },
       schema: { inputs: { reference: { media_types: ['image'] } }, extra: {} },
     })
     const unknown = await call(ctx, 'dv_models_get', { modality: 'video', task: 'ref2v', provider: 'other', model: 'beta' })
     expect(unknown.isError && unknown.error.message)
-      .toContain('No video model has the key video/ref2v/other/beta; call dv_models_list for the models you can use.')
+      .toContain('No model has the key video/ref2v/other/beta; call dv_models_list for the models you can use.')
+  })
+
+  it('describes its tools without naming a media type, so a new primitive needs no catalog text', async () => {
+    const ctx = await start()
+    for (const name of ['dv_models_list', 'dv_models_get']) {
+      const tool = ctx.tools.get(name)
+      expect(tool).toBeDefined()
+      expect(JSON.stringify({ description: tool?.description, parameters: tool?.parameters })).not.toMatch(/video|image|audio/i)
+    }
+  })
+
+  it('reads the key of a call from its params, and resolves the entry among the given tasks or names the unknown key', async () => {
+    const ctx = await start()
+    expect(modelKey({ modality: 'video', task: 'ref2v', provider: 'test', model: 'alpha', prompt: 'a cat' }))
+      .toEqual({ modality: 'video', task: 'ref2v', provider: 'test', model: 'alpha' })
+    expect(formatModelKey(modelKey({ modality: 'video', task: 7 }))).toBe('video///')
+    const alpha = { modality: 'video', task: 'ref2v', provider: 'test', model: 'alpha' }
+    expect(ctx.dvModels.resolve(['t2v', 'ref2v'], alpha).description).toBe('alpha for ref2v')
+    expect(() => ctx.dvModels.resolve(['t2v'], alpha)).toThrow('Unknown model "video/ref2v/test/alpha"; call dv_models_list for the models.')
+    expect(() => ctx.dvModels.resolve(['t2v', 'ref2v'], { ...alpha, provider: 'other' }))
+      .toThrow('Unknown model "video/ref2v/other/alpha"; call dv_models_list for the models.')
+  })
+
+  it('keeps a registration while the catalog holds an entry of one of the tasks, and disposes it with the last one', async () => {
+    const ctx = await start()
+    const events: string[] = []
+    const stop = ctx.dvModels.whileServing(['ref2v'], () => {
+      events.push('start')
+      return () => { events.push('stop') }
+    })
+    const none = ctx.dvModels.whileServing([], () => { throw new Error('no entry serves an empty task list') })
+    expect(events).toEqual(['start'])
+    ctx.dvModels.register(entry('t2v', 'extra', 'gamma'))()
+    ctx.dvModels.register(entry('ref2v', 'extra', 'gamma'))()
+    expect(events).toEqual(['start'])
+    await unload(ctx, 'test-provider')
+    expect(events).toEqual(['start', 'stop'])
+    ctx.dvModels.register(entry('t2v', 'extra', 'delta'))
+    expect(events).toEqual(['start', 'stop'])
+    const remove = ctx.dvModels.register(entry('ref2v', 'extra', 'delta'))
+    expect(events).toEqual(['start', 'stop', 'start'])
+    stop()
+    none()
+    remove()
+    expect(events).toEqual(['start', 'stop', 'start', 'stop'])
+  })
+
+  it('keeps the labels of tasks until their disposer runs, and refuses a second label of one task', async () => {
+    const ctx = await start()
+    expect(ctx.dvModels.taskLabels()).toEqual({})
+    const t2v = { zh: '文字生成', en: 'From text' }
+    const ref2v = { zh: '参考图生成', en: 'From references' }
+    const remove = ctx.dvModels.labelTasks({ t2v, ref2v })
+    expect(ctx.dvModels.taskLabels()).toEqual({ t2v, ref2v })
+    expect(() => ctx.dvModels.labelTasks({ t2i: { zh: '图片', en: 'Image' }, ref2v: { zh: '另一个', en: 'Another' } }))
+      .toThrow('dvModels: task "ref2v" already has a label.')
+    expect(ctx.dvModels.taskLabels()).toEqual({ t2v, ref2v })
+    remove()
+    expect(ctx.dvModels.taskLabels()).toEqual({})
+    const again = ctx.dvModels.labelTasks({ ref2v })
+    remove()
+    expect(ctx.dvModels.taskLabels()).toEqual({ ref2v })
+    again()
+    expect(ctx.dvModels.taskLabels()).toEqual({})
   })
 
   it('registers the video-model-selection skill for the agent only', async () => {
@@ -161,6 +227,30 @@ describe('dvModels', () => {
     const skill = await ctx.skills.get('video-model-selection')
     expect(skill?.invocation).toEqual({ modelInvocable: true, userInvocable: false })
     expect(skill?.content).toContain('Call `dv_models_list` with the task of the shot.')
+  })
+
+  it('registers the prompt skill of an entry for the agent while the entry lives, and names it in dv_models_list', async () => {
+    const ctx = await start()
+    const remove = ctx.dvModels.register({ ...entry('t2v', 'extra', 'gamma'), promptSkill: GAMMA_SKILL })
+    const skill = await ctx.skills.get('gamma-prompting')
+    expect(skill?.invocation).toEqual({ modelInvocable: true, userInvocable: false })
+    expect(skill?.description).toBe('Prompt rules for model gamma for task t2v.')
+    expect(skill?.content).toBe('# Gamma')
+    const listed = await call(ctx, 'dv_models_list', { provider: 'extra' })
+    if (listed.isError) throw new Error(listed.error.message)
+    expect(listed.value).toEqual([
+      { modality: 'video', task: 't2v', provider: 'extra', model: 'gamma', description: 'gamma for t2v', prompt_skill: 'gamma-prompting' },
+    ])
+    remove()
+    expect(await ctx.skills.get('gamma-prompting')).toBeUndefined()
+  })
+
+  it('registers the prompt skills of the entries when the skill registry mounts after them', async () => {
+    const ctx = await start()
+    await unload(ctx, 'skills')
+    ctx.dvModels.register({ ...entry('t2v', 'extra', 'gamma'), promptSkill: GAMMA_SKILL })
+    await ctx.plugin(SkillRegistry)
+    expect((await ctx.skills.get('gamma-prompting'))?.content).toBe('# Gamma')
   })
 
   it('adds nothing to the system prompt', async () => {
@@ -172,13 +262,16 @@ describe('dvModels', () => {
     expect(loaded.contexts).toEqual(unloaded.contexts)
   })
 
-  it('removes its tools and skill when the catalog unloads', async () => {
+  it('removes its tools and skills when the catalog unloads', async () => {
     const ctx = await start()
+    ctx.dvModels.register({ ...entry('t2v', 'extra', 'gamma'), promptSkill: GAMMA_SKILL })
     expect(ctx.tools.get('dv_models_list')).toBeDefined()
     expect(ctx.tools.get('dv_models_get')).toBeDefined()
+    expect(await ctx.skills.get('gamma-prompting')).toBeDefined()
     await unload(ctx, 'dv-models')
     expect(ctx.tools.get('dv_models_list')).toBeUndefined()
     expect(ctx.tools.get('dv_models_get')).toBeUndefined()
     expect(await ctx.skills.get('video-model-selection')).toBeUndefined()
+    expect(await ctx.skills.get('gamma-prompting')).toBeUndefined()
   })
 })

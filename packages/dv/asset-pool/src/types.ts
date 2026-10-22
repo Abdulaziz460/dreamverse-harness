@@ -3,7 +3,7 @@
  *
  * @module @dv/asset-pool/types
  */
-import type { AssetId, RecordId } from '@dv/project'
+import type { AssetId, RecordId } from '@dv/project/types'
 
 /**
  * One asset the pool holds, as one line of `assets/index.jsonl` stores it. The pool never decodes media: the width,
@@ -40,7 +40,7 @@ export interface AssetState {
   placed: AssetId[]
 }
 
-declare module '@dv/project' {
+declare module '@dv/project/types' {
   interface ComponentStates {
     /** The assets placed on the canvas (Asset pool). */
     asset: AssetState

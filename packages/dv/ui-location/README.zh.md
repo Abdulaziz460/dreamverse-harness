@@ -1,0 +1,69 @@
+---
+description: "DreamVerse 场景组件的浏览器半边：用 defineReferenceUi 声明的场景画布节点类型、版本种类、在用参考、编辑器、@ 菜单种类和历史行。"
+kind: "package-reference"
+---
+
+# @dv/ui-location
+
+[English](README.md) | 中文
+
+## 概述
+
+使用本包在 DreamVerse 视图中显示 `@dv/location` 的场景。`@dv/ui-kit/reference-kit.tsx` 的一个 `defineReferenceUi` 声明给这个名词它的画布节点类型 `location`（名称 场景 / Location，节点 ID `location:<id>`）、版本种类、在用参考、`dv.canvas.editor` 条目（默认的 `ReferenceEditor`）、`@` 菜单种类（分区 场景 / Locations，顺序 2，地址 `dv:location/<id>`）和历史行（`location.`）。
+
+## 目录
+
+- [使用本包](#use-this-package)
+- [理解实现](#understand-the-implementation)
+- [延伸阅读](#further-exploration)
+- [模型体验](#model-experience)
+- [已知限制与后续工作](#known-limitations-and-deferred-work)
+
+-----
+
+<a id="use-this-package"></a>
+## 使用本包
+
+在叠加了 `dsh-web-app`、`@dv/api`、`@dv/location` 和 `@dv/ui-canvas` 的 profile 中挂载插件。先构建浏览器包：`pnpm run build` 写出 `lib/client.js`。
+
+```yaml
+- id: dv-ui-location
+  name: '@dv/ui-location'
+```
+
+Host 半边不注册任何东西。浏览器半边在各服务存在时注册每个描述符，每次注册随其服务或插件一起移除。编辑器中的每次修改都通过 `host.run` 运行 `location.update`。
+
+-----
+
+<a id="understand-the-implementation"></a>
+## 理解实现
+
+| 文件 | 内容 |
+| --- | --- |
+| [`src/index.ts`](src/index.ts) | 不做事的 Host Loader 入口 |
+| [`src/client/index.ts`](src/client/index.ts) | `defineReferenceUi` 声明 `location` 和客户端插件主体 `apply` |
+
+-----
+
+<a id="further-exploration"></a>
+## 延伸阅读
+
+- [`@dv/location`](../location/README.zh.md)：`location` 切片及其操作。
+- [`@dv/ui-kit`](../ui-kit/README.zh.md)：`defineReferenceUi` 构建的内容。
+
+-----
+
+<a id="model-experience"></a>
+## 模型体验
+
+间接地，通过 `@dv/project`；其编辑器写下的 `location.update` 记录只经由 [`@dv/project`](../project/README.zh.md) 的 `dv:project` 提示词段落以及 `dv_proj_*` 和操作工具到达模型。
+
+#### KV Cache 影响
+
+无；本包不向模型发送任何内容。
+
+## 已知限制与后续工作
+
+<a id="known-limitations-and-deferred-work"></a>
+
+- **只有一种颜色** —— 节点类型使用 `var(--dv-kind-character)`，因为主题没有给每个名词的颜色变量。

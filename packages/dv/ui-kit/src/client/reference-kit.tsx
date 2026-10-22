@@ -1,0 +1,247 @@
+/**
+ * The browser half of a reference noun: a component whose slice holds every version of each item, such as the
+ * characters of `@dv/ui-character`. `defineReferenceUi` turns one declaration into the noun's canvas node type, version
+ * kind, references in use, `@` menu kind, History row and `dv.canvas.editor` entry; `ReferenceEditor` is the default
+ * editor body. Every descriptor reads only the noun's own slice and the `proj` records, and every write runs
+ * `<key>.update` through the canvas host.
+ *
+ * @module @dv/ui-kit/reference-kit
+ */
+import type { Context as ClientContext } from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
+import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { CSSProperties, ReactNode } from 'react'
+import { assetUrl } from './api.ts'
+import { pickText, useText } from './locale.ts'
+import type { HistoryRow, MentionKind, NodeType, TakesInUse, VersionKind } from './registries.ts'
+import type { WireState } from './types.ts'
+
+/** One version of a reference noun item as the wire sends it. */
+export interface WireReferenceVersion {
+  id: string
+  version: number
+  name: string
+  description: string
+  references: readonly string[]
+  created_by: string
+}
+
+/** The declaration of one reference noun in the browser. */
+export interface ReferenceUiSpec<V extends WireReferenceVersion = WireReferenceVersion> {
+  /** Package name, such as '@dv/ui-character': the ID of every descriptor and the editor slot key. */
+  id: string
+  /** Component key = reference kind = node type = node ID prefix, such as 'character'. */
+  key: string
+  /** The noun's slice, such as `state => state.components.character`; undefined while the host half is not loaded. */
+  slice: (state: WireState) => Readonly<Record<string, readonly V[]>> | undefined
+  /** Card label and picker section, such as ['角色', 'Character']. */
+  label: readonly [zh: string, en: string]
+  /** The `@` menu section and its order, such as { section: ['角色', 'Characters'], order: 1 }. */
+  mention: { section: readonly [zh: string, en: string]; order: number }
+  /** The editor body; default ReferenceEditor. */
+  editor?: (props: ReferenceEditorProps<V>) => ReactNode
+}
+
+/** Props of the editor body of one entry. */
+export type ReferenceEditorProps<V extends WireReferenceVersion = WireReferenceVersion> = PropsRuntime<'dv.canvas.editor'> & {
+  spec: ReferenceUiSpec<V>
+  /** Extra form rows after the description; `update` runs `<key>.update` with `{ [key]: id, ...params }` and no inputs. */
+  children?: (entry: { id: string; latest: V; update: (params: Record<string, unknown>, intent: string) => void }) => ReactNode
+}
+
+/** The descriptors of one noun and the client plugin body that registers them. */
+export interface ReferenceUi<V extends WireReferenceVersion = WireReferenceVersion> {
+  spec: ReferenceUiSpec<V>
+  nodeType: NodeType
+  versionKind: VersionKind
+  referencesInUse: TakesInUse
+  mentionKind: MentionKind
+  historyRow: HistoryRow
+  /** An arrow function, so `export const apply = <k>.apply` keeps it bound. */
+  apply: (ctx: ClientContext) => void
+}
+
+/** Every item of a noun by ID; a state without the noun's slice holds none, as the initial slice of the host half. */
+const itemsOf = <V extends WireReferenceVersion>(spec: ReferenceUiSpec<V>, state: WireState): Readonly<Record<string, readonly V[]>> =>
+  spec.slice(state) ?? {}
+
+/**
+ * Every item of a noun at its newest version, in slice order; an ID without versions is left out.
+ * @param spec - the noun.
+ * @param state - a project state.
+ * @returns the ID, the newest version and every version of each item.
+ */
+function newestOf<V extends WireReferenceVersion>(
+  spec: ReferenceUiSpec<V>, state: WireState,
+): Array<{ id: string; latest: V; versions: readonly V[] }> {
+  return Object.entries(itemsOf(spec, state)).flatMap(([id, versions]) => {
+    const latest = versions.at(-1)
+    return latest === undefined ? [] : [{ id, latest, versions }]
+  })
+}
+
+/**
+ * Build the descriptors of one reference noun from its declaration: the node type draws one entry `<key>:<id>` per item
+ * at its newest version, the version kind reads every version, the references in use are the producers of the newest
+ * references, the mention kind lists `dv:<key>/<id>` items, and the History row names the item of each `<key>.` record.
+ * @param spec - the noun.
+ * @returns the descriptors and the client plugin body.
+ */
+export function defineReferenceUi<V extends WireReferenceVersion>(spec: ReferenceUiSpec<V>): ReferenceUi<V> {
+  const node = (id: string): string => `${spec.key}:${id}`
+  const versionOf = (state: WireState, id: string, version: number): V | undefined =>
+    itemsOf(spec, state)[id]?.find(entry => entry.version === version)
+  const nodeType: NodeType = {
+    id: spec.id,
+    type: spec.key,
+    label: () => pickText(...spec.label),
+    color: 'var(--dv-kind-character)',
+    column: 0,
+    entries(state) {
+      const records = new Map(state.components.proj.records.map(record => [record.id, record]))
+      return newestOf(spec, state).map(({ id, latest, versions }) => ({
+        id: node(id), record: records.get(latest.created_by) ?? null, records: versions.slice(0, -1).map(entry => entry.created_by),
+        title: latest.name || id, media: [...latest.references],
+      }))
+    },
+  }
+  const versionKind: VersionKind = {
+    kind: spec.key,
+    label: () => pickText(...spec.label),
+    node,
+    latest: state => newestOf(spec, state).map(({ id, latest }) => ({ id, version: latest.version })),
+    name: (state, id, version) => versionOf(state, id, version)?.name ?? null,
+    assets: (state, id, version) => [...versionOf(state, id, version)?.references ?? []],
+  }
+  const referencesInUse: TakesInUse = {
+    id: spec.id,
+    uses(state) {
+      const createdBy = state.components.proj.created_by
+      return newestOf(spec, state).flatMap(({ latest }) => latest.references).flatMap(reference => createdBy[reference] ?? [])
+    },
+  }
+  const mentionKind: MentionKind = {
+    id: spec.id,
+    kind: spec.key,
+    order: spec.mention.order,
+    section: () => pickText(...spec.mention.section),
+    items: state => newestOf(spec, state).map(({ id, latest }) => {
+      const thumb = latest.references[0]
+      return {
+        uri: `dv:${spec.key}/${encodeURIComponent(id)}`, label: latest.name || id, description: latest.description.slice(0, 40),
+        ...thumb === undefined ? {} : { thumb },
+      }
+    }),
+  }
+  const historyRow: HistoryRow = {
+    match: `${spec.key}.`,
+    // The name that the record gives its item, else the item ID of the noun's ID param.
+    subject(record) {
+      for (const param of ['name', spec.key]) {
+        const value = record.params[param]
+        const name = typeof value === 'number' ? String(value) : value
+        if (typeof name === 'string' && name !== '') return [`「${name}」`, ` “${name}”`]
+      }
+      return null
+    },
+  }
+  /** The `dv.canvas.editor` entry of the noun: its editor body with the declaration added to the slot props. */
+  const Editor = (props: PropsRuntime<'dv.canvas.editor'>): ReactNode =>
+    spec.editor === undefined ? <ReferenceEditor {...props} spec={spec} /> : spec.editor({ ...props, spec })
+  return {
+    spec, nodeType, versionKind, referencesInUse, mentionKind, historyRow,
+    apply: (ctx) => {
+      ctx.inject(['dvCanvas'], (scope) => {
+        scope.effect(() => scope.dvCanvas.nodeTypes.register(nodeType), `${spec.id}: node type`)
+        scope.effect(() => scope.dvCanvas.takesInUse.register(referencesInUse), `${spec.id}: references in use`)
+        scope.effect(() => scope.dvCanvas.versionKinds.register(versionKind), `${spec.id}: version kind`)
+      })
+      ctx.inject(['slots'], (scope) => {
+        scope.effect(() => scope.slots.inject('dv.canvas.editor', () => scope.slots.register(
+          { name: 'dv.canvas.editor', key: spec.id }, Editor,
+        )), `${spec.id}: editor`)
+      })
+      ctx.inject(['dvMentions'], (scope) => {
+        scope.effect(() => scope.dvMentions.kinds.register(mentionKind), `${spec.id}: mention kind`)
+      })
+      ctx.inject(['dvHistory'], (scope) => {
+        scope.effect(() => scope.dvHistory.rows.register(historyRow), `${spec.id}: history row`)
+      })
+    },
+  }
+}
+
+// The `dv-canvas-btn` class of the canvas stylesheet paints the fill and the hover of these buttons.
+const button: CSSProperties = {
+  height: 32, border: '1px solid var(--dv-line-strong)', borderRadius: 'var(--dv-radius-md)', padding: '0 12px', fontFamily: 'inherit', fontSize: 13,
+  lineHeight: '20px', fontWeight: 500, color: 'var(--dv-text)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+}
+const label: CSSProperties = { display: 'block', fontSize: 12, lineHeight: '16px', fontWeight: 500, color: 'var(--dv-text-2)', margin: '12px 0 4px' }
+const referenceImage: CSSProperties = { height: 220, borderRadius: 'var(--dv-radius-md)', background: 'var(--dv-surface-3)' }
+
+/**
+ * The references grid, the description and ＋ 添加素材 of one entry; each change writes `<key>.update` through `host.run`.
+ * Each reference opens the canvas's preview and can be removed while more than one is left; 添加素材 appends the assets
+ * picked in the canvas's picker. Nothing renders when no item of the noun has the entry's node ID.
+ * @param props - the entry, the state it came from, the canvas host, the noun, and the extra rows.
+ * @returns the element.
+ */
+export function ReferenceEditor<V extends WireReferenceVersion>(props: ReferenceEditorProps<V>): ReactNode {
+  const { node, state, host, spec } = props
+  const pick = useText()
+  const prefix = `${spec.key}:`
+  const id = node.id.startsWith(prefix) ? node.id.slice(prefix.length) : null
+  const latest = id === null ? undefined : itemsOf(spec, state)[id]?.at(-1)
+  if (id === null || latest === undefined) return null
+  const operation = `${spec.key}.update`
+  const name = latest.name || id
+  const references = latest.references
+  const assets = new Map(state.assets.map(asset => [asset.id, asset]))
+  // `<key>.update` writes the next version with exactly these references.
+  const update = (next: readonly string[], intent: string): void => {
+    host.run({ operation, params: { [spec.key]: id }, inputs: next.map(ref => ({ role: 'reference', ref })), intent })
+  }
+  const addReferences = (picked: readonly string[]): void => {
+    const added = picked.filter(ref => !references.includes(ref))
+    if (added.length > 0) update([...references, ...added], pick(`在画布上给 ${name} 添加参考`, `Add references to ${name} from the canvas`))
+  }
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {references.map((reference) => {
+          const asset = assets.get(reference)
+          const assetName = asset?.name ?? reference
+          const src = assetUrl(reference)
+          return (
+            <div key={reference} style={{ position: 'relative' }}>
+              <button
+                type="button" data-reference={reference} aria-label={pick(`查看 ${assetName}`, `View ${assetName}`)}
+                style={{ padding: 0, border: 'none', background: 'transparent', cursor: 'pointer', display: 'block' }}
+                onClick={(event) => { if (asset !== undefined) host.preview(reference, event.currentTarget) }}
+              >
+                {/* An image shows itself and a video its first frame; any other asset shows nothing. */}
+                {asset?.mime.startsWith('image/') === true ? <img src={src} alt="" style={referenceImage} draggable={false} /> : null}
+                {asset?.mime.startsWith('video/') === true ? <video src={`${src}#t=0.1`} muted preload="metadata" style={referenceImage} /> : null}
+              </button>
+              {/* An update without references keeps the current ones, so the last reference cannot be removed. */}
+              <button
+                type="button" className="dv-canvas-btn" aria-label={pick(`移除 ${assetName}`, `Remove ${assetName}`)} disabled={references.length < 2}
+                style={{ ...button, position: 'absolute', top: 6, right: 6, width: 28, height: 28, padding: 0, background: 'var(--dv-surface-1)', opacity: references.length < 2 ? 0.5 : 1 }}
+                onClick={() => { update(references.filter(other => other !== reference), pick(`在画布上移除 ${name} 的一个参考`, `Remove a reference of ${name} from the canvas`)) }}
+              >
+                ×
+              </button>
+            </div>
+          )
+        })}
+      </div>
+      {latest.description === '' ? null : <><span style={label}>{pick('描述', 'Description')}</span><p style={{ margin: 0 }}>{latest.description}</p></>}
+      {props.children?.({
+        id, latest, update: (params, intent) => { host.run({ operation, params: { [spec.key]: id, ...params }, intent }) },
+      })}
+      <div style={{ marginTop: 12 }}>
+        <button type="button" className="dv-canvas-btn" style={button} onClick={() => { host.pickAssets(references, addReferences) }}>{pick('＋ 添加素材', '+ Add asset')}</button>
+      </div>
+    </div>
+  )
+}

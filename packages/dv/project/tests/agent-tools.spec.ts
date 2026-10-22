@@ -12,11 +12,11 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import { afterEach, describe, expect, it } from 'vitest'
 import DvProject, {
-  formatInputRef, toolNameOf, type OperationSpec, type OperationToolValue, type ProjectId,
+  formatInputRef, toolNameOf, versionRefOf, type OperationSpec, type OperationToolValue, type ProjectId,
   type RecordId, type SessionId, type TurnId,
 } from '../src/index.ts'
 import { formatToolResult } from '../src/agent-tools.ts'
-import { MemoryAssets, tempRoot, versionKey } from './support.ts'
+import { MemoryAssets, STAND_IN_COMPONENTS, tempRoot, testKind } from './support.ts'
 
 /** An attachment service that accepts every image. */
 class MemoryAttachments {
@@ -70,6 +70,7 @@ async function start(root = tempRoot(), attachments = true): Promise<Fixture> {
   }).await()
   const assets = new MemoryAssets()
   context.dvProject.registerAssetStore(assets)
+  for (const key of STAND_IN_COMPONENTS) context.dvProject.registerComponent(key)
   let calls = 0
   return {
     context, project: context.dvProject, assets, root, turns,
@@ -89,7 +90,7 @@ async function start(root = tempRoot(), attachments = true): Promise<Fixture> {
 function operation(overrides: Partial<OperationSpec> & Pick<OperationSpec, 'name' | 'component'>): OperationSpec {
   return {
     version: '1', description: 'A test operation.', params: { prompt: { type: 'string' } },
-    inputs: { reference: { type: 'image', description: 'A reference.', many: true, bible: true } }, outputs: [{ role: 'still', type: 'image' }],
+    inputs: { reference: { type: 'image', description: 'A reference.', many: true, versioned: true } }, outputs: [{ role: 'still', type: 'image' }],
     confirm: 'never', deterministic: false, resource: 'none', summarize: record => `made from ${String(record.params['prompt'])}`,
     execute: context => Promise.resolve({ outputs: [context.importAsset(Buffer.from(`still ${String(context.params['prompt'])}`), { mime: 'image/png', name: 'still.png' })] }),
     ...overrides,
@@ -237,7 +238,7 @@ describe('agent tools', () => {
     const refused = await fixture.call('dv_plan_approve', { reason: 'approve', prompt: 'kite' })
     expect(refused.isError && refused.error.message).toBe([
       'dv_plan_approve needs the user\'s agreement.', 'What it will do:', '1. kite (5 s)', 'Estimated GPU time: about 25 s.',
-      'Show this to the user and ask in the conversation, with the question in bold (for example **Render these shots now?**). '
+      'Show this to the user and ask in the conversation, with the question in bold (for example **Run this now?**). '
         + 'Wait for the user\'s answer, then call again with user_approved: true.',
     ].join('\n'))
     expect(fixture.project.listHistory({ project: projectId })).toHaveLength(before)
@@ -272,7 +273,7 @@ describe('agent tools', () => {
     expect(refused.isError && refused.error.message).toBe([
       'dv_shot_render_ref2va would bring this turn to about 80 GPU seconds, above the 60 s budget.', 'What it will do:', 'render b',
       'Estimated GPU time: about 40 s.',
-      'Show this to the user and ask in the conversation, with the question in bold (for example **Render these shots now?**). '
+      'Show this to the user and ask in the conversation, with the question in bold (for example **Run this now?**). '
         + 'Wait for the user\'s answer, then call again with user_requested: true.',
     ].join('\n'))
     const requested = value(await fixture.call('dv_shot_render_ref2va', { reason: 'second', prompt: 'b', user_requested: true }))
@@ -326,6 +327,19 @@ describe('agent tools', () => {
     expect(bound).not.toContain('selection')
   })
 
+  it('names the registered reference kinds in the naming rule of the dv:project prompt section', async () => {
+    const fixture = await start()
+    const section = async (): Promise<string | undefined> => (await fixture.context.systemPrompt.assemble({ agent: { id: 's1' } as never }))
+      .sections.find(entry => entry.name === 'dv:project')?.text
+    expect(await section()).toContain('an output of a record as <record>#<n>, an asset by its asset ID, and any other item by the ID')
+    fixture.project.registerComponent('test_bible')
+    const removeLocation = fixture.project.registerReferenceKind(testKind('test_location'))
+    fixture.project.registerReferenceKind(testKind('test_style'))
+    expect(await section()).toContain('<record>#<n>, a test_location or test_style version as <id>@<version>, an asset by its asset ID')
+    removeLocation()
+    expect(await section()).toContain('<record>#<n>, a test_style version as <id>@<version>, an asset by its asset ID')
+  })
+
   it('holds a session\'s calls until its held work settles, even when that work fails', async () => {
     const fixture = await start()
     await boundProject(fixture)
@@ -342,26 +356,55 @@ describe('agent tools', () => {
     expect(order).toEqual(['work', 'call'])
   })
 
-  it('parses input references: assets, record outputs, and character, location or style versions', async () => {
+  it('registers reference kinds of registered components, and lists them in the inputs text of every tool', async () => {
+    const fixture = await start()
+    fixture.project.registerOperation(operation({ name: 'asset.grab_still', component: 'asset' }))
+    const inputsText = () => JSON.stringify(fixture.context.tools.schemas().find(tool => tool.name === 'dv_asset_grab_still')?.parameters)
+    expect(inputsText()).toContain('<asset> (an asset ID), <record>#<output> (an output of an earlier record); a list')
+    expect(() => fixture.project.registerReferenceKind(testKind('test_location'))).toThrow(expect.objectContaining({ code: 'invalid_params' }))
+    fixture.project.registerComponent('test_bible')
+    // The other arms of an input reference use these keys, so no kind may take one.
+    for (const reserved of ['asset', 'record', 'version']) {
+      expect(() => fixture.project.registerReferenceKind(testKind(reserved))).toThrow(expect.objectContaining({ code: 'invalid_params' }))
+    }
+    expect(fixture.project.listReferenceKinds()).toEqual([])
+    const removeLocation = fixture.project.registerReferenceKind(testKind('test_location'))
+    expect(inputsText()).toContain('or <id>@<version> (a test_location version; dv_proj_state lists IDs); a list')
+    fixture.project.registerReferenceKind(testKind('test_style'))
+    fixture.project.registerReferenceKind(testKind('test_character'))
+    expect(fixture.project.listReferenceKinds()).toEqual(['test_location', 'test_style', 'test_character'])
+    expect(inputsText()).toContain('(a test_location, test_style or test_character version; dv_proj_state lists IDs)')
+    expect(() => fixture.project.registerReferenceKind(testKind('test_style'))).toThrow(expect.objectContaining({ code: 'kind_exists' }))
+    removeLocation()
+    expect(inputsText()).toContain('(a test_style or test_character version; dv_proj_state lists IDs)')
+  })
+
+  it('parses input references: assets, record outputs, and versions of the one reference kind that has them', async () => {
     const fixture = await start()
     const projectId = await boundProject(fixture)
     fixture.project.registerOperation(operation({ name: 'shot.render', component: 'shot', inputs: {
-      first_frame: { type: 'image', description: 'A frame.', required: true }, reference: { type: 'image', description: 'refs', many: true, bible: true },
+      first_frame: { type: 'image', description: 'A frame.', required: true }, reference: { type: 'image', description: 'refs', many: true, versioned: true },
     } }))
     fixture.project.registerOperation(operation({ name: 'plan.create', component: 'plan', inputs: {} }))
-    const creators: Record<string, RecordId> = { 'location:l1@2': brandString<RecordId>('r-location') }
-    fixture.project.registerReducer('test_bible', {
-      initial: () => ({ assets: {}, creators }),
-      reduce: slice => slice,
-      createdBy: (slice, ref) => slice?.creators[versionKey(ref) ?? ''] ?? null,
-    })
+    const creators: Record<string, RecordId> = {
+      'test_location:l1@2': brandString<RecordId>('r-location'), 'test_location:dup@1': brandString<RecordId>('r1'), 'test_style:dup@1': brandString<RecordId>('r2'),
+    }
+    fixture.project.registerComponent('test_bible')
+    fixture.project.registerReducer('test_bible', { initial: () => ({ assets: {}, creators }), reduce: slice => slice })
     const state = fixture.project.getState(projectId)
+    expect(() => fixture.project.parseReference('l1@2', state)).toThrow("Unknown version 'l1@2'; reference kinds: none.")
+    fixture.project.registerReferenceKind(testKind('test_location'))
+    fixture.project.registerReferenceKind(testKind('test_style'))
     const parse = (name: string, raw: unknown) => fixture.project.parseInputs(name, raw, state)
     expect(parse('shot.render', { first_frame: 'r1#1', reference: ['a1', 'l1@2'] })).toEqual([
       { role: 'first_frame', ref: { record: 'r1', output: 1 } }, { role: 'reference', ref: { asset: 'a1' } },
-      { role: 'reference', ref: { location: 'l1', version: 2 } },
+      { role: 'reference', ref: { test_location: 'l1', version: 2 } },
     ])
-    expect(() => parse('shot.render', { first_frame: 'a', reference: 'nobody@1' })).toThrow("Unknown character, location, or style version 'nobody@1'")
+    expect(fixture.project.parseReference('l1@2', state)).toEqual({ test_location: 'l1', version: 2 })
+    expect(() => parse('shot.render', { first_frame: 'a', reference: 'nobody@1' }))
+      .toThrow(expect.objectContaining({ code: 'invalid_inputs', message: "Unknown version 'nobody@1'; reference kinds: test_location, test_style." }))
+    expect(() => fixture.project.parseReference('dup@1', state))
+      .toThrow(expect.objectContaining({ code: 'invalid_inputs', message: "Version 'dup@1' names more than one reference kind: test_location, test_style." }))
     // A view request names the operation by default; the caller can name the call another way, as the agent tool does.
     expect(() => parse('shot.render', undefined)).toThrow('shot.render needs input "first_frame"')
     expect(() => fixture.project.parseInputs('shot.render', { first_frame: 'a', other: 'b' }, state, 'dv_shot_render'))
@@ -378,6 +421,9 @@ describe('agent tools', () => {
     const texts = inputs.map(input => formatInputRef(input.ref))
     expect(texts).toEqual(['r1#1', 'a1', 'l1@2'])
     expect(parse('shot.render', { first_frame: texts[0], reference: texts.slice(1) })).toEqual(inputs)
+    expect(inputs.map(input => versionRefOf(input.ref))).toEqual([null, null, { kind: 'test_location', id: 'l1', version: 2 }])
+    // A reference without a kind key, which no typed caller builds, names no version.
+    expect([versionRefOf({ version: 1 } as never), formatInputRef({ version: 1 } as never)]).toEqual([null, '{"version":1}'])
   })
 })
 

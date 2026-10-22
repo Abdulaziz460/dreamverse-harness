@@ -13,7 +13,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import DvProject, {
   type AssetId, type OperationSpec, type OperationToolValue, type ProjectId, type RecordId, type SessionId,
 } from '../src/index.ts'
-import { MemoryAssets, tempRoot } from './support.ts'
+import { MemoryAssets, STAND_IN_COMPONENTS, tempRoot } from './support.ts'
 
 declare module '@dv/project' {
   interface ComponentStates {
@@ -60,6 +60,7 @@ async function start(): Promise<Fixture> {
   await fiber.await()
   const assets = new MemoryAssets()
   context.dvProject.registerAssetStore(assets)
+  for (const key of STAND_IN_COMPONENTS) context.dvProject.registerComponent(key)
   let calls = 0
   return {
     context, project: context.dvProject, assets, fiber,
@@ -143,19 +144,34 @@ describe('dv_proj_* tools', () => {
     expect(fixture.project.sessionProject(brandString<SessionId>('s1'))).toBe(info.id)
   })
 
-  it('adds each reducer\'s agentSummary fields between the record count and the stale records', async () => {
+  it('registers a reducer only for a registered component key, and registers its own key proj', async () => {
+    const fixture = await start()
+    expect(() => fixture.project.registerComponent('proj')).toThrow(expect.objectContaining({ code: 'component_exists' }))
+    const reducer = { initial: () => ({ assets: {}, creators: {} }), reduce: <T>(slice: T) => slice }
+    expect(() => fixture.project.registerReducer('test_bible', reducer)).toThrow(expect.objectContaining({ code: 'invalid_params' }))
+    const removeComponent = fixture.project.registerComponent('test_bible')
+    expect(() => fixture.project.registerComponent('test_bible')).toThrow(expect.objectContaining({ code: 'component_exists' }))
+    fixture.project.registerReducer('test_bible', reducer)()
+    removeComponent()
+    expect(() => fixture.project.registerReducer('test_bible', reducer)).toThrow(expect.objectContaining({ code: 'invalid_params' }))
+  })
+
+  it('adds each reducer\'s agentSummary fields between the record count and the stale records, in component key order', async () => {
     const fixture = await start()
     fixture.project.registerOperation(still())
+    fixture.project.registerComponent('test_bible')
+    fixture.project.registerComponent('proj_tools_test')
+    // Registered before `proj_tools_test`, but its fields follow, because the summary orders the keys alphabetically.
+    const removeVersions = fixture.project.registerReducer('test_bible', {
+      initial: () => ({ assets: {}, creators: {} }),
+      reduce: slice => slice,
+      agentSummary: slice => ({ versions: Object.keys(slice?.creators ?? {}).length }),
+    })
     fixture.project.registerReducer('proj_tools_test', {
       initial: () => ({ assets: [] }),
       reduce: (slice, record) => record.status === 'done' && record.operation === 'asset.grab_still'
         ? { assets: [...slice?.assets ?? [], ...record.outputs] } : slice,
       agentSummary: (slice, assets) => ({ stills: (slice?.assets ?? []).map(asset => assets.url(asset)) }),
-    })
-    const removeVersions = fixture.project.registerReducer('test_bible', {
-      initial: () => ({ assets: {}, creators: {} }),
-      reduce: slice => slice,
-      agentSummary: slice => ({ versions: Object.keys(slice?.creators ?? {}).length }),
     })
     json(await fixture.call('dv_proj_create', { title: 'summary' }))
     const made = value(await fixture.call('dv_asset_grab_still', { reason: 'a still', prompt: 'kite' }))

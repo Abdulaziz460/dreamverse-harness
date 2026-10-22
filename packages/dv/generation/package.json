@@ -1,0 +1,31 @@
+{
+  "name": "@dv/generation",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Generation helper of DreamVerse: defineGeneration turns the declaration of one generation primitive into a service with one component key and one operation that writes one record per model call.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./package.json": "./package.json"
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh-util-values": "workspace:*",
+    "@dv/models": "workspace:*",
+    "@dv/project": "workspace:*"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "workspace:~"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/cordis-plugin-include": "workspace:~",
+    "@deepseek-ai/cordis-plugin-loader": "workspace:~",
+    "@deepseek-ai/dsh-brand": "workspace:*",
+    "@deepseek-ai/dsh-llm": "workspace:*",
+    "@deepseek-ai/dsh-system-prompt": "workspace:*",
+    "@deepseek-ai/dsh-tools": "workspace:*",
+    "@dv/asset-pool": "workspace:*",
+    "@dv/ffmpeg": "workspace:*",
+    "@types/node": "^22.20.0"
+  }
+}

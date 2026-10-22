@@ -3,41 +3,56 @@
  * them (`Picture 1`, `Picture 2`, …), and the split of a prompt at those names, so a view can show each named image
  * instead of the bare label.
  *
- * The order matches `shot.render` in task `ref2v`: the resolved `reference` inputs in input order, where a
- * character, location or style version stands for all of its references in the version's order. The `first_frame`
+ * The order matches `shot.render` in task `ref2v`: the resolved `reference` inputs in input order, where a version of
+ * a reference kind stands for all of its reference assets in the version's order. The `first_frame`
  * input of a shot that continues the previous shot (the previous take's last still) is not a reference: the model names
  * it after the reference images (`Picture N+1`, where N is the number of reference images). A shot in task `t2v`
  * renders from the prompt alone and has no references.
  *
+ * Client code names no reference kind: it reads a version reference with {@link versionRefOf} and writes any stored
+ * input reference as text with {@link formatInputRef}.
+ *
  * @module @dv/ui-kit/references
  */
-import type { PlanVersion, ProjectAsset, Shot, WireState } from './types.ts'
+import type { VersionKind } from './registries.ts'
+import type { ProjectAsset, WireInputRef, WireState } from './types.ts'
 
 /** One run of a prompt: plain text, or a `Picture N` or `<Picture N>` token that names the N-th (1-based) reference image. */
 export type PicturePart = { text: string } | { picture: number; text: string }
 
 /**
- * The reference texts a plan shot renders from, as `plan.approve` passes them to `shot.render`: in task `ref2v`,
- * the shot's own references, else the plan version's. A shot in task `t2v` has none.
- * @param version - the plan version.
- * @param shot - one shot of the version.
- * @returns the reference texts (`<asset>`, `<record>#<output>`, or `<id>@<version>`).
+ * The kind, ID and version of a stored input reference that names a version of a reference kind.
+ * @param ref - the stored input reference.
+ * @returns the kind key, the ID and the version, or null for an asset or a record output.
  */
-export function shotReferences(version: Pick<PlanVersion, 'references'>, shot: Pick<Shot, 'references' | 'task'>): string[] {
-  return shot.task === 'ref2v' ? shot.references ?? version.references ?? [] : []
+export function versionRefOf(ref: WireInputRef): { kind: string; id: string; version: number } | null {
+  if (!('version' in ref)) return null
+  const kind = Object.keys(ref).find(key => key !== 'version')
+  return kind === undefined ? null : { kind, id: String(ref[kind]), version: ref.version }
 }
 
 /**
- * The assets that reference texts stand for, of any media type, in input order: `<id>@<version>` expands to that
- * character, location or style version's references (characters tried first, then locations, then styles),
- * `<record>#<output>` names that output of a record, and any other text is an asset ID. A text the state cannot resolve,
- * and an asset the state does not hold, adds nothing.
+ * The reference text of a stored input reference, as an operation request takes it.
+ * @param ref - the stored input reference.
+ * @returns `<asset>`, `<record>#<output>`, or `<id>@<version>` for a version of any reference kind.
+ */
+export function formatInputRef(ref: WireInputRef): string {
+  if (!('version' in ref)) return 'asset' in ref ? ref.asset : `${ref.record}#${String(ref.output)}`
+  const named = versionRefOf(ref)
+  return named === null ? JSON.stringify(ref) : `${named.id}@${String(named.version)}`
+}
+
+/**
+ * The assets that reference texts stand for, of any media type, in input order: `<id>@<version>` expands to the
+ * reference assets of that version in the first of `kinds` that gives it any, `<record>#<output>` names that output of a
+ * record, and any other text is an asset ID. A text the state cannot resolve, and an asset the state does not hold, adds
+ * nothing.
  * @param state - the project state the references are read against.
  * @param references - the reference texts, in input order.
+ * @param kinds - the registered version kinds, which read the versions of their reference kinds.
  * @returns the assets.
  */
-export function referenceAssets(state: WireState, references: readonly string[]): ProjectAsset[] {
-  const bible = state.components.bible
+export function referenceAssets(state: WireState, references: readonly string[], kinds: readonly VersionKind[]): ProjectAsset[] {
   const records = new Map(state.components.proj.records.map(record => [record.id, record]))
   const held = new Map(state.assets.map(asset => [asset.id, asset]))
   const heldAssets = (ids: readonly string[]): ProjectAsset[] => ids.flatMap(id => held.get(id) ?? [])
@@ -52,8 +67,7 @@ export function referenceAssets(state: WireState, references: readonly string[])
     const version = at > 0 ? Number(ref.slice(at + 1)) : Number.NaN
     if (!Number.isInteger(version)) return heldAssets([ref])
     const id = ref.slice(0, at)
-    const versions = bible.characters[id] ?? bible.locations[id] ?? bible.styles[id] ?? []
-    return heldAssets(versions.find(entry => entry.version === version)?.references ?? [])
+    return heldAssets(kinds.map(kind => kind.assets(state, id, version)).find(assets => assets.length > 0) ?? [])
   })
 }
 

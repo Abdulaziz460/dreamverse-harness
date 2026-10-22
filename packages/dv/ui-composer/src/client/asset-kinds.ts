@@ -6,8 +6,9 @@
  * @module @dv/ui-composer/asset-kinds
  */
 import type { DvClient } from '@dv/ui-kit/api.ts'
+import { chainOf } from '@dv/ui-kit/chain.ts'
 import { DV_CURRENT_PROJECT_EVENT, getCurrentProject } from '@dv/ui-kit/current-project.ts'
-import { isRenderOperation } from '@dv/ui-kit/state.ts'
+import { isGenerationRecord } from '@dv/ui-kit/state.ts'
 
 /** The media kinds that the chat cards draw. */
 export type AssetKind = 'video' | 'image'
@@ -16,7 +17,7 @@ export type AssetKind = 'video' | 'image'
 export interface AssetEntry {
   readonly kind: AssetKind
   /**
-   * The `shot` param of the `shot.render` record whose outputs include the asset, the number that the canvas titles the
+   * The chain slot of the generation record whose outputs include the asset, the number that the canvas titles the
    * take 镜头 N / Shot N by; null for other assets and for a take without one.
    */
   readonly shot: number | null
@@ -32,6 +33,7 @@ export const NO_ASSET_KINDS: AssetKinds = new Map()
 const REFETCH_DELAY_MS = 150
 
 /**
+ * The media kind that a chat card draws for an asset.
  * @param mime - an asset's MIME type.
  * @returns the media kind, or undefined for other files.
  */
@@ -65,9 +67,10 @@ function sameKinds(a: AssetKinds, b: AssetKinds): boolean {
 async function fetchKinds(client: DvClient, project: string, signal: AbortSignal): Promise<AssetKinds> {
   const state = await client.getState(project, signal)
   const shots = new Map<string, number>()
+  const records = new Map(state.components.proj.records.map(record => [record.id, record]))
   for (const record of state.components.proj.records) {
-    const shot = record.params['shot']
-    if (!isRenderOperation(record.operation) || typeof shot !== 'number') continue
+    const shot = chainOf(record, records)?.slot ?? null
+    if (shot === null || !isGenerationRecord(record, undefined, id => state.assets.find(item => item.id === id)?.mime)) continue
     for (const output of record.outputs) shots.set(output, shot)
   }
   const kinds = new Map<string, AssetEntry>()

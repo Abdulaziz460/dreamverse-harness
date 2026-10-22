@@ -11,7 +11,6 @@ import type {
 } from '@dv/project'
 import type {} from '@dv/shot-plan'
 import type {} from '@dv/shot-render'
-import type {} from '@dv/story-bible'
 import type {} from '@dv/timeline'
 
 /** The project's current state as the browser reads it. */
@@ -56,6 +55,8 @@ export interface WireOperation {
   name: string
   version: string
   description: string
+  /** The name that views show for the operation; absent when the operation declares none. */
+  label?: OperationSpec['label']
   inputs: OperationSpec['inputs']
   params: OperationSpec['params']
   outputs: OperationSpec['outputs']
@@ -67,9 +68,10 @@ export interface WireOperation {
 
 /**
  * Collect the assets of a project as the views read them: every asset the current state mentions (the outputs and
- * resolved inputs of its records, its created assets, the character, location and style references, and the timeline
- * clips), and every asset that an `asset.import` record of the project output, discarded steps included. A generated
- * asset of a step after the current position, or of a discarded step, is left out; an imported asset never is.
+ * resolved inputs of its records, which include the reference images of every reference kind's versions, its created
+ * assets, and the timeline clips), and every asset that an `asset.import` record of the project output, discarded
+ * steps included. A generated asset of a step after the current position, or of a discarded step, is left out; an
+ * imported asset never is.
  * @param state - the project's current state.
  * @param imported - the project's imported assets, as `importedAssets` of `@dv/asset-pool` returns them.
  * @returns the asset IDs, each once, in first-mention order.
@@ -81,10 +83,6 @@ export function mentionedAssets(state: ProjectState, imported: ReadonlyMap<Asset
     for (const input of record.inputs) if (input.resolved_asset !== null) seen.add(input.resolved_asset)
   }
   for (const id of imported.keys()) seen.add(id)
-  const { characters, locations, styles } = state.components.bible
-  for (const versions of [...Object.values(characters), ...Object.values(locations), ...Object.values(styles)]) {
-    for (const version of versions) for (const id of version.references) seen.add(id)
-  }
   // A placeholder clip has no asset until its render is done.
   for (const timeline of state.components.timeline.timelines) {
     for (const clip of timeline.clips) if (clip.asset !== null) seen.add(clip.asset)
@@ -134,6 +132,7 @@ export function toWireOperation(spec: OperationSpec): WireOperation {
     name: spec.name,
     version: spec.version,
     description: spec.description,
+    ...spec.label === undefined ? {} : { label: spec.label },
     inputs: spec.inputs,
     params: spec.params,
     outputs: spec.outputs,

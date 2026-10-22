@@ -7,6 +7,7 @@
  * @module @dv/project/citations
  */
 import { brandString } from '@deepseek-ai/dsh-brand'
+import { versionRefOf } from './agent-tools.ts'
 import type { AssetId, RecordInputRef } from './types.ts'
 
 /** One citation in a prompt. */
@@ -63,16 +64,14 @@ export function citedInput(uri: string): string | null {
 }
 
 /**
- * The citation URI of the element that an input reference is a version of: `dv:character/<id>`, `dv:location/<id>` or
- * `dv:style/<id>`. A prompt cites an element without a version; the reference names the version.
+ * The citation URI of the element that an input reference is a version of: `dv:<kind>/<id>`, with the reference kind.
+ * A prompt cites an element without a version; the reference names the version.
  * @param ref - an input reference, such as a `reference` input of a render call.
  * @returns the URI; null for a reference to an asset or to a record output.
  */
 export function elementCitationUri(ref: RecordInputRef): string | null {
-  if ('character' in ref) return `dv:character/${encodeURIComponent(ref.character)}`
-  if ('location' in ref) return `dv:location/${encodeURIComponent(ref.location)}`
-  if ('style' in ref) return `dv:style/${encodeURIComponent(ref.style)}`
-  return null
+  const named = versionRefOf(ref)
+  return named === null ? null : `dv:${named.kind}/${encodeURIComponent(named.id)}`
 }
 
 /**

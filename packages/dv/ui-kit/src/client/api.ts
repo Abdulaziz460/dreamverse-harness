@@ -9,6 +9,7 @@ import type {
   ProjectInfo, ProjectRecord, WireHistory, WireLine, WireOperation, WireProject, WireProjectCover, WireProjectSummary,
   WireSession, WireState, WireWorkspaces,
 } from './types.ts'
+import type { WireTaskLabels } from './tool-labels.ts'
 
 /** One `/dv/events` stream shared by every subscriber of a project in this page. */
 interface SharedEventSource {
@@ -137,7 +138,7 @@ function isProjectSummary(value: unknown): value is WireProjectSummary {
     && isStringOrNull(fields['edited_at'])
 }
 
-/** Every `/api/dv` call of the browser: project state, operations, history, undo and redo, layout, workspaces. */
+/** Every `/api/dv` call of the browser: project state, operations, task labels, history, undo and redo, layout, workspaces. */
 export class DvClient {
   constructor(private readonly fetchImpl: typeof fetch = (input, init) => fetch(input, init)) {}
 
@@ -222,6 +223,11 @@ export class DvClient {
   /** @returns the declaration of every operation that changes a project. */
   listOperations(signal?: AbortSignal): Promise<WireOperation[]> {
     return this.get('/api/dv/operations', {}, signal)
+  }
+
+  /** @returns the label of each generation task that the model catalog serves; `{}` when no catalog is loaded. */
+  getTaskLabels(signal?: AbortSignal): Promise<WireTaskLabels> {
+    return this.get('/api/dv/tasks', {}, signal)
   }
 
   /**

@@ -6,6 +6,7 @@
   "description": "Project component of DreamVerse: the record store with one history line, undo, the operation runner and scheduler, the reducer registry, history, subscriptions, chat session bindings, the agent tool of every operation with its confirmation, and the dv:project prompt section.",
   "exports": {
     ".": "./src/index.ts",
+    "./types": "./src/types.ts",
     "./package.json": "./package.json"
   },
   "dependencies": {

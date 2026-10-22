@@ -1,23 +1,21 @@
 /**
  * Canvas nodes and edges derived from a project state. The canvas shows the project's current state only: a
- * node is an item a creator works with now: a character, a location or a style at its current version, an imported asset
- * on the project's canvas list (see {@link buildCanvasGraph}), a plan at its latest version, the current take of each
- * shot of that version, a take that is not part of a plan, and a take whose outputs are in use. Deterministic edits
- * (still grabs, timeline records) do not become nodes; a timeline trim shows as a badge on the take it shortened.
+ * node is an item a creator works with now: an imported asset on the project's canvas list (see
+ * {@link buildCanvasGraph}), each node that a registered `NodeType` draws from its own slice, and the generation records
+ * that make up the current state: the takes of the
+ * newest chain on each anchor node, every take without an anchored chain, and every take whose outputs are in use.
+ * Deterministic edits (still grabs, timeline records) do not become nodes; a badge that a `TakesInUse` reports for an
+ * asset, such as the trim of a timeline clip, shows on the node of that asset.
  */
-import type {
-  Character, Clip, Location, NodePosition, PlanVersion, ProjectRecord, RecordInput, RecordInputRef, StoryBibleState, Style, WireState,
-} from '@dv/ui-kit/types.ts'
-import { isRenderOperation } from '@dv/ui-kit/state.ts'
+import { chainOf } from '@dv/ui-kit/chain.ts'
+import type { DvLanguage } from '@dv/ui-kit/locale.ts'
+import type { ChainAnchor, NodeEntry, NodeType, TakesInUse, VersionKind } from '@dv/ui-kit/registries.ts'
+import type { NodePosition, ProjectRecord, RecordInput, WireState, WireOperation } from '@dv/ui-kit/types.ts'
+import { versionRefOf } from '@dv/ui-kit/references.ts'
+import { isGenerationOperation, isGenerationRecord } from '@dv/ui-kit/state.ts'
 
-/** What a node represents; the canvas colors nodes by it. */
-export type CanvasNodeKind = 'bible' | 'asset' | 'plan' | 'take'
-
-/** The story bible kinds a `bible` node can stand for. */
-export type BibleKind = 'character' | 'location' | 'style'
-
-/** The slice key of each story bible kind. */
-const BIBLE_SLICES: Record<BibleKind, keyof StoryBibleState> = { character: 'characters', location: 'locations', style: 'styles' }
+/** What a node represents; the canvas colors nodes by it. An `entry` node is a node that a registered `NodeType` drew. */
+export type CanvasNodeType = 'asset' | 'take' | 'entry'
 
 /** Display states of a node. */
 export interface CanvasNodeFlags {
@@ -28,40 +26,52 @@ export interface CanvasNodeFlags {
   superseded: boolean
 }
 
-/** One canvas node. */
-export interface CanvasNode {
-  /** `bible:<id>` for characters, locations and styles, `plan:<PlanId>` for plans, else the record ID. */
+/** The fields of every canvas node. */
+interface CanvasNodeFields {
+  /** The entry's ID for an entry node, else the record ID. */
   id: string
-  kind: CanvasNodeKind
-  /** For story bible nodes, whether the node is a character, a location or a style. */
-  bibleKind?: BibleKind
-  /** For story bible nodes, the character, location or style ID. */
-  bibleId?: string
-  /** For plan nodes, the `PlanId` (`p1`). */
-  planId?: string
+  /** For a take, its operation's label in `/api/dv/operations`, else the operation name; shown when `title` is empty. */
+  label?: string
   title: string
   subtitle: string
-  /** An image asset shown as the thumbnail; null for story bible nodes, which show {@link CanvasNode.references}. */
+  /** An image asset shown as the thumbnail; null for entry nodes, which show {@link CanvasNode.references}. */
   thumb: string | null
-  /** For story bible nodes, the image and video references of the current version in order; empty for other nodes. */
+  /** For entry nodes, the images and videos the node shows, in order; empty for other nodes. */
   references: string[]
-  /** A video asset the editor plays; for a story bible node, its first reference when that reference is a video. */
+  /** A video or audio asset the editor plays; for an entry node, its first reference when it is a video. */
   video: string | null
   durationSec: number | null
-  /** The record behind the node; for story bible and plan nodes, the record that wrote the latest version. */
+  /** The record behind the node; for an entry node, the record that wrote the shown version. */
   record: ProjectRecord | null
   flags: CanvasNodeFlags
-  /** Short labels of deterministic edits applied to the node's asset, such as `trim`. */
+  /** The labels that the registered `TakesInUse` descriptors report for the node's assets, such as 已裁剪. */
   badges: string[]
-  /** For takes of one shot that has several takes, this take's 1-based number; null for a single take. */
+  /** For a take in a group of several takes (see {@link numberTakes}), this take's 1-based number; null otherwise. */
   take: number | null
+  /** For a take, its anchored chain; absent for a free take. */
+  chain?: AnchoredChain
   /** The default position when the user has not placed the node. */
   x: number
   y: number
 }
 
-/** How one node fed another. */
-export type CanvasEdgeKind = 'reference' | 'first_frame' | 'plan' | 'take'
+/** One canvas node; an `entry` node carries the registered `NodeType` that drew it and the entry it drew. */
+export type CanvasNode = CanvasNodeFields & (
+  | { type: Exclude<CanvasNodeType, 'entry'> }
+  | { type: 'entry'; nodeType: NodeType; entry: NodeEntry }
+)
+
+/** The anchored chain of a take: the record that started it, the node that record hangs it off, its slot and lane. */
+export interface AnchoredChain {
+  starter: string
+  /** The anchor node ID, such as `plan:p1`. */
+  anchor: string
+  slot: number | null
+  lane?: string
+}
+
+/** How one node fed another; a `chain` edge hangs a take off the anchor node of its chain. */
+export type CanvasEdgeKind = 'reference' | 'first_frame' | 'chain' | 'take'
 
 /** One "used as input" edge. */
 export interface CanvasEdge {
@@ -74,7 +84,7 @@ export interface CanvasEdge {
 export interface CanvasGraph {
   nodes: CanvasNode[]
   edges: CanvasEdge[]
-  /** The node that shows each asset: its story bible node, its import node, or the nearest drawn record up its producer chain. */
+  /** The node that shows each asset: its entry node, its import node, or the nearest drawn record up its producer chain. */
   assetNodes: Record<string, string>
 }
 
@@ -85,39 +95,75 @@ const COLUMN = 240
 /** Row pitch; it leaves room for a take card (147 at 100%) whose text has grown at a low zoom. */
 export const ROW = 200
 
-/** A `shot.render` record, whose outputs are the takes the creator judges. */
-function isRender(record: ProjectRecord): boolean {
-  return isRenderOperation(record.operation)
-}
-
 /**
- * The timeline record that the approval of a plan version wrote: its `clip` inputs name the take of each shot in shot
- * order, and a shot the approval left unchanged names the earlier take it reused.
- * @param version - the plan version.
- * @param records - the records of the state by ID.
- * @returns the record, or undefined when the version is not approved.
+ * The generation operations ({@link isGenerationOperation}), whose records the canvas draws as takes.
+ * @param operations - the operation declarations.
+ * @param language - the interface language.
+ * @returns operation name → its label in the interface language, else its name.
  */
-function approvalLayout(version: PlanVersion, records: ReadonlyMap<string, ProjectRecord>): ProjectRecord | undefined {
-  const scheduled = version.approved_by === null ? undefined : records.get(version.approved_by)?.report?.['scheduled']
-  if (!Array.isArray(scheduled)) return undefined
-  return scheduled.map(id => typeof id === 'string' ? records.get(id) : undefined)
-    .find(record => record?.operation?.startsWith('timeline.') === true)
+function generationLabels(operations: readonly WireOperation[], language: DvLanguage): Map<string, string> {
+  return new Map(operations
+    .filter(isGenerationOperation)
+    .map(operation => [operation.name, operation.label?.[language] ?? operation.name]))
+}
+
+/** The anchored chains of a project's records ({@link anchorChains}). */
+interface ChainIndex {
+  /** The anchored chain of a record; null for a record without a chain and for a chain without an anchor. */
+  anchored: (record: ProjectRecord) => AnchoredChain | null
+  /** The newest starter record of each starter operation on each anchor node. */
+  newest: ReadonlySet<string>
 }
 
 /**
- * The render records the canvas draws, which make up the current state of the project:
- * - for each shot of each plan's latest version, its current take together with the retakes of the same original take.
- *   The current take is the take the shot's clip on the plan's timeline plays (the clip at the shot's position, when it
- *   plays a take of that shot), else the newest done take of that shot and version or the earlier take the version's
- *   approval reused, else the newest take still rendering;
- * - every take that is not part of a plan, with its retakes;
- * - every take whose outputs are in use: played by a timeline clip, named as a reference by a current story bible or plan
- *   version, or read as an input by a drawn take.
- * Takes of shots a later plan version removed, and takes of earlier versions that nothing uses, are left out.
+ * Anchor the chains of a project's records. The chain of a record (`chainOf`: its own `started_by`, else the
+ * `started_by` of its `based_on` root) is anchored when its starter record is loaded and a `ChainAnchor` is registered
+ * for the starter's operation.
+ * @param records - the loaded records by ID, in log order.
+ * @param anchors - the registered chain anchors.
+ * @returns the index.
+ */
+function anchorChains(records: ReadonlyMap<string, ProjectRecord>, anchors: readonly ChainAnchor[]): ChainIndex {
+  const anchorOf = new Map(anchors.map(anchor => [anchor.starter, anchor]))
+  // The anchor node of each loaded starter, and the newest starter of each operation on each anchor node.
+  const nodeOf = new Map<string, string>()
+  const newest = new Map<string, string>()
+  for (const record of records.values()) {
+    const anchor = anchorOf.get(record.operation ?? '')
+    if (anchor === undefined) continue
+    const node = anchor.anchor(record)
+    nodeOf.set(record.id, node)
+    newest.set(`${anchor.starter}>${node}`, record.id)
+  }
+  return {
+    anchored: (record) => {
+      const chain = chainOf(record, records)
+      const anchor = chain === null ? undefined : nodeOf.get(chain.record)
+      if (chain === null || anchor === undefined) return null
+      return { starter: chain.record, anchor, slot: chain.slot, ...chain.lane === undefined ? {} : { lane: chain.lane } }
+    },
+    newest: new Set(newest.values()),
+  }
+}
+
+/**
+ * The generation records the canvas draws, which make up the current state of the project:
+ * - for each anchor node and each starter operation, the records of the chain that the newest starter of that operation
+ *   on that node started, so the chains of two workflows on one node both show;
+ * - every record in use (`used`), walking up deterministic edits such as a still grab or a timeline export;
+ * - every generation record without an anchored chain (a free take);
+ * - for each drawn record, the records it read its inputs from and its `based_on` family (root and retakes).
+ * Records of an earlier starter's chain that nothing uses are left out, so an undo or a jump to an earlier step changes
+ * what the canvas shows.
  * @param state - a project state.
+ * @param isRender - whether a record generated media ({@link isGenerationRecord}); its outputs are takes the creator judges.
+ * @param chains - the anchored chains of the records.
+ * @param used - the records whose outputs are in use: references, and the `uses` of each `TakesInUse`, such as timeline clips.
  * @returns the record IDs.
  */
-function shownTakes(state: WireState): Set<string> {
+function drawnTakes(
+  state: WireState, isRender: (record: ProjectRecord) => boolean, chains: ChainIndex, used: readonly string[],
+): Set<string> {
   const proj = state.components.proj
   const records = new Map(proj.records.map(record => [record.id, record]))
   const renders = proj.records.filter(isRender)
@@ -130,8 +176,11 @@ function shownTakes(state: WireState): Set<string> {
     }
     return current
   }
-  const producerOf = (input: RecordInput): string | undefined =>
-    'record' in input.ref ? input.ref.record : input.resolved_asset === null ? undefined : proj.created_by[input.resolved_asset]
+  const families = new Map<string, string[]>()
+  for (const render of renders) families.set(rootOf(render.id), [...families.get(rootOf(render.id)) ?? [], render.id])
+  // A version reference may carry any kind key, so only a reference without `version` is a record output.
+  const producerOf = (input: RecordInput): string | undefined => !('version' in input.ref) && 'record' in input.ref
+    ? input.ref.record : input.resolved_asset === null ? undefined : proj.created_by[input.resolved_asset]
   // The render or import behind a record, walking up deterministic edits such as a still grab or a timeline export.
   const sourceOf = (recordId: string | undefined, depth = 0): ProjectRecord | undefined => {
     const record = recordId === undefined ? undefined : records.get(recordId)
@@ -139,126 +188,62 @@ function shownTakes(state: WireState): Set<string> {
     const input = record.inputs.find(entry => producerOf(entry) !== undefined)
     return input === undefined ? undefined : sourceOf(producerOf(input), depth + 1)
   }
-  const clipRecord = (clip: Clip): string | undefined =>
-    clip.source?.record ?? (clip.asset === null ? undefined : proj.created_by[clip.asset])
-  const used: string[] = []
-  const use = (recordId: string | undefined): void => {
+  const takeOf = (recordId: string | undefined): string[] => {
     const source = sourceOf(recordId)
-    if (source !== undefined && isRender(source)) used.push(source.id)
+    return source !== undefined && isRender(source) ? [source.id] : []
   }
-  for (const timeline of state.components.timeline.timelines) {
-    for (const clip of timeline.clips) use(clipRecord(clip))
-  }
-  for (const { versions } of bibleItems(state)) for (const reference of versions.at(-1)?.references ?? []) use(proj.created_by[reference])
+  const newestOrFree = renders.filter((render) => {
+    const chain = chains.anchored(render)
+    return chain === null || chains.newest.has(chain.starter)
+  })
+  const queue = [...newestOrFree.map(render => render.id), ...used.flatMap(takeOf)]
   const shown = new Set<string>()
-  const addFamily = (root: string): void => { for (const render of renders) if (rootOf(render.id) === root) shown.add(render.id) }
-  for (const [planId, versions] of Object.entries(state.components.plan.plans)) {
-    const latest = versions.at(-1)
-    if (latest === undefined) continue
-    const references = [...latest.references ?? [], ...latest.shots.flatMap(shot => shot.references ?? [])]
-    for (const reference of references) use(proj.created_by[reference])
-    const layout = approvalLayout(latest, records)
-    const pointed = layout?.inputs.filter(input => input.role === 'clip').map(input => 'record' in input.ref ? input.ref.record : undefined) ?? []
-    const timelineId = layout?.params['timeline'] ?? 't1'
-    const clips = layout === undefined ? [] : state.components.timeline.timelines.find(timeline => timeline.id === timelineId)?.clips ?? []
-    latest.shots.forEach((_shot, index) => {
-      const shot = index + 1
-      const own = renders.filter(render => render.params['plan'] === planId && render.params['plan_version'] === latest.version
-        && render.params['shot'] === shot).map(render => render.id)
-      const roots = new Set([...own, pointed[index]].flatMap(id => id === undefined || !records.has(id) ? [] : [rootOf(id)]))
-      const candidates = renders.filter(render => roots.has(rootOf(render.id)))
-      const clip = clips[index]
-      const played = clip === undefined ? undefined : sourceOf(clipRecord(clip))
-      const playsShot = played !== undefined && isRender(played)
-        && (roots.has(rootOf(played.id)) || (played.params['plan'] === planId && played.params['shot'] === shot))
-      const current = playsShot ? played : candidates.findLast(render => render.status === 'done') ?? candidates.at(-1)
-      if (current !== undefined) addFamily(rootOf(current.id))
-    })
-  }
-  for (const render of renders) if (typeof records.get(rootOf(render.id))?.params['plan'] !== 'string') shown.add(render.id)
-  // Takes in use, and the takes a drawn take read its inputs from.
-  const queue = [...shown, ...used]
-  const visited = new Set<string>()
   for (let id = queue.pop(); id !== undefined; id = queue.pop()) {
     const record = records.get(id)
-    if (visited.has(id) || record === undefined) continue
-    visited.add(id)
+    if (shown.has(id) || record === undefined) continue
     shown.add(id)
-    for (const input of record.inputs) {
-      const source = sourceOf(producerOf(input))
-      if (source !== undefined && isRender(source)) queue.push(source.id)
-    }
+    queue.push(...record.inputs.flatMap(input => takeOf(producerOf(input))), ...families.get(rootOf(id)) ?? [])
   }
   return shown
 }
 
 /**
- * Every character, location and style of a state with its latest version.
- * @param state - a project state.
- * @returns one entry per story bible item, characters first.
- */
-export function bibleItems(state: WireState): Array<{ kind: BibleKind; id: string; versions: Character[] | Location[] | Style[] }> {
-  const bible = state.components.bible
-  return (Object.keys(BIBLE_SLICES) as BibleKind[]).flatMap(kind =>
-    Object.entries(bible[BIBLE_SLICES[kind]]).map(([id, versions]) => ({ kind, id, versions })))
-}
-
-/**
- * The versions of one character, location or style.
- * @param state - a project state.
- * @param id - the character, location or style ID.
- * @returns its versions, oldest first, or undefined when the story bible has no such ID.
- */
-export function bibleVersions(state: WireState, id: string): Character[] | Location[] | Style[] | undefined {
-  const bible = state.components.bible
-  return bible.characters[id] ?? bible.locations[id] ?? bible.styles[id]
-}
-
-/**
- * The reference text of a record input, as an operation request takes it: `<asset>`, `<record>#<output>`, or
- * `<id>@<version>`.
- * @param ref - the stored input reference.
- * @returns the text.
- */
-export function referenceText(ref: RecordInputRef): string {
-  if ('asset' in ref) return ref.asset
-  if ('record' in ref) return `${ref.record}#${String(ref.output)}`
-  if ('character' in ref) return `${ref.character}@${String(ref.version)}`
-  if ('location' in ref) return `${ref.location}@${String(ref.version)}`
-  return `${ref.style}@${String(ref.version)}`
-}
-
-/**
- * The story bible ID a stored input reference names, when it names a character, location or style version.
- * @param ref - the stored input reference.
- * @returns the ID, or undefined for an asset or record output.
- */
-function bibleIdOf(ref: RecordInputRef): string | undefined {
-  if ('character' in ref) return ref.character
-  if ('location' in ref) return ref.location
-  if ('style' in ref) return ref.style
-  return undefined
-}
-
-/**
- * The canvas graph of a project state, with a default layout: story bible items and assets in column 0, plans in
- * column 1, takes from column 2 rightwards by first-frame chain depth, retakes in their source take's column.
- * Every image or video on the project's canvas (`placed`) gets one node, unless a story bible node (a reference image) or
- * a take node (a take output) already shows it: drawn from its first `asset.import` record of the current state when
+ * The canvas graph of a project state, with a default layout: assets in column 0, the entries of each registered
+ * `NodeType` in its `column`, takes from column 2 rightwards by first-frame chain depth, retakes in their source take's
+ * column. An entry's media belong to its node, and so do the assets of every version of the item that a `VersionKind`
+ * draws as that node. A take reads a version of such an item from the item's node.
+ * Every image or video on the project's canvas (`placed`) gets one node, unless an entry node (such as a reference image)
+ * or a take node (a take output) already shows it: drawn from its first `asset.import` record of the current state when
  * there is one, else as `asset:<id>` with no record (an import that an undo went back past, a still, an export). A take that
- * reads an asset off the canvas has no edge from it.
+ * reads an asset off the canvas has no edge from it. A take is a generation record ({@link isGenerationRecord}), titled by
+ * the slot and lane of its anchored chain, else by its operation label; a take of an anchored chain hangs off the
+ * chain's anchor node by a `chain` edge.
  * @param state - a project state.
  * @param placed - the assets on the canvas; defaults to the state's `asset` slice.
+ * @param operations - the operation declarations; none by default, so each record's own facts decide whether it is a take.
+ * @param language - the language of the operation labels.
+ * @param anchors - the registered chain anchors; none by default, so every take is a free take.
+ * @param inUse - the registered `TakesInUse` descriptors, whose records are drawn and whose badges label the nodes of their
+ *   assets.
+ * @param nodeTypes - the registered node types, whose entries are drawn.
+ * @param versionKinds - the registered version kinds, which name the node of each versioned item.
  * @returns the nodes and edges.
  */
 export function buildCanvasGraph(
   state: WireState, placed: ReadonlySet<string> = new Set(state.components.asset.placed),
+  operations: readonly WireOperation[] = [], language: DvLanguage = 'zh',
+  anchors: readonly ChainAnchor[] = [], inUse: readonly TakesInUse[] = [], nodeTypes: readonly NodeType[] = [],
+  versionKinds: readonly VersionKind[] = [],
 ): CanvasGraph {
   const proj = state.components.proj
   const assets = new Map(state.assets.map(asset => [asset.id, asset]))
   const records = new Map(proj.records.map(record => [record.id, record]))
   const isImage = (id: string | undefined): boolean => id !== undefined && assets.get(id)?.mime.startsWith('image/') === true
   const isVideo = (id: string | undefined): boolean => id !== undefined && assets.get(id)?.mime.startsWith('video/') === true
+  const isAudio = (id: string | undefined): boolean => id !== undefined && assets.get(id)?.mime.startsWith('audio/') === true
+  const labels = generationLabels(operations, language)
+  const isRender = (record: ProjectRecord): boolean =>
+    isGenerationRecord(record, operations.find(operation => operation.name === record.operation), id => assets.get(id)?.mime)
   const flagsOf = (record: ProjectRecord | null): CanvasNodeFlags => ({
     stale: record !== null && proj.stale[record.id] !== undefined,
     rendering: record !== null && (record.status === 'pending' || record.status === 'running'),
@@ -267,51 +252,56 @@ export function buildCanvasGraph(
   })
   const nodes: CanvasNode[] = []
   const byRecord = new Set<string>()
-  const takes = shownTakes(state)
+  const chains = anchorChains(records, anchors)
+  const used = inUse.flatMap(descriptor => descriptor.uses(state))
+  const takes = drawnTakes(state, isRender, chains, used)
   // The import node of each drawn imported asset.
   const importNodes = new Map<string, string>()
-  // A reference image of a character, location or style belongs to that node, so its import is not drawn twice.
-  const bibleOfAsset = new Map<string, string>()
-  for (const { kind, id: bibleId, versions } of bibleItems(state)) {
-    const latest = versions.at(-1)
-    if (latest === undefined) continue
-    const id = `bible:${bibleId}`
-    for (const version of versions) for (const reference of version.references) bibleOfAsset.set(reference, id)
-    const record = records.get(latest.created_by) ?? null
-    const references = latest.references.filter(reference => isImage(reference) || isVideo(reference))
-    const first = references[0]
-    nodes.push({
-      id, kind: 'bible', bibleKind: kind, bibleId, title: latest.name || bibleId, subtitle: latest.description,
-      thumb: null, references, video: first !== undefined && isVideo(first) ? first : null, durationSec: null, record,
-      flags: flagsOf(record), badges: [], take: null, x: 0, y: 0,
-    })
+  // An entry's media, and the assets of an earlier version of a versioned item that an entry shows, belong to that node, so
+  // their import is not drawn twice.
+  const mediaNode = new Map<string, string>()
+  // One node per entry of each registered node type, drawn by the core with the default card.
+  for (const nodeType of nodeTypes) {
+    for (const entry of nodeType.entries(state)) {
+      for (const media of entry.media) mediaNode.set(media, entry.id)
+      const references = entry.media.filter(media => isImage(media) || isVideo(media))
+      const first = references[0]
+      nodes.push({
+        id: entry.id, type: 'entry', nodeType, entry, title: entry.title, subtitle: entry.subtitle ?? '', thumb: null, references,
+        video: first !== undefined && isVideo(first) ? first : null, durationSec: null, record: entry.record,
+        flags: flagsOf(entry.record), badges: [], take: null, x: 0, y: 0,
+      })
+    }
   }
-  // One node per plan, showing its latest version; the editor switches between versions.
-  for (const [planId, versions] of Object.entries(state.components.plan.plans)) {
-    const latest = versions.at(-1)
-    if (latest === undefined) continue
-    const record = records.get(latest.created_by) ?? null
-    nodes.push({
-      id: `plan:${planId}`, kind: 'plan', planId, title: latest.title ?? '', subtitle: String(latest.shots.length), thumb: null, references: [], video: null,
-      durationSec: null, record, flags: flagsOf(record), badges: [], take: null, x: 0, y: 0,
-    })
+  const entries = new Set(nodes.map(node => node.id))
+  for (const kind of versionKinds) {
+    for (const { id, version } of kind.latest(state)) {
+      const node = kind.node(id)
+      if (!entries.has(node)) continue
+      for (let earlier = 1; earlier < version; earlier++) {
+        for (const media of kind.assets(state, id, earlier)) if (!mediaNode.has(media)) mediaNode.set(media, node)
+      }
+    }
   }
   for (const record of proj.records) {
+    const label = labels.get(record.operation ?? '') ?? record.operation ?? undefined
     if (record.operation === 'asset.import') {
       // An import off the canvas stays in the asset pool only.
       const imported = record.outputs.find(id => isImage(id) || isVideo(id))
-      if (imported === undefined || !placed.has(imported) || bibleOfAsset.has(imported) || importNodes.has(imported)) continue
+      if (imported === undefined || !placed.has(imported) || mediaNode.has(imported) || importNodes.has(imported)) continue
       importNodes.set(imported, record.id)
       nodes.push({
-        id: record.id, kind: 'asset', title: assets.get(imported)?.name ?? imported, subtitle: '', thumb: isImage(imported) ? imported : null, references: [],
+        id: record.id, type: 'asset', title: assets.get(imported)?.name ?? imported, subtitle: '', thumb: isImage(imported) ? imported : null, references: [],
         video: isVideo(imported) ? imported : null, durationSec: assets.get(imported)?.duration_sec ?? null,
         record, flags: flagsOf(record), badges: [], take: null, x: 0, y: 0,
       })
     } else if (isRender(record) && takes.has(record.id)) {
-      const video = record.outputs.find(id => isVideo(id)) ?? null
-      const shot = typeof record.params['shot'] === 'number' ? record.params['shot'] : null
+      const video = record.outputs.find(id => isVideo(id) || isAudio(id)) ?? null
+      const chain = chains.anchored(record)
+      const slot = chain?.slot ?? null
+      const title = slot === null ? '' : chain?.lane === undefined ? String(slot) : `${String(slot)} · ${chain.lane}`
       nodes.push({
-        id: record.id, kind: 'take', title: shot === null ? '' : String(shot),
+        id: record.id, type: 'take', title, ...label === undefined ? {} : { label }, ...chain === null ? {} : { chain },
         subtitle: typeof record.params['prompt'] === 'string' ? record.params['prompt'] : '',
         thumb: record.outputs.find(id => isImage(id)) ?? null, references: [], video,
         durationSec: video === null ? null : assets.get(video)?.duration_sec ?? null,
@@ -322,23 +312,23 @@ export function buildCanvasGraph(
   }
   // A placed asset that no node shows yet (an import that an undo went back past, a still, an export, or another take
   // output) gets its own node, `asset:<id>`, with no record.
-  const shownByTake = new Set(proj.records.flatMap(record => byRecord.has(record.id) && isRender(record) ? record.outputs : []))
+  const shownByTake = new Set(nodes.flatMap(node => node.type === 'take' ? node.record?.outputs ?? [] : []))
   for (const assetId of placed) {
-    const shown = bibleOfAsset.has(assetId) || importNodes.has(assetId) || shownByTake.has(assetId)
+    const shown = mediaNode.has(assetId) || importNodes.has(assetId) || shownByTake.has(assetId)
     if (!(isImage(assetId) || isVideo(assetId)) || shown) continue
     const id = `asset:${assetId}`
     importNodes.set(assetId, id)
     nodes.push({
-      id, kind: 'asset', title: assets.get(assetId)?.name ?? assetId, subtitle: '', thumb: isImage(assetId) ? assetId : null, references: [],
+      id, type: 'asset', title: assets.get(assetId)?.name ?? assetId, subtitle: '', thumb: isImage(assetId) ? assetId : null, references: [],
       video: isVideo(assetId) ? assetId : null, durationSec: assets.get(assetId)?.duration_sec ?? null,
       record: null, flags: flagsOf(null), badges: [], take: null, x: 0, y: 0,
     })
   }
   const nodeIds = new Set(nodes.map(node => node.id))
-  /** The node an asset comes from: its story bible node, its import node, or the nearest drawn record up its producer chain. */
+  /** The node an asset comes from: its entry node, its import node, or the nearest drawn record up its producer chain. */
   const nodeOfAsset = (assetId: string | null, depth = 0): string | null => {
     if (assetId === null) return null
-    const own = bibleOfAsset.get(assetId) ?? importNodes.get(assetId)
+    const own = mediaNode.get(assetId) ?? importNodes.get(assetId)
     if (own !== undefined) return own
     const producer = proj.created_by[assetId]
     if (producer === undefined || depth > 16) return null
@@ -360,19 +350,20 @@ export function buildCanvasGraph(
   }
   for (const node of nodes) {
     const record = node.record
-    if (record === null || node.kind === 'bible') continue
+    if (record === null || node.type === 'entry') continue
     for (const input of record.inputs) {
-      const bibleId = bibleIdOf(input.ref)
-      const from = bibleId !== undefined && nodeIds.has(`bible:${bibleId}`) ? `bible:${bibleId}` : nodeOfAsset(input.resolved_asset)
+      const named = versionRefOf(input.ref)
+      const item = named === null ? undefined : versionKinds.find(kind => kind.kind === named.kind)?.node(named.id)
+      const from = item !== undefined && nodeIds.has(item) ? item : nodeOfAsset(input.resolved_asset)
       addEdge(from, node.id, input.role === 'first_frame' ? 'first_frame' : 'reference')
     }
-    // A take an approved plan scheduled hangs off that plan's node; an unchanged shot keeps the take an earlier version rendered.
-    if (typeof record.params['plan'] === 'string') addEdge(`plan:${record.params['plan']}`, node.id, 'plan')
+    // A take of an anchored chain hangs off the chain's anchor node; a retake hangs there through its root.
+    if (node.chain !== undefined) addEdge(node.chain.anchor, node.id, 'chain')
     if (record.based_on !== null) addEdge(record.based_on, node.id, 'take')
   }
-  addBadges(state, nodes, nodeOfAsset)
+  addBadges(state, inUse, nodes, nodeOfAsset)
   numberTakes(nodes, edges)
-  layout(nodes, edges)
+  layout(inTakeOrder(nodes), edges)
   const assetNodes: Record<string, string> = {}
   for (const asset of state.assets) {
     const node = nodeOfAsset(asset.id)
@@ -382,8 +373,9 @@ export function buildCanvasGraph(
 }
 
 /**
- * Number the takes of each shot, so an original take and its retakes read differently on the canvas. Takes of the
- * same plan shot, and takes linked by a take edge to such a take, are takes of one shot, numbered in record order.
+ * Number the takes of each group, so an original take and its retakes read differently on the canvas. Takes linked by
+ * a take edge are one group; otherwise a take of an anchored chain is grouped by the chain's anchor, slot and lane, and a
+ * free take is its own group. A group of more than one take is numbered in record order.
  * @param nodes - the drawn nodes; takes get their `take` set in place.
  * @param edges - the edges; a take edge links a retake to its source take.
  */
@@ -393,12 +385,12 @@ function numberTakes(nodes: CanvasNode[], edges: CanvasEdge[]): void {
   const groupOf = (node: CanvasNode, depth = 0): string => {
     const base = byId.get(baseOf.get(node.id) ?? '')
     if (base !== undefined && depth < 64) return groupOf(base, depth + 1)
-    const plan = node.record?.params['plan']
-    return node.title === '' ? node.id : `${typeof plan === 'string' ? plan : ''}#${node.title}`
+    const chain = node.chain
+    return chain === undefined ? node.id : `${chain.anchor}#${String(chain.slot)}#${chain.lane ?? ''}`
   }
   const groups = new Map<string, CanvasNode[]>()
   for (const node of nodes) {
-    if (node.kind !== 'take') continue
+    if (node.type !== 'take') continue
     const key = groupOf(node)
     groups.set(key, [...groups.get(key) ?? [], node])
   }
@@ -408,28 +400,50 @@ function numberTakes(nodes: CanvasNode[], edges: CanvasEdge[]): void {
 }
 
 /**
- * Mark takes that a timeline trims: a timeline clip with an in or out point.
+ * The order in which the layout places the drawn takes: by the anchor of their chain in first-record order (a free take
+ * is its own group at its own record), then slot (null last), then lane in first-record order, then record order. Take
+ * numbers and slot frames read the record order of the nodes, so the order goes to the layout in a copy.
+ * @param nodes - the drawn nodes, takes in record order.
+ * @returns a copy of the nodes with the takes in that order; every other node keeps its place.
+ */
+function inTakeOrder(nodes: readonly CanvasNode[]): CanvasNode[] {
+  const takes = nodes.filter(node => node.type === 'take')
+  // The position of the first take with each key, among the takes in record order.
+  const firstOf = (key: (node: CanvasNode) => string): ((node: CanvasNode) => number) => {
+    const first = new Map<string, number>()
+    takes.forEach((node, index) => { if (!first.has(key(node))) first.set(key(node), index) })
+    return node => first.get(key(node)) ?? 0
+  }
+  const anchor = firstOf(node => node.chain?.anchor ?? node.id)
+  const lane = firstOf(node => node.chain?.lane ?? '')
+  const slot = (node: CanvasNode): number => node.chain?.slot ?? Number.MAX_SAFE_INTEGER
+  // The sort is stable, so takes with equal keys keep their record order.
+  const ordered = takes.toSorted((a, b) => anchor(a) - anchor(b) || slot(a) - slot(b) || lane(a) - lane(b)).values()
+  return nodes.map(node => node.type === 'take' ? ordered.next().value ?? node : node)
+}
+
+/**
+ * Put the badges that the registered `TakesInUse` descriptors report, such as the trim of a timeline clip, on the node of
+ * each badge's asset, once per label.
  * @param state - the project state.
+ * @param inUse - the registered `TakesInUse` descriptors.
  * @param nodes - the drawn nodes, badged in place.
  * @param nodeOfAsset - resolves an asset to its node.
  */
-function addBadges(state: WireState, nodes: CanvasNode[], nodeOfAsset: (assetId: string | null) => string | null): void {
+function addBadges(
+  state: WireState, inUse: readonly TakesInUse[], nodes: CanvasNode[], nodeOfAsset: (assetId: string | null) => string | null,
+): void {
   const byId = new Map(nodes.map(node => [node.id, node]))
-  const badge = (id: string | null, label: string): void => {
-    const node = id === null ? undefined : byId.get(id)
+  for (const { asset, label } of inUse.flatMap(descriptor => descriptor.badges?.(state) ?? [])) {
+    const node = byId.get(nodeOfAsset(asset) ?? '')
     if (node !== undefined && !node.badges.includes(label)) node.badges.push(label)
-  }
-  for (const timeline of state.components.timeline.timelines) {
-    for (const clip of timeline.clips) {
-      if (clip.in_sec !== null || clip.out_sec !== null) badge(nodeOfAsset(clip.asset), 'trim')
-    }
   }
 }
 
 /**
- * Assign default positions in place. Each column kind (assets, plans, takes by first-frame depth) wraps into
- * several sub-columns once it holds more nodes than the shared row count, so a long shot list forms a block that fits
- * the screen. A retake sits right after its source take in the same column.
+ * Assign default positions in place. Each column (assets, entries by their `NodeType.column`, takes by first-frame
+ * depth) wraps into several sub-columns once it holds more nodes than the shared row count, so a long shot list forms a
+ * block that fits the screen. A retake sits right after its source take in the same column.
  * @param nodes - the nodes.
  * @param edges - the edges, used for first-frame depth and retake columns.
  */
@@ -440,15 +454,15 @@ function layout(nodes: CanvasNode[], edges: CanvasEdge[]): void {
   const columnOf = (node: CanvasNode, depth = 0): number => {
     const known = column.get(node.id)
     if (known !== undefined) return known
-    let value = node.kind === 'plan' ? 1 : node.kind === 'take' ? 2 : 0
-    if (node.kind === 'take' && depth < 64) {
+    let value = node.type === 'entry' ? node.nodeType.column : node.type === 'take' ? 2 : 0
+    if (node.type === 'take' && depth < 64) {
       const base = incoming(node.id, 'take')[0]
       const baseNode = base === undefined ? undefined : nodes.find(candidate => candidate.id === base)
       if (baseNode !== undefined) value = columnOf(baseNode, depth + 1)
       else {
         for (const from of incoming(node.id, 'first_frame')) {
           const source = nodes.find(candidate => candidate.id === from)
-          if (source?.kind === 'take') value = Math.max(value, columnOf(source, depth + 1) + 1)
+          if (source?.type === 'take') value = Math.max(value, columnOf(source, depth + 1) + 1)
         }
       }
     }
@@ -483,24 +497,24 @@ function layout(nodes: CanvasNode[], edges: CanvasEdge[]): void {
   }
 }
 
-/** The media a plan node's mini grid shows for one shot. */
-export interface PlanShotFrame {
+/** The media a node's frame grid shows for one slot. */
+export interface SlotFrame {
   thumb: string | null
   video: string | null
 }
 
 /**
- * The frame of each shot of a plan, for the plan node's mini grid: the newest finished take node of that plan and shot
- * (a retake carries the plan and shot of its source take) that has an image or a video.
+ * The frame of each slot of a node's frame grid: the newest finished take node whose anchored chain hangs off that node
+ * with that slot (a retake has the chain of its root) and that has an image or a video.
  * @param nodes - the drawn nodes, in record order.
- * @param planId - the plan (`p1`).
- * @param shotCount - the number of shots of the plan's latest version.
- * @returns one entry per shot, null for a shot without a drawn finished take.
+ * @param nodeId - the node of the grid, such as `plan:p1`.
+ * @param slots - the number of slots, such as the shot count of a plan's latest version.
+ * @returns one entry per slot, null for a slot without a drawn finished take.
  */
-export function planShotFrames(nodes: readonly CanvasNode[], planId: string, shotCount: number): Array<PlanShotFrame | null> {
-  return Array.from({ length: shotCount }, (_unused, index) => {
-    const take = nodes.findLast(node => node.kind === 'take' && node.record?.status === 'done' && node.record.params['plan'] === planId
-      && node.record.params['shot'] === index + 1 && (node.thumb !== null || node.video !== null))
+export function slotFrames(nodes: readonly CanvasNode[], nodeId: string, slots: number): Array<SlotFrame | null> {
+  return Array.from({ length: slots }, (_unused, index) => {
+    const take = nodes.findLast(node => node.type === 'take' && node.record?.status === 'done' && node.chain?.anchor === nodeId
+      && node.chain.slot === index + 1 && (node.thumb !== null || node.video !== null))
     return take === undefined ? null : { thumb: take.thumb, video: take.video }
   })
 }

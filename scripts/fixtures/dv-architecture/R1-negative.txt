@@ -1,0 +1,4 @@
+--- packages/dv/project/src/reducers.ts
+export const imageSlice = state.components.image
+--- packages/dv/image-generate/src/index.ts
+export const spec = { component: 'image' }

@@ -1,9 +1,11 @@
-/** The plugin's registrations, and their removal when the plugin goes. */
+/** The plugin's registrations, the `dvCanvas` service, and their removal when the plugin goes. */
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { SidebarRightTabRegistry } from '@deepseek-ai/dsh-client-ui-sidebar-right/src/client/tab-registry.ts'
 import { DvClient } from '@dv/ui-kit/api.ts'
+import type { ChainAnchor } from '@dv/ui-kit/registries.ts'
 import { CanvasBody } from '../src/client/CanvasBody.tsx'
+import { CanvasCenter } from '../src/client/CanvasCenter.tsx'
 import { CANVAS_ID, CANVAS_KIND } from '../src/client/definition.ts'
 import { apply, inject } from '../src/client/index.ts'
 import { en, zh } from '../src/client/locales.ts'
@@ -11,9 +13,13 @@ import { apply as hostApply } from '../src/index.ts'
 
 interface Recorded {
   name: string
-  key: string
-  locale: string
-  inject: () => { client: unknown }
+  key?: string
+  id?: string
+  order?: number
+  label?: () => string
+  locale?: string
+  inject: () => { client: unknown; canvas: unknown }
+  children?: object
   component: unknown
 }
 
@@ -42,7 +48,7 @@ async function boot() {
   ctx.provide('locale', locale as never)
   const fiber = ctx.plugin({ inject: [...inject], apply })
   await fiber.await()
-  return { tabs, registered, dictionaries, fiber }
+  return { ctx, tabs, registered, dictionaries, fiber }
 }
 
 describe('ui-canvas apply', () => {
@@ -59,14 +65,43 @@ describe('ui-canvas apply', () => {
     expect(definition?.title('sidebar://dv-canvas')).toBe('type.label')
     expect(definition?.guide?.map(entry => [entry.order, entry.title(), entry.description?.()])).toEqual([[40, 'guide.title', 'guide.description']])
     expect(dictionaries.get('dvCanvas')).toEqual({ zh, en })
-    expect(registered.map(entry => [entry.name, entry.key, entry.locale, entry.component])).toEqual([['sidebar.right.pane.tab', CANVAS_ID, 'dvCanvas', CanvasBody]])
+    expect(registered.map(entry => [entry.name, entry.key ?? entry.id, entry.locale, entry.component])).toEqual([
+      ['sidebar.right.pane.tab', CANVAS_ID, 'dvCanvas', CanvasBody],
+      ['dv.center.view', 'canvas', undefined, CanvasCenter],
+    ])
     expect(registered[0]?.inject().client).toBeInstanceOf(DvClient)
+    // The center view comes first in the workspace's view control, under the tab type's label, with the body's client.
+    expect([registered[1]?.order, registered[1]?.label?.()]).toEqual([0, 'type.label'])
+    expect(registered[1]?.inject()).toBe(registered[0]?.inject())
+    // The center view declares the slot of the entry editors, which plugin UI halves fill by `NodeType.id`, and the asset
+    // pool's slots of the picker and the preview; the body declares none.
+    expect(registered[1]?.children).toEqual({
+      'dv.canvas.editor': { kind: 'keyed', scope: 'root' },
+      'dv.canvas.picker': { kind: 'keyed', scope: 'root' },
+      'dv.canvas.preview': { kind: 'keyed', scope: 'root' },
+    })
+    expect(registered[0]?.children).toBeUndefined()
     expect(Object.keys(en).sort()).toEqual(Object.keys(zh).sort())
   })
 
+  it('provides dvCanvas with empty registries, and its descriptors reach both canvas copies and leave on disposal', async () => {
+    const { ctx, registered } = await boot()
+    expect(registered[0]?.inject().canvas).toBe(ctx.dvCanvas)
+    expect(registered[1]?.inject().canvas).toBe(ctx.dvCanvas)
+    expect(ctx.dvCanvas.chainAnchors.list()).toEqual([])
+    const anchor: ChainAnchor = { starter: 'story.approve', anchor: () => 'plan:p1' }
+    const dispose = ctx.dvCanvas.chainAnchors.register(anchor)
+    expect(ctx.dvCanvas.chainAnchors.list()).toEqual([anchor])
+    dispose()
+    expect(ctx.dvCanvas.chainAnchors.list()).toEqual([])
+  })
+
   it('removes everything when the plugin is disposed', async () => {
-    const { tabs, registered, dictionaries, fiber } = await boot()
+    const { ctx, tabs, registered, dictionaries, fiber } = await boot()
+    const canvas = ctx.dvCanvas
     await fiber.dispose()
+    expect(ctx.get('dvCanvas')).toBeUndefined()
+    expect(canvas.chainAnchors.list()).toEqual([])
     expect(tabs.get(CANVAS_KIND)).toBeUndefined()
     expect(registered).toEqual([])
     expect(dictionaries.size).toBe(0)

@@ -12,6 +12,8 @@ import type { ConnectionFetchRoute } from '@deepseek-ai/dsh-client-connection'
 import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
 import { afterEach, describe, expect, it } from 'vitest'
 import { importedAssets } from '@dv/asset-pool'
+import type { CharacterId } from '@dv/character'
+import DvModels from '@dv/models'
 import type { AssetId, OperationSpec, ProjectEvent, ProjectId, ProjectRecord, RecordId, RecordOrigin, SessionId, TurnId } from '@dv/project'
 import { FFMPEG, startBase, type BaseFixture } from './support.ts'
 import { answer } from '../src/api.ts'
@@ -76,6 +78,8 @@ const fixtures: Fixture[] = []
 
 /** A test-only operation that holds its record running until the test releases it. */
 const SLOW = 'inspect.slow' // names:allow (a test-only operation)
+const LOOK = 'inspect.look' // names:allow (a test-only operation with a versioned reference input)
+const MAKE = 'inspect.make' // names:allow (a test-only operation that outputs one asset)
 
 /** A human action outside any chat session. */
 const HUMAN: RecordOrigin = { actor: 'user', surface: 'api', session: null, turn: null, tool_call: null, intent: 'test' }
@@ -184,6 +188,18 @@ describe('dvApi', () => {
     expect(operations.find(operation => operation.name === 'asset.import')?.resource).toBe('none')
   })
 
+  it('sends the label of an operation declaration only when the operation declares one', async () => {
+    const fixture = await start()
+    fixture.project.registerComponent('inspect')
+    fixture.project.registerOperation({
+      name: SLOW, component: 'inspect', version: '1', description: 'Slow.', label: { zh: '慢操作', en: 'Slow step' }, params: {}, inputs: {},
+      outputs: [], confirm: 'never', deterministic: false, resource: 'none', summarize: () => 'slow', execute: () => Promise.resolve({ outputs: [] }),
+    })
+    const operations = fixture.handlers.listOperations()
+    expect(operations.find(operation => operation.name === SLOW)?.label).toEqual({ zh: '慢操作', en: 'Slow step' })
+    expect(operations.find(operation => operation.name === 'asset.import')).not.toHaveProperty('label')
+  })
+
   it('refuses malformed and unknown requests with the matching status and code', async () => {
     const fixture = await start()
     const projectId = await fixture.newProject('demo')
@@ -224,6 +240,7 @@ describe('dvApi', () => {
       confirm: 'never', deterministic: false, resource: 'none', summarize: () => 'slow',
       execute: async (context) => { await held; return { outputs: [context.importAsset(Buffer.from('T'), { mime: 'text/plain', name: 't.txt' })] } },
     }
+    fixture.project.registerComponent('inspect')
     fixture.project.registerOperation(slow)
     const running = fixture.handlers.runOperation({ project: projectId, operation: SLOW, surface: 'canvas' })
     await new Promise(resolve => setTimeout(resolve, 50))
@@ -310,7 +327,7 @@ describe('dvApi', () => {
     expect(Array.isArray(operations.json)).toBe(true)
     expect(await call(fixture, ROUTES.operation, { method: 'POST', body: { project: projectId, operation: 'no.such', surface: 'canvas' } }))
       .toMatchObject({ status: 404, json: { code: 'unknown_operation' } })
-    expect(Object.keys(ROUTES)).toEqual(['projects', 'projectSummaries', 'state', 'operations', 'operation', 'undo', 'redo', 'acceptStale', 'history'])
+    expect(Object.keys(ROUTES)).toEqual(['projects', 'projectSummaries', 'state', 'operations', 'tasks', 'operation', 'undo', 'redo', 'acceptStale', 'history'])
     for (const gone of ['/api/dv/branches/create', '/api/dv/branches/switch', '/api/dv/branches/rename']) {
       expect(fixture.connection.routes.has(gone)).toBe(false)
     }
@@ -327,6 +344,17 @@ describe('dvApi', () => {
     expect(await keep('nope')).toMatchObject({ status: 404, json: { code: 'unknown_record' } })
     const kept = await keep(importId)
     expect(kept).toMatchObject({ status: 200, json: { operation: 'proj.stale_accept', actor: 'user' } })
+  })
+
+  it('serves the task labels of the model catalog, and no label while the catalog is not loaded', async () => {
+    const fixture = await start()
+    // dvShotRender labels the video tasks while it lives.
+    const video = { t2v: { zh: '文字生成', en: 'From text' }, ref2v: { zh: '参考图生成', en: 'From references' } }
+    expect(await call(fixture, ROUTES.tasks)).toEqual({ status: 200, json: video })
+    fixture.context.effect(() => fixture.context.dvModels.labelTasks({ test_task: { zh: '测试', en: 'Test' } }))
+    expect(await call(fixture, ROUTES.tasks)).toEqual({ status: 200, json: { ...video, test_task: { zh: '测试', en: 'Test' } } })
+    for (const fiber of fixture.context.registry.get(DvModels)?.fibers ?? []) await fiber.dispose()
+    expect(await call(fixture, ROUTES.tasks)).toEqual({ status: 200, json: {} })
   })
 
   it('answers every refusal of the project routes with the body {error, code}', async () => {
@@ -450,7 +478,7 @@ describe('dvApi', () => {
     const event: ProjectEvent = { kind: 'record', record: imported }
     expect(frameOf(event)).toBe(`event: record\ndata: ${JSON.stringify(event)}\n\n`)
     await fixture.handlers.runOperation({
-      project: projectId, operation: 'bible.character_create', surface: 'canvas', params: { character: 'c1', name: 'Hero' },
+      project: projectId, operation: 'character.create', surface: 'canvas', params: { character: 'c1', name: 'Hero' },
       inputs: imported.outputs.map(ref => ({ role: 'reference', ref })),
     })
     const imports = (): Map<AssetId, ProjectRecord> => importedAssets(fixture.project.listRecords(projectId))
@@ -459,6 +487,52 @@ describe('dvApi', () => {
     const later = await fixture.handlers.runOperation({ project: projectId, operation: 'asset.import', surface: 'canvas', params: { path: fixture.writeFile('l.png', 'L'), mime: 'image/png' } })
     await fixture.handlers.undo({ project: projectId })
     expect(mentionedAssets(fixture.project.getState(projectId), imports())).toEqual([...imported.outputs, ...later.outputs])
+  })
+
+  it('parses the input c1@3 to { character: c1, version: 3 }, and resolves a version input to its references', async () => {
+    const fixture = await start()
+    const projectId = await fixture.newProject('demo')
+    const image = async (name: string): Promise<AssetId[]> => (await fixture.handlers.runOperation({
+      project: projectId, operation: 'asset.import', surface: 'canvas', params: { path: fixture.writeFile(name, name), mime: 'image/png' },
+    })).outputs
+    const first = await image('a.png')
+    const third = await image('c.png')
+    const write = (operation: string, params: Record<string, unknown>, refs: AssetId[] = []) => fixture.handlers.runOperation({
+      project: projectId, operation, surface: 'canvas', params, inputs: refs.map(ref => ({ role: 'reference', ref })),
+    })
+    await write('character.create', { character: 'c1', name: '阿明' }, first)
+    await write('character.update', { character: 'c1', name: '阿明' })
+    await write('character.update', { character: 'c1' }, third)
+    fixture.project.registerComponent('inspect')
+    fixture.project.registerOperation({
+      name: LOOK, component: 'inspect', version: '1', description: 'Look.', params: {}, outputs: [], confirm: 'never', deterministic: false,
+      inputs: { reference: { type: 'image', many: true, versioned: true, description: 'References.' } }, resource: 'none',
+      summarize: () => 'looked', execute: () => Promise.resolve({ outputs: [] }),
+    })
+    const ref = { character: brandString<CharacterId>('c1'), version: 3 }
+    expect(fixture.project.parseInputs(LOOK, { reference: ['c1@3'] }, fixture.project.getState(projectId))).toEqual([{ role: 'reference', ref }])
+    const look = await fixture.handlers.runOperation({ project: projectId, operation: LOOK, surface: 'canvas', inputs: [{ role: 'reference', ref: 'c1@3' }] })
+    expect(look.inputs).toEqual([{ role: 'reference', ref, resolved_asset: third[0] }])
+  })
+
+  it('lists a generated asset that is the reference of a character', async () => {
+    const fixture = await start()
+    const projectId = await fixture.newProject('demo')
+    fixture.project.registerComponent('inspect')
+    fixture.project.registerOperation({
+      name: MAKE, component: 'inspect', version: '1', description: 'Make.', params: {}, inputs: {}, outputs: [{ role: 'image', type: 'image' }],
+      confirm: 'never', deterministic: false, resource: 'none', summarize: () => 'made',
+      execute: context => Promise.resolve({ outputs: [context.importAsset(Buffer.from('G'), { mime: 'image/png', name: 'g.png' })] }),
+    })
+    const made = await fixture.handlers.runOperation({ project: projectId, operation: MAKE, surface: 'canvas' })
+    expect(made.status).toBe('done')
+    const generated = made.outputs[0] ?? brandString<AssetId>('')
+    await fixture.handlers.runOperation({
+      project: projectId, operation: 'character.create', surface: 'canvas', params: { character: 'c1', name: 'Hero' }, inputs: [{ role: 'reference', ref: generated }],
+    })
+    const state = fixture.project.getState(projectId)
+    expect(state.components.character[brandString<CharacterId>('c1')]?.[0]?.references).toEqual([generated])
+    expect(mentionedAssets(state, importedAssets(fixture.project.listRecords(projectId)))).toContain(generated)
   })
 
   it.skipIf(!existsSync(FFMPEG))('lists a generated asset while its step is in the current state, and an imported asset through the whole history', async () => {
@@ -509,7 +583,7 @@ describe('dvApi', () => {
     expect(second.supersedes).toEqual([first.id])
     expect(fixture.handlers.getState(projectId).components.proj.superseded).toEqual({ [first.id]: second.id })
     await expect(fixture.handlers.runOperation({
-      project: projectId, operation: 'bible.character_create', surface: 'canvas', params: { character: 'c1', name: 'Hero' },
+      project: projectId, operation: 'character.create', surface: 'canvas', params: { character: 'c1', name: 'Hero' },
       inputs: [{ role: 'reference', ref: 'nowhere' }],
     })).rejects.toMatchObject({ code: 'unknown_asset' })
     expect(fixture.handlers.getState(projectId).assets.map(entry => entry.id)).toEqual([...first.outputs, ...second.outputs])

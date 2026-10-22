@@ -2,9 +2,9 @@
  * The center of the DreamVerse shell, shadowing DSH's `main.conversation`. Without an open project it is the entry
  * page: a DreamVerse headline, the DSH composer, the template chips, and recent project cards, and the chat itself
  * once it starts. With a project open it is the workspace: a top bar (session switcher, 画布 | 时间线 toggle, right
- * panel open button) above the canvas or the timeline editor. Every view shows the project's current state, the state at
- * the current position of its history. The left sidebar collapses while a project is open and expands again on the
- * entry page.
+ * panel open button) above the selected `dv.center.view` entry, such as the canvas or the timeline editor. Every view
+ * shows the project's current state, the state at the current position of its history. The left sidebar collapses
+ * while a project is open and expands again on the entry page.
  *
  * The center also keeps the shell's open project and the DSH main session together: once the client lists are ready
  * it restores the location the URL names, and afterwards it adopts the project of a main session that moves to
@@ -19,7 +19,8 @@ import type { ConversationViewsProps } from '@deepseek-ai/dsh-client-ui-conversa
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type { PropsRenderFactories, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { DV_CURRENT_TIMELINE_EVENT, getTimelineOf, publishCurrentTimeline, useCurrentTimeline } from '@dv/ui-kit/current-timeline.ts'
-import { pickText, useText } from '@dv/ui-kit/locale.ts'
+import { useText } from '@dv/ui-kit/locale.ts'
+import type {} from '@dv/ui-kit/registries.ts'
 import { useProjectState } from '@dv/ui-kit/useProject.ts'
 import {
   DV_CANVAS_FOCUS_EVENT, DV_TIMELINE_FOCUS_EVENT, DV_TIMELINE_INSERT_EVENT, type DvWorkspaceEventMap,
@@ -27,15 +28,14 @@ import {
 import type { WireProjectSummary, WireWorkspaces } from '@dv/ui-kit/types.ts'
 import type { ShellActions } from './actions.ts'
 import { CoverFrame, editedText, useProjectSummaries } from './cover.tsx'
-import { useExploreTabs } from './explore.ts'
 import { SidebarRightIcon } from './icons.tsx'
 import { SessionSwitcher } from './SessionSwitcher.tsx'
+import { useSlotTabs } from './slot-tabs.ts'
 import type { ShellLocation } from './store.ts'
 import {
   applyingLocation, formatLocation, getShell, NO_PROJECTS, parseLocation, projectOfSession, refreshLinks, setShell, shellClient,
   startUrlMirror, useShell,
 } from './store.ts'
-import { CanvasView, TimelineView } from './views.ts'
 import css from './shell.module.css'
 
 /** What the shell's DSH UI slot registrations inject. */
@@ -44,7 +44,8 @@ export interface ShellInjected {
 }
 
 /** Props of the center entry. */
-export type CenterProps = PropsRuntime<'main.conversation'> & PropsRenderFactories & PropsRenderSlots<'dv.explore'> & ShellInjected
+export type CenterProps = PropsRuntime<'main.conversation'> & PropsRenderFactories & PropsRenderSlots<'dv.explore' | 'dv.center.view'>
+  & ShellInjected
 
 /** The one client the shell's own reads share. */
 const client = shellClient
@@ -259,7 +260,7 @@ function TemplateChips(): ReactNode {
  * @param props - the shell actions.
  * @returns the section, or nothing without projects.
  */
-function RecentProjects({ shell }: ShellInjected): ReactNode {
+function RecentProjects({ shell }: Pick<ShellInjected, 'shell'>): ReactNode {
   const t = useText()
   const projects = useShell(s => s.links?.projects ?? NO_PROJECTS)
   const [showAll, setShowAll] = useState(false)
@@ -298,7 +299,7 @@ function RecentProjects({ shell }: ShellInjected): ReactNode {
  */
 function Explore({ renderSlot }: Pick<CenterProps, 'renderSlot'>): ReactNode {
   const t = useText()
-  const tabs = useExploreTabs()
+  const tabs = useSlotTabs('dv.explore')
   const [open, setOpen] = useState(true)
   const [chosen, setChosen] = useState<string | null>(null)
   if (tabs.length === 0) return null
@@ -337,7 +338,7 @@ function Explore({ renderSlot }: Pick<CenterProps, 'renderSlot'>): ReactNode {
  */
 function ProjectCard(
   { shell, projectId, title, createdAt, summary }:
-    ShellInjected & { projectId: string; title: string; createdAt: string; summary: WireProjectSummary | null },
+    Pick<ShellInjected, 'shell'> & { projectId: string; title: string; createdAt: string; summary: WireProjectSummary | null },
 ): ReactNode {
   const t = useText()
   const meta = editedText(summary?.edited_at ?? createdAt, t)
@@ -361,13 +362,16 @@ function WorkspacePage(props: CenterProps & { projectId: string; sessionInProjec
   const { sessionId, useSessions, projectId, sessionInProject, shell } = props
   const t = useText()
   const view = useShell(s => s.view)
+  // The registered center views; an unknown view in the URL shows the first one.
+  const views = useSlotTabs('dv.center.view')
+  const shown = views.find(tab => tab.id === view)?.id ?? views[0]?.id
   const listed = useShell(s => s.links?.projects.find(p => p.id === projectId))
   const project = useMemo(() => listed ?? { id: projectId, title: projectId, created_at: '', path: '', workspace_id: null }, [listed, projectId])
   const sessionTitle = useSessions((s) => {
     const row = sessionId === undefined ? undefined : s.byId[sessionId]
     return row?.blank === false ? row.displayTitle : undefined
   })
-  // The project's current state, which every view shows and every edit follows.
+  // The project's current state, which the switcher's cover follows.
   const state = useProjectState(client, projectId)
   // The chat session the workspace sits beside, recorded as the `session` of the views' edits; none until the main
   // session belongs to this project.
@@ -436,31 +440,9 @@ function WorkspacePage(props: CenterProps & { projectId: string; sessionInProjec
     window.addEventListener(DV_TIMELINE_FOCUS_EVENT, focus)
     return () => { window.removeEventListener(DV_TIMELINE_FOCUS_EVENT, focus) }
   }, [projectId])
-  // 插入片段 appends the asset to the timeline selected in the timeline editor, else to the project's first timeline;
-  // a project without timelines gets timeline `t1` holding the clip.
-  const insertClip = (assetId: string): void => {
-    const timelines = state.value?.components.timeline.timelines ?? []
-    const timeline = timelines.find(item => item.id === getTimelineOf(projectId)) ?? timelines[0]
-    const at = (timeline?.clips.length ?? 0) + 1
-    const call = timeline === undefined
-      ? { operation: 'timeline.create', params: { timeline: 't1', assets: [assetId] }, intent: pickText('新建时间线', 'Create timeline') }
-      : {
-        operation: 'timeline.clip_insert', params: { timeline: timeline.id, at, asset: assetId },
-        intent: pickText(`在位置 ${String(at)} 插入片段`, `Insert clip at position ${String(at)}`),
-      }
-    if (timeline === undefined) publishCurrentTimeline(projectId, 't1')
-    void client.runOperation({ project: projectId, ...call, surface: 'timeline', ...session === null ? {} : { session } })
-      .then(() => { state.reload() }, (error: unknown) => { console.warn('ui-shell: insert failed', error) })
-  }
-  const insertRef = useRef(insertClip)
-  insertRef.current = insertClip
   useEffect(() => {
-    // 插入片段 from the 素材库 panel: insert, then show the timeline so the clip is visible.
-    const insert = (event: Event): void => {
-      const { assetId } = (event as CustomEvent<DvWorkspaceEventMap['dv:timeline-insert']>).detail
-      insertRef.current(assetId)
-      setShell({ view: 'timeline' })
-    }
+    // 插入片段 from the 素材库 panel shows the timeline view, whose editor inserts the clip (`@dv/ui-timeline`).
+    const insert = (): void => { setShell({ view: 'timeline' }) }
     window.addEventListener(DV_TIMELINE_INSERT_EVENT, insert)
     return () => { window.removeEventListener(DV_TIMELINE_INSERT_EVENT, insert) }
   }, [])
@@ -486,12 +468,12 @@ function WorkspacePage(props: CenterProps & { projectId: string; sessionInProjec
           />
         </div>
         <div className={css.toggle} role="tablist" aria-label={t('视图', 'View')}>
-          {(['canvas', 'timeline'] as const).map(id => (
+          {views.map(tab => (
             <button
-              key={id} type="button" role="tab" className={css.toggleItem} aria-selected={view === id}
-              data-active={view === id ? '' : undefined}
-              onClick={() => { setShell({ view: id }) }}
-            >{id === 'canvas' ? t('画布', 'Canvas') : t('时间线', 'Timeline')}</button>
+              key={tab.id} type="button" role="tab" className={css.toggleItem} aria-selected={shown === tab.id}
+              data-active={shown === tab.id ? '' : undefined}
+              onClick={() => { setShell({ view: tab.id }) }}
+            >{tab.label}</button>
           ))}
         </div>
         <div className={css.barEnd}>
@@ -505,9 +487,7 @@ function WorkspacePage(props: CenterProps & { projectId: string; sessionInProjec
         </div>
       </header>
       <div className={css.viewArea}>
-        {view === 'canvas'
-          ? <CanvasView projectId={projectId} client={client} session={session} />
-          : <TimelineView projectId={projectId} client={client} session={session} />}
+        {shown !== undefined && props.renderSlot('dv.center.view', { projectId, session }, { only: shown })}
       </div>
     </div>
   )

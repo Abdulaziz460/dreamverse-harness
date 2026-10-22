@@ -24,7 +24,10 @@ import type { AssetStore, ProjectId, ProjectRecord, ProjectState, RecordId, Reco
 export interface ProjToolDeps {
   /** The registered asset store; throws when none is registered. */
   assets(): AssetStore
-  /** The `agentSummary` fields of every reducer that defines it, in component key order. */
+  /**
+   * The `agentSummary` fields of every reducer that defines it: Project's `proj` slice first, then the other components
+   * in the alphabetical order of their keys.
+   */
   agentSummaries(state: ProjectState): Array<Record<string, JsonValue>>
   /** The agent turn a tool call belongs to, or null outside any turn. */
   turnOf(exec: Pick<ToolRunContext, 'agent'>): TurnId | null
@@ -139,7 +142,7 @@ export function projTools(project: DvProject, deps: ProjToolDeps): ToolDefinitio
     defineTool({
       name: 'dv_proj_create',
       description: 'Start a video project and make it this conversation\'s project, only when the conversation has no project yet. '
-        + 'Then import references, create characters, propose a plan, and render.',
+        + 'Then import references and build the video with the other DreamVerse tools.',
       parameters: { title: { type: 'string', required: true } },
       output: writeOutput,
       execute: async (args, exec) => {
@@ -167,7 +170,7 @@ export function projTools(project: DvProject, deps: ProjToolDeps): ToolDefinitio
     }),
     defineTool({
       name: 'dv_proj_state',
-      description: 'Read the project: characters, locations and styles with their versions, the timelines, plans, stale records, '
+      description: 'Read the project: the items of each component with their IDs and versions, stale records, '
         + 'and recent records.',
       parameters: projectParam,
       output: stateOutput,
@@ -180,7 +183,7 @@ export function projTools(project: DvProject, deps: ProjToolDeps): ToolDefinitio
       parameters: {
         ...projectParam,
         limit: { type: 'integer', description: `At most this many records; default ${HISTORY_LIMIT}.` },
-        operation: { type: 'string', description: 'Only records of this operation, such as plan.create.' },
+        operation: { type: 'string', description: 'Only records of this operation, such as proj.create.' },
       },
       output: stateOutput,
       execute: (args, exec) => {

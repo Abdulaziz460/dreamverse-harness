@@ -4,7 +4,6 @@
  *
  * @module @dv/ui-kit/timeline
  */
-import type { Timeline } from './types.ts'
 
 /** The length assumed for a clip whose asset reports no duration. */
 export const FALLBACK_CLIP_SECONDS = 5
@@ -15,7 +14,7 @@ export const FALLBACK_CLIP_SECONDS = 5
  * @param numbered - the localized default name for number n, such as 时间线 {n}.
  * @returns the shown name.
  */
-export function timelineName(timeline: Pick<Timeline, 'id' | 'name'>, numbered: (n: number) => string): string {
+export function timelineName(timeline: { id: string; name: string }, numbered: (n: number) => string): string {
   if (timeline.name !== '') return timeline.name
   const match = /^t(\d+)$/.exec(timeline.id)
   return match === null ? timeline.id : numbered(Number(match[1]))

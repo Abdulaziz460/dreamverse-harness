@@ -39,7 +39,7 @@ kind: "package-reference"
 | `bufferBytes` | 64 MiB | 一个进行中的片段为镜头中途订阅的浏览器保留的最多字节数 |
 | `pingMs` | 20000 | 服务器 ping 的间隔，防止空闲代理关闭 socket |
 
-`@dv/shot-render` 在每次渲染时用 `ctx.get` 查找 `vhStream` 服务，服务存在时在后端视频流开始时调用 `openSegment(project, record, {mime, segmentIdx})`。记录 ID 成为浏览器看到的 `stream_id`，渲染的 `shot` 参数（没有时为 0）成为 `segment_idx`。`openSegment` 返回的写入端有 `chunk(bytes)`、`complete()` 和 `fail(error)`。`subscribe(project, listener)` 在 Host 进程内收到相同的帧，`openSockets` 统计打开的浏览器 socket 数。 <!-- names:allow (the live stream service keeps its name) -->
+`@dv/shot-render` 在每次渲染时用 `ctx.get` 查找 `vhStream` 服务，服务存在时在后端视频流开始时调用 `openSegment(project, record, {mime, segmentIdx})`。记录 ID 成为浏览器看到的 `stream_id`，渲染的 `started_by.slot`（没有时为 0）成为 `segment_idx`。`openSegment` 返回的写入端有 `chunk(bytes)`、`complete()` 和 `fail(error)`。`subscribe(project, listener)` 在 Host 进程内收到相同的帧，`openSockets` 统计打开的浏览器 socket 数。 <!-- names:allow (the live stream service keeps its name) -->
 
 `/vh/ws` 路由的工作方式如下：
 

@@ -4,7 +4,7 @@
 // shown, nothing is left over) and, where the story is about what the agent sees, the request the model received.
 import type { Browser, BrowserContext, Locator, Page } from 'playwright'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
-import type { ProjectRecord, WireState } from '@dv/ui-kit/types.ts'
+import type { ProjectRecord, WireState } from '../wire-state.ts'
 import { bootHarness, playwright, waitFor, type BootedHarness } from '../harness.ts'
 import {
   assetIdOf, startScriptedModel, textOf, type ChatRequest, type ScriptedModel, type ScriptedRule, type ScriptedStep, type TurnView,
@@ -78,7 +78,7 @@ const RULES: ScriptedRule[] = [
     steps: [
       { calls: [{ name: 'dv_asset_import', args: { reason: '人物参考图', base64: PNG_BASE64, mime: 'image/png', name: 'hero.png' } }] },
       view => ({ calls: [{
-        name: 'dv_bible_character_create',
+        name: 'dv_character_create',
         args: { reason: '登记人物', character: 'c1', name: '小橘', inputs: { reference: [assetIdOf(view.toolResults[0], 'asset')] } },
       }] }),
     ],
@@ -90,7 +90,8 @@ const RULES: ScriptedRule[] = [
       { calls: [{ name: 'dv_asset_import', args: { reason: '产品图', base64: PNG_BASE64, mime: 'image/png', name: 'product.png' } }] },
       view => planCall(view, '产品广告'),
       // The story's project is new, so its first plan is p1.
-      { calls: [{ name: 'dv_plan_approve', args: { reason: '用户同意', plan: 'p1', user_approved: true } }] },
+      { calls: [{ name: 'dv_story_preview', args: { reason: '预览计划', plan: 'p1' } }] },
+      { calls: [{ name: 'dv_story_approve', args: { reason: '用户同意', plan: 'p1', user_approved: true } }] },
       { calls: [{ name: 'dv_proj_wait', args: {} }] },
     ],
     endText: '两个镜头已渲染。',
@@ -101,14 +102,16 @@ const RULES: ScriptedRule[] = [
       { calls: [{ name: 'dv_asset_import', args: { reason: '产品图', base64: PNG_BASE64, mime: 'image/png', name: 'ask-first.png' } }] },
       view => planCall(view, '先问再渲染'),
       // Without user_approved, Project refuses the call and tells the agent to ask in the conversation.
-      { calls: [{ name: 'dv_plan_approve', args: { reason: '按计划渲染', plan: 'p1' } }] },
+      { calls: [{ name: 'dv_story_preview', args: { reason: '预览计划', plan: 'p1' } }] },
+      { calls: [{ name: 'dv_story_approve', args: { reason: '按计划渲染', plan: 'p1' } }] },
       { text: '计划有两个镜头。**现在渲染这两个镜头吗？**' },
     ],
   },
   {
     match: '可以渲染',
     steps: [
-      { calls: [{ name: 'dv_plan_approve', args: { reason: '用户同意', plan: 'p1', user_approved: true } }] },
+      { calls: [{ name: 'dv_story_preview', args: { reason: '预览计划', plan: 'p1' } }] },
+      { calls: [{ name: 'dv_story_approve', args: { reason: '用户同意', plan: 'p1', user_approved: true } }] },
       { calls: [{ name: 'dv_proj_wait', args: {} }] },
     ],
     endText: '两个镜头已渲染。',
@@ -330,7 +333,7 @@ describe('chat with the agent', () => {
     const state = await harness.api.get(`/api/dv/state?project=${projectId}`) as WireState
     const agentRecords = state.components.proj.records.filter(record => record.actor === 'agent' && record.operation !== 'proj.create')
     expect(agentRecords.map(record => record.operation))
-      .toEqual(['asset.import', 'bible.character_create', 'asset.import', 'shot.render'])
+      .toEqual(['asset.import', 'character.create', 'asset.import', 'shot.render'])
     expect(new Set(agentRecords.map(record => record.turn)).size).toBe(2)
     // One line: each record follows the record written just before it.
     const records = state.components.proj.records
@@ -421,7 +424,7 @@ describe('chat with the agent', () => {
     await send(page, '做两个镜头的广告')
     await waitChat(page, '两个镜头已渲染', 60_000)
     const workspace = page.locator('[data-dv-workspace]')
-    await workspace.locator('[data-node-kind="plan"]').first().waitFor({ timeout: 15_000 })
+    await workspace.locator('[data-node-type="plan"]').first().waitFor({ timeout: 15_000 })
     expect(await workspace.getByRole('button', { name: '接受', exact: true }).count()).toBe(0)
     await send(page, '只回复八')
     await waitChat(page, '收到八')
@@ -454,7 +457,7 @@ describe('chat with the agent', () => {
     await send(page, '加人物')
     await waitChat(page, '人物小橘已登记', 30_000)
     const after = await stateOf()
-    expect(after.components.proj.records.filter(record => record.operation === 'bible.character_create')).toHaveLength(1)
+    expect(after.components.proj.records.filter(record => record.operation === 'character.create')).toHaveLength(1)
     expect(after.components.proj.records.some(record => record.id === last)).toBe(false)
     expect((await history()).map(entry => entry.id)).not.toContain(last)
     await send(page, '只回复九')
@@ -470,23 +473,23 @@ describe('chat with the agent', () => {
     await waitChat(page, '现在渲染这两个镜头吗')
     // Project refused the call without user_approved and told the agent to ask in the conversation.
     const answered = requestFor('先给我看计划')?.messages.filter(message => message.role === 'tool').map(message => textOf(message.content)) ?? []
-    const refusal = answered.find(text => text.includes('dv_plan_approve needs the user\'s agreement'))
+    const refusal = answered.find(text => text.includes('dv_story_approve needs the user\'s agreement'))
     expect(refusal).toContain('user_approved: true')
     // The agent's question is bold, and the refused step is named for creators, never by its wire tool name.
     expect(await chat(page).locator('strong', { hasText: '现在渲染这两个镜头吗？' }).count()).toBeGreaterThan(0)
-    const approveRows = chat(page).locator('[data-tool="dv_plan_approve"]')
+    const approveRows = chat(page).locator('[data-tool="dv_story_approve"]')
     await waitFor(async () => (await approveRows.allTextContents()).some(text => text.includes('批准分镜计划')), 'the 批准分镜计划 step', 10_000)
-    expect(await chat(page).getByText('dv_plan_approve').count()).toBe(0)
+    expect(await chat(page).getByText('dv_story_approve').count()).toBe(0)
     // Nothing renders before the user agrees: the plan waits for approval.
     const currentState = async (): Promise<WireState> => await harness.api.get(`/api/dv/state?project=${projectId}`) as WireState
     const waiting = await currentState()
-    expect(waiting.components.plan.plans['p1']?.[0]?.approved_by).toBeNull()
+    expect(waiting.components).not.toHaveProperty(['story', 'approvals', 'p1'])
     expect(waiting.components.proj.records.filter(record => record.operation === 'shot.render')).toHaveLength(0)
     // The canvas plan editor lists each shot with its reference image, the image in place of the bare Picture 1, and its model and task.
     const editor = page.locator('[data-testid="dv-canvas-node-editor"]')
     await waitFor(async () => {
       // The canvas fits its view after the nodes load; a click during that move can miss, so click until it opens.
-      await page.locator('[data-dv-workspace] [data-node-kind="plan"]').first().click({ timeout: 10_000 })
+      await page.locator('[data-dv-workspace] [data-node-type="plan"]').first().click({ timeout: 10_000 })
       return await editor.isVisible()
     }, 'the plan editor', 30_000)
     expect(await editor.getByText('待批准').count()).toBe(1)
@@ -505,7 +508,7 @@ describe('chat with the agent', () => {
     await send(page, '可以渲染')
     await waitChat(page, '两个镜头已渲染', 60_000)
     const rendered = (await currentState()).components.proj.records.filter(record => record.operation === 'shot.render')
-    expect(rendered.map(record => [record.params['shot'], record.status])).toEqual([[1, 'done'], [2, 'done']])
+    expect(rendered.map(record => [record.started_by?.slot, record.status])).toEqual([[1, 'done'], [2, 'done']])
     expect(errors).toEqual([])
   })
 
@@ -534,7 +537,7 @@ describe('chat with the agent', () => {
     const imageId = state?.assets.find(asset => asset.mime.startsWith('image/'))?.id
     await expect.poll(async () => (await harness.api.get(`/api/dv/state?project=${projectId}`) as WireState).components.asset.placed, { timeout: 10_000 })
       .toEqual([imageId])
-    await page.locator('[data-dv-workspace] [data-node-kind="asset"]').first().waitFor({ timeout: 15_000 })
+    await page.locator('[data-dv-workspace] [data-node-type="asset"]').first().waitFor({ timeout: 15_000 })
     expect(errors).toEqual([])
   })
 
@@ -596,7 +599,7 @@ describe('chat with the agent', () => {
     const plan = await runOperation(projectId, 'plan.create', {
       title: '改片段', references: [assetId], shots: [{ prompt: '镜头甲', duration_sec: 1, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3' }],
     })
-    await runOperation(projectId, 'plan.approve', { plan: plan.report?.['plan'] })
+    await runOperation(projectId, 'story.approve', { plan: plan.report?.['plan'] })
     const done = await waitFor(async () => {
       const state = await harness.api.get(`/api/dv/state?project=${projectId}`) as WireState
       return state.components.proj.records.find(record => record.operation === 'shot.render' && record.status === 'done')
@@ -609,7 +612,7 @@ describe('chat with the agent', () => {
     const editor = page.locator('[data-testid="dv-canvas-node-editor"]')
     await waitFor(async () => {
       // The canvas fits its view after the nodes load; a click during that move can miss, so click until it opens.
-      await page.locator('[data-dv-workspace] [data-node-kind="take"]').first().click({ timeout: 10_000 })
+      await page.locator('[data-dv-workspace] [data-node-type="take"]').first().click({ timeout: 10_000 })
       return await editor.isVisible()
     }, 'the take editor', 30_000)
     await editor.getByRole('button', { name: '问 agent', exact: true }).click()
@@ -631,14 +634,14 @@ describe('chat with the agent', () => {
     await send(page, '加人物')
     await waitChat(page, '人物小橘已登记')
     const first = locationOf(page).session
-    await page.locator('[data-dv-workspace] [data-node-kind="bible"]').first().waitFor({ timeout: 15_000 })
+    await page.locator('[data-dv-workspace] [data-node-type="character"]').first().waitFor({ timeout: 15_000 })
     // The character is in the project's current state, which every chat session of the project reads.
     // 新建会话 in the session switcher starts a second chat session in the same project.
     await pickFromSwitcher(page, '新建会话')
     await waitFor(() => Promise.resolve(locationOf(page).session !== first && locationOf(page).session !== null), 'a second session', 15_000)
     expect(locationOf(page).project).toBe(projectId)
     expect(await userMessages(page)).toEqual([])
-    expect(await page.locator('[data-dv-workspace] [data-node-kind="bible"]').count()).toBeGreaterThan(0)
+    expect(await page.locator('[data-dv-workspace] [data-node-type="character"]').count()).toBeGreaterThan(0)
     await send(page, '只回复十三')
     await waitChat(page, '收到十三')
     expect(promptOf(requestFor('只回复十三') as ChatRequest)).toContain('小橘')

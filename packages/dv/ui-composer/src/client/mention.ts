@@ -1,9 +1,8 @@
 /**
- * The `@` source that lists the project items of the project the shell has open: clips by timeline name and position
- * (`时间线 1 · 片段 2`, or `Timeline 1 · Clip 2` in English, for an unnamed timeline), characters, locations, styles,
- * and assets. A pick inserts a reference chip whose text is `@[<label>](dv:<kind>/<id>)`; the host plugin
- * `@dv/chat-references` expands that address into record and asset IDs for the model, and puts the assets of the
- * `dv:asset/<id>` chips of a sent message on the canvas.
+ * The `@` source that lists the project items of the project the shell has open: the items of the mention kinds that
+ * plugin UI halves register in `dvMentions`, and assets. A pick inserts a reference chip whose text is
+ * `@[<label>](dv:<kind>/<id>)`; the host plugin `@dv/chat-references` expands that address into record and asset IDs
+ * for the model, and puts the assets of the `dv:asset/<id>` chips of a sent message on the canvas.
  *
  * @module @dv/ui-composer/mention
  */
@@ -11,10 +10,10 @@ import { createElement, type ComponentType } from 'react'
 import type { InputTriggerCandidate, InputTriggerSource } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
 import type { IconProps } from '@deepseek-ai/dsh-client-ui-primitives'
 import { assetUrl, DvClient } from '@dv/ui-kit/api.ts'
-import type { Character, WireState } from '@dv/ui-kit/types.ts'
+import type { DvMentions, MentionKind } from '@dv/ui-kit/registries.ts'
+import type { WireState } from '@dv/ui-kit/types.ts'
 import { getCurrentProject } from '@dv/ui-kit/current-project.ts'
 import { pickText } from '@dv/ui-kit/locale.ts'
-import { timelineName } from '@dv/ui-kit/timeline.ts'
 
 /** The source name; reference chips carry it so their codec serializes them. */
 export const MENTION_SOURCE = 'dv-project'
@@ -48,71 +47,37 @@ interface Item {
 }
 
 /**
- * The story bible items of one kind: the latest version of each character, location or style.
- * @param kind - the URI kind.
- * @param versions - the versions by ID, oldest first.
- * @param section - the group name.
- * @returns the items.
- */
-function bibleItems(kind: 'character' | 'location' | 'style', versions: Record<string, Character[]>, section: string): Item[] {
-  return Object.entries(versions).flatMap(([id, list]): Item[] => {
-    const latest = list[list.length - 1]
-    if (latest === undefined) return []
-    const image = latest.references[0]
-    return [{
-      uri: `dv:${kind}/${encodeURIComponent(id)}`, label: latest.name || id, section,
-      description: latest.description.slice(0, 40), ...image === undefined ? {} : { icon: thumbnail(assetUrl(image), false) },
-    }]
-  })
-}
-
-/**
- * The project items of a project state: every clip of every timeline, the characters, locations and styles, and the
- * assets. Labels and group names follow the interface language at call time, so the label a pick inserts is in that
- * language.
+ * The project items of a project state: the items of each mention kind in `order` (registration order on a tie) under
+ * the kind's section, and the assets. Labels and group names follow the interface language at call time, so the label a
+ * pick inserts is in that language.
  * @param state - the project's current state.
+ * @param kinds - the registered mention kinds.
  * @returns the items in display order.
  */
-export function projectItems(state: WireState): Item[] {
+export function projectItems(state: WireState, kinds: readonly MentionKind[]): Item[] {
   const assetsById = new Map(state.assets.map(asset => [asset.id, asset]))
-  const proj = state.components.proj
-  const records = new Map(proj.records.map(record => [record.id, record]))
-  const clips = state.components.timeline.timelines.flatMap(timeline => timeline.clips.map((clip, position): Item => {
-    // A placeholder clip (no asset yet) takes its prompt from the render it waits for and shows no thumbnail.
-    const producer = records.get(clip.asset === null ? clip.source?.record ?? '' : proj.created_by[clip.asset] ?? '')
-    const frame = producer?.outputs.find(id => assetsById.get(id)?.mime.startsWith('image/') === true)
-    const name = timelineName(timeline, n => pickText(`时间线 ${String(n)}`, `Timeline ${String(n)}`))
-    const prompt = typeof producer?.params['prompt'] === 'string' ? producer.params['prompt'] : ''
-    return {
-      uri: `dv:clip/${encodeURIComponent(clip.id)}`,
-      label: pickText(`${name} · 片段 ${String(position + 1)}`, `${name} · Clip ${String(position + 1)}`),
-      section: pickText('片段', 'Clips'),
-      ...prompt === '' ? {} : { description: prompt.slice(0, 40) },
-      ...frame !== undefined
-        ? { icon: thumbnail(assetUrl(frame), false) }
-        : clip.asset === null ? {} : { icon: thumbnail(assetUrl(clip.asset), true) },
-    }
-  }))
-  const bible = state.components.bible
-  const settings = pickText('场景和风格', 'Locations and styles')
-  const characters = [
-    ...bibleItems('character', bible.characters, pickText('角色', 'Characters')),
-    ...bibleItems('location', bible.locations, settings),
-    ...bibleItems('style', bible.styles, settings),
-  ]
+  // A thumb is an asset ID: a video shows its first frame, anything else shows as an image.
+  const mentioned = [...kinds].sort((a, b) => a.order - b.order).flatMap((kind) => {
+    const section = kind.section()
+    return kind.items(state).map(({ thumb, ...item }): Item => ({
+      ...item, section,
+      ...thumb === undefined ? {} : { icon: thumbnail(assetUrl(thumb), assetsById.get(thumb)?.mime.startsWith('video/') === true) },
+    }))
+  })
   const assets = state.assets.filter(asset => asset.mime.startsWith('image/') || asset.mime.startsWith('video/')).slice(-40).reverse()
     .map((asset): Item => ({
       uri: `dv:asset/${encodeURIComponent(asset.id)}`, label: asset.name, section: pickText('素材', 'Assets'),
       icon: thumbnail(assetUrl(asset.id), asset.mime.startsWith('video/')),
     }))
-  return [...clips, ...characters, ...assets]
+  return [...mentioned, ...assets]
 }
 
 /**
  * The `@` source over the `/api/dv` routes.
+ * @param mentions - the mention kinds that plugin UI halves register.
  * @returns the source.
  */
-export function projectMentionSource(): InputTriggerSource {
+export function projectMentionSource(mentions: DvMentions): InputTriggerSource {
   const client = new DvClient()
   return {
     trigger: '@',
@@ -127,7 +92,7 @@ export function projectMentionSource(): InputTriggerSource {
       // The menu shows a candidate name that differs from its label as a trailing alias, so the name is the label
       // (numbered when labels repeat) and the `dv:` address travels in `value`.
       const seen = new Map<string, number>()
-      return projectItems(state)
+      return projectItems(state, mentions.kinds.list())
         .filter(item => needle === '' || item.label.toLowerCase().includes(needle) || (item.description ?? '').toLowerCase().includes(needle))
         .map((item): InputTriggerCandidate => {
           const count = (seen.get(item.label) ?? 0) + 1

@@ -1,11 +1,12 @@
 /**
  * Browser half of the DreamVerse composer additions:
- * - an `@` source listing the bound project's clips, characters, and assets;
+ * - `dvMentions`, the registry of the mention kinds that plugin UI halves add to the `@` source;
+ * - an `@` source listing the bound project's clips, the items of every registered mention kind, and assets;
  * - a 引用 row in the composer's ＋ menu that opens that `@` list at the end of the draft;
  * - an invisible `conversation.input.left` entry that makes each session's composer a `dv:compose` target;
  * - thumbnail cards for the project's video and image assets in settled chat Markdown (`chat-media.ts`);
- * - the `dv_shot_render` tool card, which shows the model and generation task, the prompt, status, and rendered video;
- * - creator-facing names for the other `dv_*` tools in their chat rows and in the running group title;
+ * - creator-facing names for the `dv_*` tools and for every operation of `/api/dv/operations` in their chat rows
+ *   and in the running group title;
  * - 在历史中查看 on every settled row whose tool is not read-only, including failed calls, which dispatches
  *   `dv:history-focus`;
  * - an empty `conversation.input.permission` entry that hides DSH's file-permission chip;
@@ -25,12 +26,13 @@ import { createElement, useEffect, type ComponentType } from 'react'
 import { DV_COMPOSE_EVENT, type DvComposeDetail } from '@dv/ui-kit/compose.ts'
 import { getCurrentProject } from '@dv/ui-kit/current-project.ts'
 import { pickText } from '@dv/ui-kit/locale.ts'
+import { createRegistry, type MentionKind } from '@dv/ui-kit/registries.ts'
 import { registerChatMedia } from './chat-media.ts'
 import { deliverCompose, mountComposer } from './compose.ts'
 import { MENTION_SOURCE, projectMentionSource } from './mention.ts'
 import { DV_TOOL_LABELS } from '@dv/ui-kit/tool-labels.ts'
-import { addToolNames } from './tool-labels.ts'
-import { RenderCard, ToolLabelRow } from './views.tsx'
+import { registerOperationRows } from './tool-labels.ts'
+import { ToolLabelRow } from './views.tsx'
 // The DreamVerse look of the DSH composer card in the 对话 tab; the bundle injects the sheet when the plugin loads.
 import './composer.css'
 
@@ -39,9 +41,6 @@ export { uriOf } from './compose.ts'
 
 /** The branded session ID the session-scoped DSH UI slots receive. */
 type SessionId = ToolCallViewProps['sessionId']
-
-/** The agent tool of the Shot render operation `shot.render`. */
-const RENDER_TOOL = 'dv_shot_render'
 
 /** Required services: the trigger registry, the sessions, the slots, and the right sidebar that holds 对话. */
 export const inject = ['inputTriggers', 'sessions', 'slots', 'sidebarRight']
@@ -62,11 +61,14 @@ interface CommandMenu {
 }
 
 /**
- * Register the composer additions.
+ * Provide `dvMentions` and register the composer additions.
  * @param ctx - client root context.
  */
 export function apply(ctx: ClientContext): void {
-  ctx.effect(() => ctx.inputTriggers.registerSource(projectMentionSource()), 'dv-composer: @ source')
+  // At apply's top level, never inside an effect: other plugins register into the registry from their own fibers.
+  const mentions = { kinds: createRegistry<MentionKind>(kind => [kind.id]) }
+  ctx.reflect.provide('dvMentions', mentions)
+  ctx.effect(() => ctx.inputTriggers.registerSource(projectMentionSource(mentions)), 'dv-composer: @ source')
   registerChatMedia(ctx)
 
   /** The input facade of one session, while its scope and conversation service exist. */
@@ -94,7 +96,7 @@ export function apply(ctx: ClientContext): void {
     scope.effect(() => commands.register({
       name: 'reference',
       label: () => pickText('引用', 'Reference'),
-      description: () => pickText('项目里的片段、角色、场景、风格或素材', 'A clip, character, location, style, or asset of the project'),
+      description: () => pickText('项目里的条目或素材', 'An item or asset of the project'),
       icon: IconLinkOutlineRegular,
       available: () => getCurrentProject() !== null,
       // The ＋ menu closes itself after running the action, so the `@` list opens on the next task.
@@ -115,15 +117,8 @@ export function apply(ctx: ClientContext): void {
   // hidden: an empty entry at a lower priority shadows the permission picker.
   ctx.slots.inject('conversation.input.permission', () => ctx.slots.register({ name: 'conversation.input.permission', priority: -1 }, () => null))
 
-  function RenderRow(props: ToolCallViewProps) {
-    const label = DV_TOOL_LABELS[props.toolName] ?? [props.toolName, props.toolName]
-    return createElement(RenderCard, {
-      toolName: props.toolName, label, sessionId: props.sessionId, callId: props.callId, phase: props.phase, block: props.block,
-    })
-  }
-  ctx.slots.inject('tool.call.toolview', () => ctx.slots.register({ name: 'tool.call.toolview', key: RENDER_TOOL }, RenderRow))
-
-  // Every other labelled tool shows its creator-facing name in its chat row and in the running group title.
+  // Every labelled tool shows its creator-facing name in its chat row and in the running group title. The row sits at
+  // priority 0.5: a plugin's own row at the default priority 0 wins over it, and it wins over the operation rows at 1.
   function LabelRow(props: ToolCallViewProps) {
     const label = DV_TOOL_LABELS[props.toolName] ?? [props.toolName, props.toolName]
     return createElement(ToolLabelRow, {
@@ -131,18 +126,10 @@ export function apply(ctx: ClientContext): void {
     })
   }
   for (const name of Object.keys(DV_TOOL_LABELS)) {
-    if (name === RENDER_TOOL) continue
-    ctx.slots.inject('tool.call.toolview', () => ctx.slots.register({ name: 'tool.call.toolview', key: name }, LabelRow))
+    ctx.slots.inject('tool.call.toolview', () => ctx.slots.register({ name: 'tool.call.toolview', key: name, priority: 0.5 }, LabelRow))
   }
-  ctx.effect(() => {
-    const locale: unknown = ctx.get('locale')
-    addToolNames(locale)
-    // Dictionaries registered later get the names when the runtime announces them.
-    const subscribe: unknown = locale === undefined ? undefined : Reflect.get(locale as object, 'subscribe')
-    if (typeof subscribe !== 'function') return () => {}
-    const unsubscribe: unknown = Reflect.apply(subscribe, locale, [() => { addToolNames(locale) }])
-    return typeof unsubscribe === 'function' ? () => { Reflect.apply(unsubscribe, undefined, []) } : () => {}
-  }, 'dv-composer: tool names in the chat')
+  // Every operation of /api/dv/operations gets its row and its name in the running group title.
+  registerOperationRows(ctx)
 
   ctx.effect(() => {
     const onCompose = (event: Event): void => {

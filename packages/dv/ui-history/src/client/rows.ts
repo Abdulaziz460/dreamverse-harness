@@ -1,119 +1,76 @@
 /**
- * Pure readings behind the History panel: the action rows of history entries (a plan approval folds the renders it
- * scheduled), the label of an action with its subject, the thumbnail of a record, relative times, and where selecting a
- * record focuses the center. Nothing here touches the DOM or the network, so the unit tests cover it directly.
+ * Pure readings behind the History panel: the action rows of history entries (a record folds the records it started),
+ * the label of an action with its subject, the thumbnail of a record, relative times, and where selecting a record
+ * focuses the center. Nothing here touches the DOM or the network, so the unit tests cover it directly.
  *
  * @module @dv/ui-history/rows
  */
-import { DV_TOOL_LABELS } from '@dv/ui-kit/tool-labels.ts'
-import type { Asset, HistoryEntry, ProjectRecord } from '@dv/ui-kit/types.ts'
-import type { DvWorkspaceEventMap } from '@dv/ui-kit/workspace-events.ts'
+import { chainOf } from '@dv/ui-kit/chain.ts'
+import type { CenterFocus, HistoryRow } from '@dv/ui-kit/registries.ts'
+import { operationLabel } from '@dv/ui-kit/tool-labels.ts'
+import type { Asset, HistoryEntry, ProjectRecord, WireOperation } from '@dv/ui-kit/types.ts'
 
-/** One row of the panel: an operation entry and, for a plan approval, the entries of the records it scheduled. */
+/** One row of the panel: an operation entry and the entries of the loaded records it started. */
 export interface ActionRow {
   entry: HistoryEntry
-  /** The loaded records the approval scheduled, in `report.scheduled` order; empty for other records. */
+  /** The loaded records whose `started_by.record` is this row's record, in log order; empty for most records. */
   children: HistoryEntry[]
 }
 
-/** @returns the IDs a finished `plan.approve` record scheduled (`report.scheduled`). */
-function scheduledBy(record: ProjectRecord): string[] {
-  const scheduled = record.operation === 'plan.approve' ? record.report?.['scheduled'] : undefined
-  return Array.isArray(scheduled) ? scheduled.filter((id): id is string => typeof id === 'string') : []
-}
-
 /**
- * Turn history entries into panel rows: one row per step, newest first. The records a loaded
- * plan approval scheduled fold under the approval's row instead of standing alone.
+ * Turn history entries into panel rows: one row per step, newest first. A loaded record whose `started_by.record` is the
+ * record of a row folds under that row instead of standing alone, in log order (a plan approval's shot renders in shot
+ * order, then its timeline record).
  * @param entries - history entries, newest first.
  * @returns the rows, newest first.
  */
 export function actionRows(entries: readonly HistoryEntry[]): ActionRow[] {
-  const loaded = new Map(entries.map(entry => [entry.record.id, entry]))
-  const folded = new Map<string, string>()
-  for (const { record } of entries) {
-    for (const id of scheduledBy(record)) if (loaded.has(id)) folded.set(id, record.id)
+  const rows = new Map<string, ActionRow>()
+  // Oldest first: the runner appends a starter before it runs the records it starts, so the starter's row exists first.
+  for (const entry of [...entries].reverse()) {
+    const starter = rows.get(entry.record.started_by?.record ?? '')
+    if (starter === undefined) rows.set(entry.record.id, { entry, children: [] })
+    else starter.children.push(entry)
   }
-  const rows: ActionRow[] = []
-  for (const entry of entries) {
-    if (folded.has(entry.record.id)) continue
-    const row: ActionRow = { entry, children: [] }
-    rows.push(row)
-  }
-  // Folded records keep the approval's `report.scheduled` order: the shot renders in shot order, then the timeline.
-  for (const row of rows) {
-    for (const id of scheduledBy(row.entry.record)) {
-      const child = folded.get(id) === row.entry.record.id ? loaded.get(id) : undefined
-      if (child !== undefined) row.children.push(child)
-    }
-  }
-  return rows
+  return [...rows.values()].reverse()
+}
+
+/** @returns the registered row that matches the record's operation: an exact name first, then `'<key>.'`. */
+function matchingRow(record: ProjectRecord, rows: readonly HistoryRow[]): HistoryRow | undefined {
+  const operation = record.operation ?? ''
+  return rows.find(item => item.match === operation)
+    ?? rows.find(item => item.match.endsWith('.') && operation.startsWith(item.match))
+}
+
+/** What an action label reads besides its record. */
+export interface LabelContext {
+  /** The operation declarations of `/api/dv/operations`. */
+  operations: readonly WireOperation[]
+  /** The registered rows of `dvHistory.rows`. */
+  rows: readonly HistoryRow[]
+  /** The loaded records by ID, for the chain of a retake. */
+  records: ReadonlyMap<string, ProjectRecord>
 }
 
 /**
- * The agent tool name of an operation: `dv_` and the operation name with `.` replaced by `_`.
- * @param operation - the operation name, such as `timeline.clip_move`.
- * @returns the tool name, such as `dv_timeline_clip_move`.
- */
-function toolNameOf(operation: string): string {
-  return `dv_${operation.replaceAll('.', '_')}`
-}
-
-/**
- * The label a row shows for its operation: the tool label of `DV_TOOL_LABELS`, else the operation name.
- * @param operation - the operation name, or null when the record names none.
- * @returns the Chinese and English label.
- */
-export function operationLabel(operation: string | null): readonly [string, string] {
-  if (operation === null) return ['', '']
-  return DV_TOOL_LABELS[toolNameOf(operation)] ?? [operation, operation]
-}
-
-/** @returns the text of a record field, or null. */
-function field(fields: Record<string, unknown> | undefined, key: string): string | null {
-  const value = fields?.[key]
-  if (typeof value === 'number') return String(value)
-  return typeof value === 'string' && value !== '' ? value : null
-}
-
-/**
- * The label a row shows for its action: the tool label followed by its subject. Plans name their title or PlanId and
- * version (`report.plan`, `report.version`), a plan's shot render names its shot number (`params.shot`), and story bible
- * records name the character, location or style.
+ * The label a row shows for its action: the operation label (`operationLabel` of `@dv/ui-kit`) followed by its subject.
+ * The subject comes from the registered row that matches the operation (an exact name first, then `'<key>.'`). Else
+ * a record with a chain slot (`chainOf`) names the slot and its lane.
  * @param record - the operation record.
+ * @param context - the operations, the registered rows and the loaded records.
  * @returns the Chinese and English label.
  */
-export function actionLabel(record: ProjectRecord): readonly [string, string] {
-  const [zh, en] = operationLabel(record.operation)
-  // A PlanId (`p1`); a plan named by its record ID comes from a project made before plans had IDs and is not shown.
-  const named = field(record.report, 'plan') ?? field(record.params, 'plan')
-  const plan = named !== null && /^p\d+$/.test(named) ? named : null
-  const version = field(record.report, 'version') ?? field(record.params, 'version')
-  switch (record.operation) {
-    case 'plan.create': {
-      const title = field(record.params, 'title')
-      if (title !== null) return [`${zh}《${title}》`, `${en} “${title}”`]
-      return plan === null ? [zh, en] : [`${zh} ${plan}`, `${en} ${plan}`]
-    }
-    case 'plan.update': {
-      if (plan === null) return [zh, en]
-      return version === null ? [`${zh} ${plan}`, `${en} ${plan}`] : [`${zh} ${plan} → v${version}`, `${en} ${plan} → v${version}`]
-    }
-    case 'plan.approve': {
-      if (plan === null) return [zh, en]
-      return version === null ? [`${zh} ${plan}`, `${en} ${plan}`] : [`${zh} ${plan} v${version}`, `${en} ${plan} v${version}`]
-    }
-    case 'shot.render': {
-      const shot = field(record.params, 'shot')
-      return shot === null ? [zh, en] : [`${zh} ${shot}`, `${en} ${shot}`]
-    }
+export function actionLabel(record: ProjectRecord, context: LabelContext): readonly [string, string] {
+  const [zh, en] = operationLabel(record.operation, context.operations)
+  const row = matchingRow(record, context.rows)
+  if (row !== undefined) {
+    const subject = row.subject(record)
+    return subject === null ? [zh, en] : [`${zh}${subject[0]}`, `${en}${subject[1]}`]
   }
-  if (record.component === 'bible') {
-    const name = field(record.params, 'name') ?? field(record.params, 'character') ?? field(record.params, 'location')
-      ?? field(record.params, 'style')
-    if (name !== null) return [`${zh}「${name}」`, `${en} “${name}”`]
-  }
-  return [zh, en]
+  const chain = chainOf(record, context.records)
+  if (chain === null || chain.slot === null) return [zh, en]
+  const slot = chain.lane === undefined ? String(chain.slot) : `${String(chain.slot)} · ${chain.lane}`
+  return [`${zh} ${slot}`, `${en} ${slot}`]
 }
 
 /** The asset a row's thumbnail shows, and whether it is drawn as an image or as a video frame. */
@@ -130,7 +87,7 @@ export interface Thumbnail {
  * @param record - the record.
  * @param assets - the known assets by ID.
  * @param records - the loaded records by ID, to find the still of a video's maker.
- * @param children - the records folded under the row, in `report.scheduled` order.
+ * @param children - the records folded under the row, in log order.
  * @returns the thumbnail, or null.
  */
 export function thumbnailOf(
@@ -174,76 +131,24 @@ export function relativeTime(iso: string, now: number): readonly [string, string
   return [date, date]
 }
 
-/** @returns the text value of a param, or null. */
-function text(value: unknown): string | null {
-  return typeof value === 'string' && value !== '' ? value : null
-}
-
-/** @returns the clip IDs a finished record assigned (`report.clips`). */
-function reportedClips(record: ProjectRecord): string[] {
-  const clips = record.report?.['clips']
-  return Array.isArray(clips) ? clips.filter((clip): clip is string => typeof clip === 'string') : []
-}
-
-/**
- * The timeline each clip belongs to: the timeline of the record that assigned the clip (`timeline.create`, `update`,
- * `clip_insert` name it by `params.timeline`, a create without one makes `t1`; `clip_split` adds to the timeline of the
- * split clip).
- * @param records - the records of the current state, oldest first.
- * @returns clip ID → timeline ID.
- */
-export function clipTimelines(records: readonly ProjectRecord[]): Map<string, string> {
-  const owner = new Map<string, string>()
-  for (const record of records) {
-    const clips = reportedClips(record)
-    if (clips.length === 0) continue
-    const timeline = record.operation === 'timeline.clip_split'
-      ? owner.get(text(record.params['clip']) ?? '') ?? null
-      : text(record.params['timeline']) ?? (record.operation === 'timeline.create' ? 't1' : null)
-    if (timeline === null) continue
-    for (const clip of clips) owner.set(clip, timeline)
-  }
-  return owner
-}
-
-/**
- * The timeline a record works on: its `timeline` param, else the timeline of its `clip` param, else `t1` for a
- * `timeline.create` without a param.
- * @param record - the record.
- * @param owner - clip ID → timeline ID, from {@link clipTimelines}.
- * @returns the timeline ID, or null when the record names none.
- */
-function timelineOf(record: ProjectRecord, owner: ReadonlyMap<string, string>): string | null {
-  const named = text(record.params['timeline'])
-  if (named !== null) return named
-  const clip = text(record.params['clip'])
-  if (clip !== null) return owner.get(clip) ?? null
-  return record.operation === 'timeline.create' ? 't1' : null
-}
-
-/** Where selecting a record moves the center: a canvas node, a timeline clip, or nowhere. */
-export type CenterFocus =
-  | { event: 'dv:canvas-focus'; detail: DvWorkspaceEventMap['dv:canvas-focus'] }
-  | { event: 'dv:timeline-focus'; detail: DvWorkspaceEventMap['dv:timeline-focus'] }
-  | null
-
 /**
  * The center focus of a selected entry. Only steps at or before the current position are what the canvas and the
- * timeline show. Timeline records and timeline exports focus their timeline and clip; `proj.*` records focus nothing;
- * every other record focuses its node.
+ * timeline show. The registered row that matches the operation decides when it has a `focus`; else `proj.*` records
+ * focus nothing, and every other record focuses its node.
  * @param entry - the selected entry.
- * @param owner - clip ID → timeline ID of the current state, from {@link clipTimelines}.
+ * @param rows - the registered rows of `dvHistory.rows`.
+ * @param records - the records of the current state, oldest first.
  * @returns the focus, or null.
  */
-export function centerFocus(entry: HistoryEntry, owner: ReadonlyMap<string, string>): CenterFocus {
+export function centerFocus(
+  entry: HistoryEntry,
+  rows: readonly HistoryRow[],
+  records: readonly ProjectRecord[],
+): CenterFocus | null {
   const { record } = entry
   if (entry.place === 'after') return null
+  const row = matchingRow(record, rows)
+  if (row?.focus !== undefined) return row.focus(record, records)
   if (record.component === 'proj') return null
-  if (record.component === 'timeline') {
-    const timelineId = timelineOf(record, owner)
-    if (timelineId === null) return null
-    const clipId = text(record.params['clip']) ?? reportedClips(record)[0] ?? null
-    return { event: 'dv:timeline-focus', detail: { timelineId, clipId } }
-  }
   return { event: 'dv:canvas-focus', detail: { recordId: record.id } }
 }

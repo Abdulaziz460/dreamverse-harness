@@ -4,7 +4,7 @@
 // asserts what the creator must see after the action; a story whose expected behavior is not built yet fails.
 import type { Browser, BrowserContext, Locator, Page } from 'playwright'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
-import type { ProjectRecord, WireState } from '@dv/ui-kit/types.ts'
+import type { ProjectRecord, WireState } from '../wire-state.ts'
 import { bootHarness, escapeRegExp, playwright, waitFor, type BootedHarness } from '../harness.ts'
 import { startScriptedModel, type ScriptedModel } from '../scripted-model.ts'
 
@@ -71,14 +71,14 @@ async function seedProject(title: string, shots = 3, timelines: number[] = []): 
   const created = await harness.api.post('/api/dv/projects', { title, surface: 'canvas' }) as { id: string }
   const id = created.id
   const imported = await runOperation(id, 'asset.import', { base64: PNG_BASE64, mime: 'image/png', name: 'ref.png' })
-  await runOperation(id, 'bible.character_create', { character: 'c1', name: 'Dancer' }, [{ role: 'reference', ref: imported.outputs[0] ?? '' }])
+  await runOperation(id, 'character.create', { character: 'c1', name: 'Dancer' }, [{ role: 'reference', ref: imported.outputs[0] ?? '' }])
   const plan = await runOperation(id, 'plan.create', {
     title, references: ['c1@1'],
     shots: Array.from({ length: shots }, (_, index) => ({
       prompt: `${title} shot ${String(index + 1)}`, duration_sec: 1 + (index % 2), modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3',
     })),
   })
-  await runOperation(id, 'plan.approve', { plan: plan.report?.['plan'] })
+  await runOperation(id, 'story.approve', { plan: plan.report?.['plan'] })
   const state = await waitFor(async () => {
     const current = await stateOf(id)
     const done = current.components.proj.records.filter(record => record.operation === RENDER_OPERATION && record.status === 'done')
@@ -297,7 +297,7 @@ describe('canvas stories', () => {
       }).map(node => node.getAttribute('aria-label'))
     })
     expect(outside).toEqual([])
-    const take = page.locator('[data-node-kind="take"]').first()
+    const take = page.locator('[data-node-type="take"]').first()
     const id = await take.getAttribute('data-node-id') ?? ''
     const before = await take.boundingBox()
     if (before === null) throw new Error('take node has no box')
@@ -338,18 +338,18 @@ describe('canvas stories', () => {
     const page = await openPage()
     await gotoProject(page, project.id)
     const editor = page.locator('[data-testid="dv-canvas-node-editor"]')
-    await page.locator('[data-node-kind="take"]').first().click()
+    await page.locator('[data-node-type="take"]').first().click()
     await expect.poll(() => editor.count()).toBe(1)
     // The take editor names the model and task of the take's record.
     expect(await editor.locator('[data-testid="dv-canvas-render-mode"]').textContent()).toBe('fasth3 · 参考图生成')
     await editor.getByRole('button', { name: '关闭' }).click()
     await expect.poll(() => editor.count()).toBe(0)
-    await page.locator('[data-node-kind="take"]').first().click()
+    await page.locator('[data-node-type="take"]').first().click()
     await page.locator('#dv-canvas-editor-prompt').click()
     await page.keyboard.press('Escape')
     await expect.poll(() => editor.count()).toBe(0)
     // Escape also closes the editor when focus left it, for example after clicking the editor's video.
-    await page.locator('[data-node-kind="plan"]').first().click()
+    await page.locator('[data-node-type="plan"]').first().click()
     await expect.poll(() => editor.count()).toBe(1)
     await page.evaluate(() => { (document.activeElement as HTMLElement | null)?.blur() })
     await page.keyboard.press('Escape')
@@ -361,7 +361,7 @@ describe('canvas stories', () => {
     const page = await openPage()
     await gotoProject(page, project.id)
     await fitCanvas(page)
-    await page.locator('[data-node-kind="bible"]').first().click()
+    await page.locator('[data-node-type="character"]').first().click()
     const editor = page.locator('[data-testid="dv-canvas-node-editor"]')
     await expect.poll(() => editor.count()).toBe(1)
     const frame = await page.locator('[data-testid="dv-canvas-view"]').boundingBox()
@@ -385,7 +385,7 @@ describe('canvas stories', () => {
     const page = await openPage()
     await gotoProject(page, project.id)
     await fitCanvas(page)
-    const plan = page.locator('[data-node-kind="plan"]')
+    const plan = page.locator('[data-node-type="plan"]')
     await expect.poll(() => plan.textContent()).toContain('第 2 版')
     await plan.click()
     const editor = page.locator('[data-testid="dv-canvas-node-editor"]')
@@ -420,7 +420,7 @@ describe('canvas stories', () => {
     const page = await openPage()
     await gotoProject(page, first.id)
     const editor = page.locator('[data-testid="dv-canvas-node-editor"]')
-    await page.locator('[data-node-kind="take"]').first().click()
+    await page.locator('[data-node-type="take"]').first().click()
     await expect.poll(() => editor.count()).toBe(1)
     await viewToggle(page, '时间线').click()
     await page.locator('[data-testid="dv-timeline-editor"]').waitFor()
@@ -428,7 +428,7 @@ describe('canvas stories', () => {
     await viewToggle(page, '画布').click()
     await page.locator('[data-node-id]').first().waitFor()
     expect(await editor.count()).toBe(0)
-    await page.locator('[data-node-kind="take"]').first().click()
+    await page.locator('[data-node-type="take"]').first().click()
     await expect.poll(() => editor.count()).toBe(1)
     await openProjectByTitle(page, 'canvas-leave-b')
     await expect.poll(() => page.locator('[data-dv-workspace] header').first().textContent()).toContain('canvas-leave-b')
@@ -440,7 +440,7 @@ describe('canvas stories', () => {
     const project = await seedProject('canvas-play', 2)
     const page = await openPage()
     await gotoProject(page, project.id)
-    await page.locator('[data-node-kind="take"]').first().click()
+    await page.locator('[data-node-type="take"]').first().click()
     const video = page.locator('[data-testid="dv-canvas-node-editor"] video')
     await video.waitFor()
     await expect.poll(
@@ -454,7 +454,7 @@ describe('canvas stories', () => {
     const project = await seedProject('canvas-take', 2)
     const page = await openPage()
     await gotoProject(page, project.id)
-    const takes = page.locator('[data-node-kind="take"]')
+    const takes = page.locator('[data-node-type="take"]')
     await expect.poll(() => takes.count()).toBe(2)
     const original = await takes.first().getAttribute('data-node-id') ?? ''
     await takes.first().click()
@@ -475,7 +475,7 @@ describe('canvas stories', () => {
     const project = await seedProject('canvas-take-names', 2)
     const page = await openPage()
     await gotoProject(page, project.id)
-    const takes = page.locator('[data-node-kind="take"]')
+    const takes = page.locator('[data-node-type="take"]')
     await takes.first().click()
     await page.locator('#dv-canvas-editor-prompt').fill('canvas-take-names shot 1, take two')
     await page.getByRole('button', { name: '渲染新版本' }).click()
@@ -497,7 +497,7 @@ describe('canvas stories', () => {
         duration_sec: 1, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', continue_previous: true,
       }],
     })
-    await runOperation(project.id, 'plan.approve', { plan: 'p1' })
+    await runOperation(project.id, 'story.approve', { plan: 'p1' })
     const state = await waitFor(async () => {
       const current = await stateOf(project.id)
       const done = current.components.proj.records.filter(record => record.operation === RENDER_OPERATION && record.status === 'done')
@@ -507,7 +507,7 @@ describe('canvas stories', () => {
     expect(state.components.timeline.timelines.map(timeline => timeline.id)).toEqual(['t1'])
     expect(state.components.timeline.timelines[0]?.clips.map(clip => clip.asset).slice(0, 2)).toEqual(project.clipAssets)
     const renders = state.components.proj.records.filter(record => record.operation === RENDER_OPERATION)
-    expect(renders.map(record => [record.params['plan'], record.params['plan_version'], record.params['shot']])).toEqual([
+    expect(renders.map(render => [...['plan', 'version'].map(key => state.components.proj.records.find(record => record.id === render.started_by?.record)?.report?.[key]), render.started_by?.slot])).toEqual([
       ['p1', 1, 1], ['p1', 1, 2], ['p1', 2, 3],
     ])
     const firstFrames = (render: ProjectRecord | undefined): unknown[] =>
@@ -516,11 +516,11 @@ describe('canvas stories', () => {
     expect(firstFrames(renders[1])).toEqual([])
     const page = await openPage()
     await gotoProject(page, project.id)
-    const plans = page.locator('[data-node-kind="plan"]')
+    const plans = page.locator('[data-node-type="plan"]')
     await expect.poll(() => plans.count()).toBe(1)
     expect(await plans.getAttribute('data-node-id')).toBe('plan:p1')
     expect(await plans.textContent()).toContain('第 2 版')
-    const takes = page.locator('[data-node-kind="take"]')
+    const takes = page.locator('[data-node-type="take"]')
     await expect.poll(() => takes.count()).toBe(3)
     expect(await takes.evaluateAll(nodes => nodes.map(node => node.getAttribute('aria-label')))).toEqual(['镜头 1', '镜头 2', '镜头 3'])
     // Each take hangs off the one plan node.
@@ -547,26 +547,26 @@ describe('canvas stories', () => {
     const added = [...v1.shots, { prompt: 'canvas-current shot 4', duration_sec: 1, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3' }]
     // v2 adds shot 4 and is approved; v3 changes shot 2 and is never approved; v4 returns to the three v1 shots.
     await runOperation(project.id, 'plan.update', { ...base, shots: added })
-    await runOperation(project.id, 'plan.approve', { plan: 'p1' })
+    await runOperation(project.id, 'story.approve', { plan: 'p1' })
     const v2State = await waitFor(async () => {
       const current = await stateOf(project.id)
       const clips = current.components.timeline.timelines[0]?.clips ?? []
       return clips.length === 4 && clips.every(clip => clip.asset !== null) ? current : null
     }, 'shot 4 of plan p1 v2 renders onto timeline t1', 120_000)
     const v2Layout = v2State.components.proj.records.findLast(record => record.operation === 'timeline.update')
-    const shot4 = v2State.components.proj.records.find(record => record.operation === RENDER_OPERATION && record.params['shot'] === 4)
+    const shot4 = v2State.components.proj.records.find(record => record.operation === RENDER_OPERATION && record.started_by?.slot === 4)
     if (v2Layout === undefined || shot4 === undefined) throw new Error('the v2 approval wrote no timeline update or shot 4 render')
     await runOperation(project.id, 'plan.update', { ...base, shots: added.map((shot, index) => index === 1 ? { ...shot, prompt: 'canvas-current shot 2, closer' } : shot) })
     await runOperation(project.id, 'plan.update', { ...base, shots: v1.shots })
-    await runOperation(project.id, 'plan.approve', { plan: 'p1' })
+    await runOperation(project.id, 'story.approve', { plan: 'p1' })
     await waitFor(async () => {
       const clips = (await stateOf(project.id)).components.timeline.timelines[0]?.clips ?? []
       return clips.length === 3 ? clips : null
     }, 'the v4 approval lays the three v1 takes on timeline t1')
     const page = await openPage()
     await gotoProject(page, project.id)
-    const plans = page.locator('[data-node-kind="plan"]')
-    const takes = page.locator('[data-node-kind="take"]')
+    const plans = page.locator('[data-node-type="plan"]')
+    const takes = page.locator('[data-node-type="take"]')
     await expect.poll(() => plans.textContent()).toContain('第 4 版')
     // v4 reuses the v1 takes: three takes, no take of the removed shot 4.
     await expect.poll(() => takes.evaluateAll(nodes => nodes.map(node => node.getAttribute('data-node-id')))).toEqual(project.shots)
@@ -589,7 +589,7 @@ describe('canvas stories', () => {
     const project = await seedProject('canvas-ask', 2)
     const page = await openPage()
     await gotoProject(page, project.id)
-    await page.locator('[data-node-kind="take"]').first().click()
+    await page.locator('[data-node-type="take"]').first().click()
     await page.getByRole('button', { name: '问 agent' }).click()
     await expect.poll(() => page.locator('[data-testid="dv-canvas-node-editor"]').count()).toBe(0)
     await expect.poll(() => page.locator('[data-dv-chat] [contenteditable="true"]').first().innerText(), { timeout: 10_000 }).toContain('镜头 1')
@@ -600,11 +600,11 @@ describe('canvas stories', () => {
     const light = await openPage({ scheme: 'light' })
     await gotoProject(light, project.id)
     expect(luminance(await backgroundOf(light.locator('[data-testid="dv-canvas-view"]')))).toBeGreaterThan(0.8)
-    expect(luminance(await backgroundOf(light.locator('[data-node-kind="take"]').first()))).toBeGreaterThan(0.8)
+    expect(luminance(await backgroundOf(light.locator('[data-node-type="take"]').first()))).toBeGreaterThan(0.8)
     const dark = await openPage({ scheme: 'dark' })
     await gotoProject(dark, project.id)
     expect(luminance(await backgroundOf(dark.locator('[data-testid="dv-canvas-view"]')))).toBeLessThan(0.25)
-    expect(luminance(await backgroundOf(dark.locator('[data-node-kind="take"]').first()))).toBeLessThan(0.3)
+    expect(luminance(await backgroundOf(dark.locator('[data-node-type="take"]').first()))).toBeLessThan(0.3)
   })
 
   it('at fit zoom node text is readable and cards do not overlap, also after a trim badge', async () => {
@@ -614,7 +614,7 @@ describe('canvas stories', () => {
     const page = await openPage()
     await gotoProject(page, project.id)
     await fitCanvas(page)
-    // The smallest line box among the card elements that hold text directly: titles, kind labels, durations, and badges.
+    // The smallest line box among the card elements that hold text directly: titles, type labels, durations, and badges.
     const smallest = await page.locator('[data-node-id]').evaluateAll(nodes => Math.min(...nodes.flatMap(node => [...node.querySelectorAll('*')]
       .filter(element => [...element.childNodes].some(child => child.nodeType === Node.TEXT_NODE && (child.textContent ?? '').trim() !== ''))
       .map(element => element.getBoundingClientRect().height))))
@@ -642,7 +642,7 @@ describe('canvas stories', () => {
     const project = await seedProject('canvas-many', 22)
     const page = await openPage()
     await gotoProject(page, project.id)
-    await expect.poll(() => page.locator('[data-node-kind="take"]').count(), { timeout: 30_000 }).toBe(22)
+    await expect.poll(() => page.locator('[data-node-type="take"]').count(), { timeout: 30_000 }).toBe(22)
     await fitCanvas(page)
     expect(await overlappingNodes(page)).toEqual([])
     const outside = await page.locator('[data-testid="dv-canvas-view"]').evaluate((canvas) => {
@@ -667,10 +667,10 @@ describe('canvas stories', () => {
     const project = await seedProject('canvas-stale', 2)
     const state = await stateOf(project.id)
     const frame = state.assets.find(asset => asset.mime.startsWith('image/') && asset.name !== 'ref.png')
-    await runOperation(project.id, 'bible.character_update', { character: 'c1' }, [{ role: 'reference', ref: frame?.id ?? '' }])
+    await runOperation(project.id, 'character.update', { character: 'c1' }, [{ role: 'reference', ref: frame?.id ?? '' }])
     const page = await openPage()
     await gotoProject(page, project.id)
-    const staleTakes = page.locator('[data-node-kind="take"][data-node-stale="true"]')
+    const staleTakes = page.locator('[data-node-type="take"][data-node-stale="true"]')
     await expect.poll(() => staleTakes.count()).toBe(2)
     // The stale card's outline is the first ring of its box shadow.
     const border = await staleTakes.first().evaluate(el => getComputedStyle(el).boxShadow)
@@ -704,7 +704,7 @@ describe('canvas stories', () => {
     await composer.click()
     await page.keyboard.type('agent-shot-please')
     await page.keyboard.press('Enter')
-    const takes = page.locator('[data-node-kind="take"]')
+    const takes = page.locator('[data-node-type="take"]')
     await expect.poll(() => takes.count(), { timeout: 60_000 }).toBe(3)
     const outlines = await takes.evaluateAll(elements => elements.map(element => getComputedStyle(element).outlineStyle))
     expect(outlines).not.toContain('dashed')
@@ -781,9 +781,9 @@ describe('canvas stories', () => {
     const at = { clientX: frame.x + 160, clientY: frame.y + 160 }
     for (const type of ['dragenter', 'dragover', 'drop']) await canvas.dispatchEvent(type, { dataTransfer: transfer, ...at })
     // The dropped image joins the canvas list, with its node under the drop point.
-    await expect.poll(() => page.locator('[data-node-kind="asset"]').count(), { timeout: 10_000 }).toBe(1)
+    await expect.poll(() => page.locator('[data-node-type="asset"]').count(), { timeout: 10_000 }).toBe(1)
     await expect.poll(async () => {
-      const box = await page.locator('[data-node-kind="asset"]').boundingBox()
+      const box = await page.locator('[data-node-type="asset"]').boundingBox()
       if (box === null) return false
       return box.x <= at.clientX && at.clientX <= box.x + box.width && box.y <= at.clientY && at.clientY <= box.y + box.height
     }, { timeout: 5000 }).toBe(true)
@@ -884,7 +884,7 @@ describe('node states and pop-ups', () => {
     await gotoProject(page, project.id)
     await fitCanvas(page)
     await recordZooms(page)
-    const take = page.locator('[data-node-kind="take"]').first()
+    const take = page.locator('[data-node-type="take"]').first()
     const editor = page.locator('[data-testid="dv-canvas-node-editor"]')
     await expectZoomFrom(page, take, editor, async () => { await editor.getByRole('button', { name: '关闭' }).click() })
     // The ring tells the creator which node the closed editor belonged to; empty canvas clears it.
@@ -898,7 +898,7 @@ describe('node states and pop-ups', () => {
     const project = await seedProject('canvas-render-feedback', 2)
     const page = await openPage()
     await gotoProject(page, project.id)
-    const takes = page.locator('[data-node-kind="take"]')
+    const takes = page.locator('[data-node-type="take"]')
     await expect.poll(() => takes.count()).toBe(2)
     const original = takes.first()
     await original.click()
@@ -908,7 +908,7 @@ describe('node states and pop-ups', () => {
     try {
       await page.getByRole('button', { name: '渲染新版本' }).dblclick()
       await expect.poll(() => page.locator('[data-testid="dv-canvas-node-editor"]').count(), { timeout: 15_000 }).toBe(0)
-      const fresh = page.locator('[data-node-kind="take"][data-node-selected="true"]')
+      const fresh = page.locator('[data-node-type="take"][data-node-selected="true"]')
       await expect.poll(() => fresh.count(), { timeout: 15_000 }).toBe(1)
       expect(await fresh.textContent()).toContain('渲染中…')
       expect(await original.getAttribute('data-node-selected')).toBeNull()
@@ -1284,20 +1284,20 @@ describe('timeline stories', () => {
     const created = await harness.api.post('/api/dv/projects', { title: 'timeline-pending', surface: 'canvas' }) as { id: string }
     const project = created.id
     const imported = await runOperation(project, 'asset.import', { base64: PNG_BASE64, mime: 'image/png', name: 'ref.png' })
-    await runOperation(project, 'bible.character_create', { character: 'c1', name: 'Dancer' }, [{ role: 'reference', ref: imported.outputs[0] ?? '' }])
+    await runOperation(project, 'character.create', { character: 'c1', name: 'Dancer' }, [{ role: 'reference', ref: imported.outputs[0] ?? '' }])
     const plan = await runOperation(project, 'plan.create', {
       title: 'timeline-pending', references: ['c1@1'],
       shots: [1, 2, 3].map(shot => ({ prompt: `timeline-pending shot ${String(shot)}`, duration_sec: shot === 2 ? 2 : 1, modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3' })),
     })
     harness.backend.hold()
     try {
-      await runOperation(project, 'plan.approve', { plan: plan.report?.['plan'] })
+      await runOperation(project, 'story.approve', { plan: plan.report?.['plan'] })
       // The approval puts all three shots on timeline t1 right away, as placeholders of their running renders.
       const pending = await stateOf(project)
       expect(pending.components.timeline.timelines[0]?.clips.map(clip => clip.asset)).toEqual([null, null, null])
       const page = await openPage()
       await gotoProject(page, project)
-      const takes = page.locator('[data-node-kind="take"]')
+      const takes = page.locator('[data-node-type="take"]')
       await expect.poll(() => takes.count()).toBe(3)
       expect(await takes.allTextContents()).toEqual([expect.stringContaining('渲染中…'), expect.stringContaining('渲染中…'), expect.stringContaining('渲染中…')])
       await viewToggle(page, '时间线').click()
@@ -1440,7 +1440,7 @@ describe('going back and keep anyway', () => {
     const project = await seedProject('go-back', 1)
     const page = await openPage()
     await gotoProject(page, project.id)
-    const takes = page.locator('[data-node-kind="take"]')
+    const takes = page.locator('[data-node-type="take"]')
     await expect.poll(() => takes.count(), { timeout: 15_000 }).toBe(1)
     expect(await page.locator('[data-testid="dv-kit-branch-menu"]').count()).toBe(0)
     // A plain edit is the step to come back to; the seeded renders fold under the plan approval's row.
@@ -1472,10 +1472,10 @@ describe('going back and keep anyway', () => {
     const project = await seedProject('keep-anyway', 2)
     const state = await stateOf(project.id)
     const frame = state.assets.find(asset => asset.mime.startsWith('image/') && asset.name !== 'ref.png')
-    await runOperation(project.id, 'bible.character_update', { character: 'c1' }, [{ role: 'reference', ref: frame?.id ?? '' }])
+    await runOperation(project.id, 'character.update', { character: 'c1' }, [{ role: 'reference', ref: frame?.id ?? '' }])
     const page = await openPage()
     await gotoProject(page, project.id)
-    const staleTakes = page.locator('[data-node-kind="take"][data-node-stale="true"]')
+    const staleTakes = page.locator('[data-node-type="take"][data-node-stale="true"]')
     await expect.poll(() => staleTakes.count()).toBe(2)
     await staleTakes.first().click()
     const editor = page.locator('[data-testid="dv-canvas-node-editor"]')
@@ -1516,8 +1516,8 @@ describe('English interface', () => {
       return [...found]
     })
     expect(await chinese()).toEqual([])
-    for (const kind of ['take', 'bible', 'plan']) {
-      await page.locator(`[data-node-kind="${kind}"]`).first().click()
+    for (const kind of ['take', 'character', 'plan']) {
+      await page.locator(`[data-node-type="${kind}"]`).first().click()
       await page.locator('[data-testid="dv-canvas-node-editor"]').waitFor()
       expect(await chinese()).toEqual([])
       await page.locator('[data-testid="dv-canvas-node-editor"]').getByRole('button', { name: 'Close' }).click()

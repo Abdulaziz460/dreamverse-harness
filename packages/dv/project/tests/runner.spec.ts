@@ -3,18 +3,19 @@
  * operations, runs of operations that ask for confirmation, the lock scope during execution, and the recovery of
  * records an earlier process left unfinished.
  */
-import { readFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import { describe, expect, it, vi } from 'vitest'
 import type { ProjectModules } from './support.ts'
 import { agentOrigin, createTestProject, readLines, startModules, userOrigin } from './support.ts'
+import type { OperationSpec } from '../src/operation-types.ts'
 import { RecordStore } from '../src/record-store.ts'
 import { projReducer, ReducerRegistry } from '../src/reducers.ts'
 import { Runner } from '../src/runner.ts'
 import { Scheduler } from '../src/scheduler.ts'
 import type {
-  AssetId, OperationSpec, ProjectId, ProjectRecord, RecordOrigin, RunRequest,
+  AssetId, ProjectId, ProjectRecord, RecordOrigin, RunRequest,
 } from '../src/types.ts'
 
 /**
@@ -118,6 +119,24 @@ describe('Runner', () => {
     expect(update.record?.supersedes).toEqual([first.id, second.id])
     const next = await m.runner.run(request(project, 'bible.character_update'))
     expect(next.record?.supersedes).toEqual([update.record?.id])
+  })
+
+  it('copies started_by from the request onto the record of a run or a scheduled run', async () => {
+    const m = startModules()
+    const project = await createTestProject(m)
+    m.runner.registerOperation(operation({ name: 'timeline.clip_insert', component: 'timeline' }))
+    const starter = (await m.runner.run(request(project, 'timeline.clip_insert'))).record!
+    const startedBy = { record: starter.id, slot: 1, lane: 'wide' }
+
+    const now = await m.runner.run(request(project, 'timeline.clip_insert', userOrigin(), { started_by: startedBy }))
+    const scheduled = { started_by: { record: starter.id, slot: null }, after: [] }
+    const later = await m.runner.run(request(project, 'timeline.clip_insert', userOrigin(), scheduled))
+
+    expect(starter).not.toHaveProperty('started_by')
+    expect(now.record?.started_by).toEqual(startedBy)
+    expect(later.record?.started_by).toEqual({ record: starter.id, slot: null })
+    expect(readLines(m.root, project).find(line => line['id'] === now.record?.id)?.['started_by']).toEqual(startedBy)
+    await vi.waitFor(() => { expect(m.store.getRecord(project, later.record!.id).status).toBe('done') })
   })
 
   it('refuses invalid params, unknown inputs and unfinished inputs before writing', async () => {
@@ -261,6 +280,28 @@ describe('Runner', () => {
       .toThrow(expect.objectContaining({ code: 'invalid_params' }))
   })
 
+  it('registers an operation only after a plugin registers its component', () => {
+    const m = startModules()
+    expect(() => m.runner.registerOperation(operation({ name: 'image.generate', component: 'image' })))
+      .toThrow(expect.objectContaining({ code: 'invalid_params' }))
+    const disposeComponent = m.runner.registerComponent('image')
+    expect(() => m.runner.registerComponent('image')).toThrow(expect.objectContaining({ code: 'component_exists' }))
+    m.runner.registerOperation(operation({ name: 'image.generate', component: 'image' }))
+    expect(m.runner.listOperations().map(spec => spec.name)).toEqual(['image.generate'])
+    disposeComponent()
+    m.runner.registerComponent('image')
+  })
+
+  it('refuses a second operation with a registered name until the first one is removed', () => {
+    const m = startModules()
+    const dispose = m.runner.registerOperation(operation({ name: 'shot.render', component: 'shot' }))
+    expect(() => m.runner.registerOperation(operation({ name: 'shot.render', component: 'shot' })))
+      .toThrow(expect.objectContaining({ code: 'operation_exists' }))
+    dispose()
+    m.runner.registerOperation(operation({ name: 'shot.render', component: 'shot' }))
+    expect(m.runner.listOperations().map(spec => spec.name)).toEqual(['shot.render'])
+  })
+
   it('refuses an operation whose name does not start with its component key', () => {
     const m = startModules()
     expect(() => m.runner.registerOperation(operation({ name: 'timeline.create', component: 'inspect' })))
@@ -291,6 +332,39 @@ describe('Runner', () => {
     expect(recordsOf(m, project, 'shot.render')[0]?.status).toBe('running')
     held.resolve()
     expect((await render).record?.status).toBe('done')
+  })
+
+  it('loads a stored log whose operations and reference kind have no owner, and refuses a new call with that version', async () => {
+    const m = startModules()
+    // The stored shapes of real logs: an old render name that no operation has, a `deliver.timeline_export` record whose
+    // component no plugin registers, and an input `{character, version}` of a reference kind that no plugin registers.
+    const project = brandString<ProjectId>('stored-project')
+    const face = m.assets.add('face')
+    const take = m.assets.add('take')
+    const origin = { ...userOrigin(), operation_version: '1', based_on: null, supersedes: [], deterministic: false, status: 'done' }
+    const lines = [
+      { ...origin, id: 'r1', parents: [], kind: 'operation', component: 'proj', operation: 'proj.create', params: { title: 'Old' },
+        inputs: [], outputs: [], created_at: '2026-10-07T23:40:00.000Z' },
+      { ...origin, id: 'r2', parents: ['r1'], kind: 'operation', component: 'shot', operation: 'shot.render_ref2va',
+        params: { prompt: 'dance', plan: 'p1', plan_version: 1, shot: 1 }, outputs: [take], created_at: '2026-10-07T23:41:00.000Z',
+        inputs: [{ role: 'reference', ref: { character: 'c1', version: 1 }, resolved_asset: face }] },
+      { ...origin, id: 'r3', parents: ['r2'], kind: 'operation', component: 'deliver', operation: 'deliver.timeline_export',
+        params: { timeline: 't1' }, inputs: [], outputs: [], created_at: '2026-10-07T23:42:00.000Z' },
+    ]
+    mkdirSync(join(m.root, project))
+    writeFileSync(join(m.root, project, 'project.json'), JSON.stringify({ id: project, title: 'Old', created_at: '2026-10-07T23:40:00.000Z' }))
+    writeFileSync(join(m.root, project, 'records.jsonl'), lines.map(line => `${JSON.stringify(line)}\n`).join(''))
+    m.store.load()
+
+    // Replay passes every record through the registered reducers only; the unowned version is no producer.
+    const proj = m.reducers.getState(project).components.proj
+    expect(proj.records.map(record => record.operation)).toEqual(['proj.create', 'shot.render_ref2va', 'deliver.timeline_export'])
+    expect(proj.stale).toEqual({})
+    m.runner.registerOperation(operation({ name: 'shot.render', component: 'shot' }))
+    // The new call reads the stored `{character, version}` reference of the old render.
+    const reads = { inputs: [{ role: 'reference', ref: proj.records[1]!.inputs[0]!.ref }] }
+    await expect(m.runner.run(request(project, 'shot.render', userOrigin(), reads))).rejects.toMatchObject({ code: 'invalid_inputs' })
+    expect(recordsOf(m, project, 'shot.render')).toEqual([])
   })
 
   it('ends unfinished records at start', async () => {

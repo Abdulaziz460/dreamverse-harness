@@ -4,11 +4,12 @@
  * 回到这一步, and empty states.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, waitFor, within } from '@testing-library/react'
 import { DvClient } from '@dv/ui-kit/api.ts'
-import type { HistoryEntry, HistoryQuery, WireHistory, WireState } from '@dv/ui-kit/types.ts'
+import { createRegistry, type HistoryRow, type Registry } from '@dv/ui-kit/registries.ts'
+import type { HistoryEntry, HistoryQuery, WireHistory, WireOperation, WireState } from '@dv/ui-kit/types.ts'
 import { DV_CANVAS_FOCUS_EVENT, DV_HISTORY_FOCUS_EVENT, DV_TIMELINE_FOCUS_EVENT } from '@dv/ui-kit/workspace-events.ts'
-import { asset, fixtureState, record, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
+import { asset, fixtureState, OPERATIONS, record, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
 import { HistoryPanel } from '../src/client/HistoryPanel.tsx'
 
 /**
@@ -31,7 +32,7 @@ const ENTRIES: HistoryEntry[] = [
   {
     record: record({
       id: 'g1', turn: 't3', actor: 'agent', session: 's5', tool_call: 'call-g1', operation: 'shot.render', outputs: ['shot1.mp4'],
-      intent: 'render the hero',
+      intent: 'render the hero', deterministic: false,
       inputs: [{ role: 'reference', ref: { asset: 'ref.png' }, resolved_asset: 'ref.png' }],
     }),
     place: 'before',
@@ -39,15 +40,34 @@ const ENTRIES: HistoryEntry[] = [
   { record: record({ id: 'p1', turn: 't3', actor: 'agent', session: 's5', tool_call: 'call-p1', operation: 'plan.create' }), place: 'before' },
 ]
 
+/** The operations on the wire: the fixture's, a clip move and the story approval, with the labels their packages declare. */
+const WIRE_OPERATIONS: WireOperation[] = [
+  ...OPERATIONS.map(operation => operation.name === 'shot.render' ? { ...operation, label: { zh: '渲染镜头', en: 'Render shot' } } : operation),
+  {
+    name: 'timeline.clip_move', version: '2', description: 'Move a clip.', label: { zh: '移动片段', en: 'Move clip' }, inputs: {}, params: {}, outputs: [],
+    deterministic: false, resource: 'none', confirm: 'never',
+  },
+  {
+    name: 'story.approve', version: '1', description: 'Approve a plan version.', label: { zh: '批准分镜计划', en: 'Approve plan' }, inputs: {}, params: {},
+    outputs: [], deterministic: false, resource: 'none', confirm: 'always',
+  },
+]
+
 /**
  * Mount the panel over scripted routes; `/api/dv/history` answers from {@link ENTRIES}.
  * @param entries - the history the route serves.
  * @param adjust - changes to the fixture state that `/api/dv/state` serves.
+ * @param rows - the registered history rows; none by default.
  * @returns the rendered panel and the recorded writes.
  */
-function mount(entries: HistoryEntry[] = ENTRIES, adjust: (state: WireState) => void = () => {}) {
+function mount(
+  entries: HistoryEntry[] = ENTRIES,
+  adjust: (state: WireState) => void = () => {},
+  rows: Registry<HistoryRow> = createRegistry(row => [row.match]),
+) {
   const queries: HistoryQuery[] = []
   const scripted = scriptedFetch({
+    operations: WIRE_OPERATIONS,
     // Timeline `t1` of the fixture holds clips cl1 and cl2, assigned by its create record; the clip move m1 is a record
     // of the current state.
     state: () => {
@@ -69,7 +89,7 @@ function mount(entries: HistoryEntry[] = ENTRIES, adjust: (state: WireState) => 
       return { status: 200, body: answer }
     },
   })
-  const view = render(<HistoryPanel projectId="p1" client={new DvClient(scripted.fetch)} />)
+  const view = render(<HistoryPanel projectId="p1" client={new DvClient(scripted.fetch)} rows={rows} />)
   const row = (id: string): HTMLElement => {
     const element = view.container.querySelector(`[data-testid="dv-history-row"][data-record="${id}"]`)
     if (!(element instanceof HTMLElement)) throw new Error(`no row ${id}`)
@@ -86,7 +106,7 @@ describe('HistoryPanel', () => {
     expect(ids).toEqual(['m1', 'g1', 'p1'])
     expect(row('g1').textContent).toContain('render the hero')
     expect(row('g1').textContent).toContain('Agent')
-    expect(row('m1').textContent).toContain('Move clip')
+    await waitFor(() => { expect(row('m1').textContent).toContain('Move clip') })
     expect(row('m1').textContent).toContain('You')
     expect(row('m1').textContent).not.toContain('render the hero')
     expect(row('g1').getAttribute('data-actor')).toBe('agent')
@@ -100,28 +120,44 @@ describe('HistoryPanel', () => {
     await waitFor(() => { expect(view.getByTestId('dv-history-redo')).toHaveProperty('disabled', true) })
   })
 
-  it('folds the renders a plan approval scheduled under its row until the toggle opens them', async () => {
+  it('folds the renders a plan approval started under its row until the toggle opens them', async () => {
     const approval: HistoryEntry[] = [
-      { record: record({ id: 'g2', actor: 'system', operation: 'shot.render', params: { plan: 'p1', shot: 2 }, status: 'running' }), place: 'current' },
-      { record: record({ id: 'g1', actor: 'system', operation: 'shot.render', params: { plan: 'p1', shot: 1 }, outputs: ['shot1.mp4'] }), place: 'before' },
       {
-        record: record({ id: 'ap', actor: 'agent', operation: 'plan.approve', params: { plan: 'p1' }, report: { plan: 'p1', version: 1, scheduled: ['g1', 'g2'] } }),
+        record: record({ id: 'g2', actor: 'system', operation: 'shot.render', params: { plan: 'p1', shot: 2 }, started_by: { record: 'ap', slot: 2 }, status: 'running' }),
+        place: 'current',
+      },
+      {
+        record: record({ id: 'g1', actor: 'system', operation: 'shot.render', params: { plan: 'p1', shot: 1 }, started_by: { record: 'ap', slot: 1 }, outputs: ['shot1.mp4'] }),
+        place: 'before',
+      },
+      {
+        record: record({ id: 'ap', actor: 'agent', operation: 'story.approve', params: { plan: 'p1' }, report: { plan: 'p1', version: 1, scheduled: ['g1', 'g2'] } }),
         place: 'before',
       },
     ]
     const { view, row } = mount(approval)
     await waitFor(() => { row('ap') })
     expect(view.container.querySelectorAll('[data-testid="dv-history-row"]').length).toBe(1)
-    expect(row('ap').textContent).toContain('Approve plan p1 v1')
+    await waitFor(() => { expect(row('ap').textContent).toContain('Approve plan') })
     const fold = view.getByTestId('dv-history-fold')
-    expect(fold.textContent).toContain('Render 2 shots (1/2)')
+    // The running render has no output yet, so it counts once the operation declarations arrive.
+    await waitFor(() => { expect(fold.textContent).toContain('Render 2 shots (1/2)') })
     fireEvent.click(fold)
     expect(fold.getAttribute('aria-expanded')).toBe('true')
     expect(row('g1').textContent).toContain('Render shot 1')
     expect(row('g2').textContent).toContain('Automatic')
-    // Folded rows follow `report.scheduled`: shot 1, then shot 2.
+    // Folded rows follow the log: shot 1, then shot 2.
     const folded = [...view.container.querySelectorAll('[data-testid="dv-history-row"]')].map(element => element.getAttribute('data-record'))
     expect(folded).toEqual(['ap', 'g1', 'g2'])
+  })
+
+  it('labels a row with the subject of a registered history row, and drops it once the row is disposed', async () => {
+    const rows = createRegistry<HistoryRow>(row => [row.match])
+    const dispose = rows.register({ match: 'timeline.', subject: () => [' 片段 1', ' clip 1'] })
+    const { row } = mount(ENTRIES, () => {}, rows)
+    await waitFor(() => { expect(row('m1').textContent).toContain('Move clip clip 1') })
+    act(() => { dispose() })
+    await waitFor(() => { expect(row('m1').textContent).not.toContain('clip 1') })
   })
 
   it('asks for the steps of the history list', async () => {
@@ -129,9 +165,17 @@ describe('HistoryPanel', () => {
     await waitFor(() => { expect(queries.at(0)).toEqual({ project: 'p1', limit: 50 }) })
   })
 
-  it('selecting a render row plays its output and focuses its node, a clip row focuses the timeline clip, and a step after the current one focuses nothing', async () => {
+  it('selecting a render row plays its output and focuses its node, a clip row moves the center where its registered row says, and a step after the current one focuses nothing', async () => {
     const later = ENTRIES.map(entry => entry.record.id === 'p1' ? { ...entry, place: 'after' as const } : entry)
-    const { row } = mount(later)
+    // A test-local timeline row: its focus finds the clip move among the records of the current state.
+    const rows = createRegistry<HistoryRow>(item => [item.match])
+    rows.register({
+      match: 'timeline.', subject: () => null,
+      focus: (record, records) => records.some(item => item.id === record.id)
+        ? { event: 'dv:timeline-focus', detail: { timelineId: 't1', clipId: String(record.params['clip']) } }
+        : null,
+    })
+    const { row } = mount(later, () => {}, rows)
     await waitFor(() => { row('g1') })
     const focused: unknown[] = []
     const onFocus = (event: Event): void => { focused.push((event as CustomEvent).detail) }
@@ -166,7 +210,8 @@ describe('HistoryPanel', () => {
     const { row } = mount([failed, ...ENTRIES])
     await waitFor(() => { row('f1') })
     const columns = (id: string): string => row(id).querySelector<HTMLElement>('[style*="grid-template-columns"]')?.style.gridTemplateColumns ?? ''
-    expect(columns('f1')).toMatch(/^40px /)
+    // The failed render has no output, so its operation declaration marks it a render row.
+    await waitFor(() => { expect(columns('f1')).toMatch(/^40px /) })
     expect(row('f1').querySelector('[data-testid="dv-history-thumb"]')).toBeNull()
     expect(columns('m1')).toBe('minmax(0, 1fr) auto')
   })

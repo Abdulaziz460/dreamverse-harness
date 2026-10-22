@@ -1,0 +1,4 @@
+--- packages/dv/workflow-story/skills/story-directing/SKILL.md
+Approve the plan with the story workflow.
+--- packages/dv/workflow-ad/skills/ad-directing/SKILL.md
+For a long film, follow story-directing instead.

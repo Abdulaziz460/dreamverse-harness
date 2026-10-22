@@ -1,11 +1,14 @@
 /**
- * Creator-facing names of the agent tools: the `dv_*` tools of the components. The chat (`@dv/ui-composer`) and the
- * History panel (`@dv/ui-history`) show them in place of wire tool names.
+ * Creator-facing names of the agent tools: the name of an operation from its declaration on the wire, and the names of
+ * the project, asset and model catalog tools, whose packages declare no label. The chat (`@dv/ui-composer`) and the
+ * History panel (`@dv/ui-history`) show them in place of wire tool names. Also the name of a generation task from the
+ * model catalog's labels (`GET /api/dv/tasks`), which the canvas editors and the chat's render card show.
  *
  * @module @dv/ui-kit/tool-labels
  */
+import type { WireOperation } from './types.ts'
 
-/** Wire tool name → [Chinese, English] name. */
+/** Wire tool name → [Chinese, English] name, for the `dv_proj_*`, `dv_asset_*` and `dv_models_*` tools only. */
 export const DV_TOOL_LABELS: Readonly<Record<string, readonly [string, string]>> = {
   dv_proj_create: ['新建项目', 'Create project'],
   dv_proj_open: ['打开项目', 'Open project'],
@@ -18,30 +21,44 @@ export const DV_TOOL_LABELS: Readonly<Record<string, readonly [string, string]>>
   dv_asset_import: ['导入素材', 'Import asset'],
   dv_asset_place: ['放到画布', 'Put on canvas'],
   dv_asset_unplace: ['从画布移除', 'Remove from canvas'],
-  dv_bible_character_create: ['新建角色', 'Create character'],
-  dv_bible_character_update: ['修改角色', 'Update character'],
-  dv_bible_location_create: ['新建场景', 'Create location'],
-  dv_bible_location_update: ['修改场景', 'Update location'],
-  dv_bible_style_create: ['新建风格', 'Create style'],
-  dv_bible_style_update: ['修改风格', 'Update style'],
-  dv_plan_create: ['新建分镜计划', 'Create plan'],
-  dv_plan_update: ['修改分镜计划', 'Update plan'],
-  dv_plan_approve: ['批准分镜计划', 'Approve plan'],
-  dv_timeline_create: ['新建时间线', 'Create timeline'],
-  dv_timeline_update: ['修改时间线', 'Update timeline'],
-  dv_timeline_rename: ['重命名时间线', 'Rename timeline'],
-  dv_timeline_delete: ['删除时间线', 'Delete timeline'],
-  dv_timeline_clip_insert: ['插入片段', 'Insert clip'],
-  dv_timeline_clip_move: ['移动片段', 'Move clip'],
-  dv_timeline_clip_remove: ['移除片段', 'Remove clip'],
-  dv_timeline_clip_split: ['拆分片段', 'Split clip'],
-  dv_timeline_clip_trim: ['裁剪片段', 'Trim clip'],
-  dv_timeline_clip_replace: ['替换片段', 'Replace clip'],
-  dv_shot_render: ['渲染镜头', 'Render shot'],
   dv_models_list: ['列出模型', 'List models'],
   dv_models_get: ['查看模型', 'Get model'],
-  dv_timeline_export: ['导出时间线', 'Export timeline'],
   dv_asset_grab_still: ['截取静帧', 'Grab still'],
-  dv_inspect_image: ['检查画面', 'Inspect image'],
-  dv_inspect_asset: ['检查素材', 'Inspect asset'],
+}
+
+/**
+ * The agent tool name of an operation, as the kernel names it: `dv_` and the operation name with `.` replaced by `_`.
+ * @param operation - the operation name, such as `timeline.clip_move`.
+ * @returns the tool name, such as `dv_timeline_clip_move`.
+ */
+export function toolNameOf(operation: string): string {
+  return `dv_${operation.replaceAll('.', '_')}`
+}
+
+/**
+ * The creator-facing name of an operation: its `label` in `/api/dv/operations`, else the `DV_TOOL_LABELS` entry of its
+ * tool, else the operation name.
+ * @param operation - the operation name, or null when a record names none.
+ * @param operations - the operation declarations of `/api/dv/operations`.
+ * @returns the Chinese and English name; two empty texts for null.
+ */
+export function operationLabel(operation: string | null, operations: readonly WireOperation[]): readonly [zh: string, en: string] {
+  if (operation === null) return ['', '']
+  const label = operations.find(declared => declared.name === operation)?.label
+  if (label !== undefined) return [label.zh, label.en]
+  return DV_TOOL_LABELS[toolNameOf(operation)] ?? [operation, operation]
+}
+
+/** The label of each generation task that the model catalog serves at `GET /api/dv/tasks`, by task name. */
+export type WireTaskLabels = Readonly<Record<string, { zh: string; en: string }>>
+
+/**
+ * The creator-facing name of a generation task: its label in the model catalog, else the task name.
+ * @param task - the task name, such as `ref2v`.
+ * @param labels - the task labels of `GET /api/dv/tasks`.
+ * @returns the Chinese and English name.
+ */
+export function taskLabel(task: string, labels: WireTaskLabels): readonly [zh: string, en: string] {
+  const label = labels[task]
+  return label === undefined ? [task, task] : [label.zh, label.en]
 }

@@ -6,12 +6,11 @@
  * @module @dv/shot-plan/types
  */
 import type { Branded } from '@deepseek-ai/dsh-brand'
-import type { ModalityId, TaskId } from '@dv/models'
-import type { RecordId } from '@dv/project'
+import type { RecordId } from '@dv/project/types'
 
 /**
  * The ID of a plan, such as `p2`: unique within the project and never reused; `plan.create` assigns it and stores it in
- * the record's `report.plan`, and `plan.update` and `plan.approve` name the plan by it in their `plan` param.
+ * the record's `report.plan`, and `plan.update` names the plan by it in its `plan` param.
  */
 export type PlanId = Branded<'DvPlanId'>
 
@@ -22,15 +21,15 @@ export interface Shot {
   /** Seconds; the render uses the model minimum when absent. */
   duration_sec?: number
   /**
-   * Character, location or style versions (`c1@1`) or asset IDs this shot uses instead of the plan's references; only for
-   * task `ref2v`.
+   * Versions of registered reference kinds (`<id>@<n>`) or asset IDs this shot uses instead of the plan's references; only
+   * for task `ref2v`.
    */
   references?: string[]
   seed?: number
   /** The modality of the model that renders the shot; with `task`, `provider` and `model`, its key in the model catalog. */
-  modality: ModalityId
+  modality: string
   /** The generation task the model renders the shot in, such as `ref2v`. */
-  task: TaskId
+  task: string
   /** The provider that serves the model. */
   provider: string
   /** The provider's name for the model. */
@@ -41,7 +40,7 @@ export interface Shot {
   continue_previous?: boolean
 }
 
-/** The shots and settings of one plan version, which `plan.approve` turns into shot renders. */
+/** The shots and settings of one plan version, which a workflow plugin turns into shot renders. */
 export interface Plan {
   title?: string
   /** References every shot of task `ref2v` carries unless it names its own: `<id>@<version>` or asset IDs. */
@@ -58,8 +57,27 @@ export interface PlanVersion extends Plan {
   version: number
   /** The `plan.create` or `plan.update` record that wrote the version. */
   created_by: RecordId
-  /** The latest finished `plan.approve` record of the version, or null while it waits for approval. */
-  approved_by: RecordId | null
+}
+
+/**
+ * One shot of a plan version as `dvShotPlan.shots` resolves it, so every workflow reads a plan the same way: the shot
+ * with the plan-level values and the references that apply to it.
+ */
+export interface ResolvedShot {
+  /** 1-based position in the version. */
+  slot: number
+  /** The shot as written in the plan. */
+  shot: Shot
+  /** The plan's aspect ratio, when the version sets one. */
+  aspect_ratio?: string
+  /** The plan's resolution, when the version sets one. */
+  resolution?: string
+  /** The shot's own seed, else the plan's, when either is set. */
+  seed?: number
+  /** The shot's own references, else the plan's; empty when its task takes no references (only task `ref2v` does). */
+  references: string[]
+  /** `continue_previous` on a shot after slot 1 whose task takes a first frame (only task `ref2v` does). */
+  continuePrevious: boolean
 }
 
 /** The `plan` slice: the versions of every plan in the state, oldest first. */
@@ -67,9 +85,9 @@ export interface PlanState {
   plans: Record<PlanId, PlanVersion[]>
 }
 
-declare module '@dv/project' {
+declare module '@dv/project/types' {
   interface ComponentStates {
-    /** Plans and their approvals (the Shot plan component's reducer). */
+    /** Plans and their versions (the Shot plan component's reducer). */
     plan: PlanState
   }
 }

@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "The DreamVerse canvas: the records of a project drawn as story bible, asset, plan, and take nodes linked by asset flow, with a floating editor that renders a new take or replaces a reference image as a user record.",
+  "description": "The DreamVerse canvas: the records of a project drawn as reference, asset, plan, and take nodes linked by asset flow, with a floating editor that renders a new take or replaces a reference image as a user record.",
   "exports": {
     ".": "./src/index.ts",
     "./client": {

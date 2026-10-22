@@ -57,6 +57,7 @@ export type ChatMedia =
 const ASSET_PATH = /^\/dv\/assets\/([^/]+)$/
 
 /**
+ * The asset that a Markdown destination in a chat message points to.
  * @param href - an authored Markdown destination, absolute or root-relative.
  * @returns the asset ID that the destination's path names under `/dv/assets/`, or undefined.
  */
@@ -171,7 +172,8 @@ export interface ChatMediaEntryProps {
  * @param props - the matched references, the default element, and the asset-kind hook.
  * @returns the card, the thumbnail, the grid, or the default element.
  */
-export function ChatMediaEntry({ matched, fallback, useAssetKinds }: ChatMediaEntryProps): ReactNode {
+export function ChatMediaEntry(props: ChatMediaEntryProps): ReactNode {
+  const { matched, fallback, useAssetKinds } = props
   const media = useAssetKinds(kinds => resolveChatMedia(matched, kinds), sameChatMedia)
   return media === null ? fallback : createElement(ChatMediaView, { matched: media })
 }

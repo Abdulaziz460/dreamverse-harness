@@ -1,0 +1,2 @@
+--- packages/dv/ui-shell/src/client/views.ts
+export { CanvasView } from '@dv/ui-canvas/src/client/CanvasView.tsx'

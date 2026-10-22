@@ -31,14 +31,14 @@ kind: "package-reference"
   name: '@dv/ui-asset-pool'
 ```
 
-Host 半边不注册任何东西。浏览器半边注册 `dv-asset-pool` 标签类型（侧栏指南页以"素材库"提供的页面）和以自身 id `@dv/ui-asset-pool` 为键的标签主体。其他标签在前面时，该标签保持挂载。
+Host 半边不注册任何东西。浏览器半边注册 `dv-asset-pool` 标签类型（侧栏指南页以"素材库"提供的页面）和以自身 id `@dv/ui-asset-pool` 为键的标签主体。其他标签在前面时，该标签保持挂载。它还以键 `assets` 填充 `@dv/ui-canvas` 画布的两个键控插槽（它们的 `SlotMap` 条目在 `@dv/ui-kit/registries.ts` 中）：`dv.canvas.picker` 填入 `AssetsPanel`，即画布素材选择窗口里的面板，点击缩略图选中素材；`dv.canvas.preview` 填入 `Preview`，即画布对单个素材的预览。
 
 | 手势 | 请求或事件 |
 | --- | --- |
 | 打开面板、项目的任何变化 | 对项目的当前状态调用 `GET /api/dv/state`，每个 `/dv/events` 事件都重新拉取 |
 | 把图片或视频拖到拖放区，或点击它选择文件 | 每个图片或视频文件一次 `POST /api/dv/assets/import`，带 `surface=asset_pool` 和标签所在的对话；`asset.import` 记录是项目当前位置之后的一步。拖放区不导入其他文件，对每个这样的文件显示 「<name>」不是图片或视频，没有导入。 |
 | 拖动缩略图 | 以 `application/x-dv-asset` 携带素材 ID 的拖动；画布把素材的节点移到放下的位置，时间线在放下的位置插入片段 |
-| 视频预览里的 插入片段 | `dv:timeline-insert` `{assetId}`；shell 把片段追加到编辑器里选中的时间线（没有时用第一条时间线，再没有时新建时间线 `t1`），并显示时间线 |
+| 打开项目时，视频预览里的 插入片段 | 带所打开项目的 `dv:timeline-insert` `{projectId, assetId}`；shell 显示时间线视图，由它的编辑器（`@dv/ui-timeline`）把片段追加到编辑器里选中的时间线（没有时用第一条时间线，再没有时新建时间线 `t1`） |
 | 预览里的 让智能体使用 | `dv:compose`，文字为 使用这个素材：，素材作为 `@` 引用；输入框填入草稿，不发送任何内容 |
 
 缩略图和预览从 `GET /dv/assets/<AssetId>` 加载素材文件。
@@ -53,13 +53,13 @@ Host 半边不注册任何东西。浏览器半边注册 `dv-asset-pool` 标签�
 <details>
 <summary>实现内部——点击展开</summary>
 
-`assetLibrary` 把状态中的素材分为图片和视频，每个素材只出现一次；`made_by` 为镜头渲染操作的图片归入 `extracted`。状态已经带上每个素材在本项目中的导入名字和时间（`ProjectAsset`），因为素材库保存的是任意项目中相同字节第一次导入时的名字和时间。素材库在导入时没能读出宽高时，预览从加载的媒体读取宽高；预览渲染在 `document.body` 上，所以右侧栏不会盖住它的按钮；按 Escape 或点击外面关闭。传入 `onOpen` 属性时，点击缩略图调用它，而不是打开预览；`@dv/ui-canvas` 的素材选择窗口传入它，并复用导出的 `Preview`。
+`assetLibrary` 把状态中的素材分为图片和视频，每个素材只出现一次；生产记录（`created_by`）同时输出了视频的图片（例如渲染镜头的最后一帧）归入 `extracted`。状态已经带上每个素材在本项目中的导入名字和时间（`ProjectAsset`），因为素材库保存的是任意项目中相同字节第一次导入时的名字和时间。素材库在导入时没能读出宽高时，预览从加载的媒体读取宽高；预览渲染在 `document.body` 上，所以右侧栏不会盖住它的按钮；按 Escape 或点击外面关闭。传入 `onOpen` 属性时，点击缩略图调用它，而不是打开预览；画布把它传给 `dv.canvas.picker` 条目。这两个条目在画布声明插槽期间注册，随插件一起移除。
 
 | 文件 | 内容 |
 | --- | --- |
 | [`src/index.ts`](src/index.ts) | Host 半边，不注册任何东西 |
 | [`src/css-modules.d.ts`](src/css-modules.d.ts) | CSS Module 导入的类型 |
-| [`src/client/index.ts`](src/client/index.ts) | 标签类型和标签主体的注册 |
+| [`src/client/index.ts`](src/client/index.ts) | 标签类型、标签主体以及画布选择窗口和预览插槽条目的注册 |
 | [`src/client/definition.ts`](src/client/definition.ts) | 标签类型 |
 | [`src/client/AssetsPanel.tsx`](src/client/AssetsPanel.tsx) | 面板、拖放区、按组分的缩略图网格、预览和标签主体 |
 | [`src/client/AssetsPanel.module.css`](src/client/AssetsPanel.module.css) | 面板和预览的样式 |

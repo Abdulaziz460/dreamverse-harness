@@ -2,18 +2,65 @@
 /** The canvas over a scripted API: nodes, drag persistence, the floating editor, and the `dv:compose` event. */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, createEvent, fireEvent, render, waitFor, within } from '@testing-library/react'
-import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
+import type { RenderResult } from '@testing-library/react'
+import type { ReactNode } from 'react'
+import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
+import { makeTranslate, SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
+import { SidebarRightTabRegistry } from '@deepseek-ai/dsh-client-ui-sidebar-right/src/client/tab-registry.ts'
+import type { RecordId } from '@dv/project/types'
+import type { PlanId } from '@dv/shot-plan/types'
+import { apply as assetPoolApply, inject as assetPoolInject } from '@dv/ui-asset-pool/src/client/index.ts'
 import { assetUrl, DvClient } from '@dv/ui-kit/api.ts'
 import { DV_COMPOSE_EVENT } from '@dv/ui-kit/compose.ts'
 import type { DvComposeDetail } from '@dv/ui-kit/compose.ts'
-import type { WireState } from '@dv/ui-kit/types.ts'
+import type { ChainAnchor, DvCanvas } from '@dv/ui-kit/registries.ts'
+import type { WireOperation } from '@dv/ui-kit/types.ts'
 import { DV_ASSET_DRAG_TYPE, DV_CANVAS_FOCUS_EVENT } from '@dv/ui-kit/workspace-events.ts'
-import { asset, fixtureState, record, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
+import { defineReferenceUi } from '@dv/ui-kit/reference-kit.tsx'
+import { asset, fixtureState, OPERATIONS, record, scriptedFetch, withTestRef } from '../../ui-kit/tests/fixture.client.tsx'
+import type { FixtureState } from '../../ui-kit/tests/fixture.client.tsx'
+import { planNodeType } from '../../ui-shot-plan/src/client/index.ts'
 import { CanvasView } from '../src/client/CanvasView.tsx'
+import { createDvCanvas } from '../src/client/dv-canvas.ts'
 import { NODE_WIDTH } from '../src/client/graph.ts'
 import { EDITOR_RECT_KEY } from '../src/client/NodeEditor.tsx'
 import type { CanvasTranslate } from '../src/client/NodeCard.tsx'
 import { zh } from '../src/client/locales.ts'
+
+/** The chain anchor of the fixture's approval `a1`: it hangs the records it started off `plan:p1` and approved v1. */
+const APPROVAL: ChainAnchor = {
+  starter: 'plan.approve', anchor: record => `plan:${String(record.params['plan'])}`,
+  approvedVersions: (_state, anchorId) => anchorId === 'plan:p1' ? [1] : [],
+}
+
+/** The reference noun `test_ref` of the fixture, declared as the UI package of a noun declares it. */
+const testRef = defineReferenceUi({
+  id: '@dv/ui-test-ref', key: 'test_ref', slice: state => state.components.test_ref,
+  label: ['参考', 'Reference'], mention: { section: ['参考', 'References'], order: 1 },
+})
+
+/**
+ * Canvas registries that hold the node type, references in use and version kind of `test_ref`, as the bundle mounts the
+ * UI package of a noun.
+ * @returns the registries and the disposer of the descriptors of `test_ref`.
+ */
+function refCanvas(): { canvas: DvCanvas; dispose: () => void } {
+  const canvas = createDvCanvas()
+  const disposers = [
+    canvas.nodeTypes.register(testRef.nodeType), canvas.takesInUse.register(testRef.referencesInUse),
+    canvas.versionKinds.register(testRef.versionKind),
+  ]
+  return { canvas, dispose: () => { for (const dispose of disposers) dispose() } }
+}
+
+/**
+ * @param canvas - the registries that get the node type of plans; empty ones by default.
+ * @returns the registries with the node type of plans, as `@dv/ui-shot-plan` registers it.
+ */
+function planCanvas(canvas: DvCanvas = createDvCanvas()): DvCanvas {
+  canvas.nodeTypes.register(planNodeType)
+  return canvas
+}
 
 afterEach(() => {
   cleanup()
@@ -22,22 +69,24 @@ afterEach(() => {
   vi.useRealTimers()
   window.localStorage.removeItem(EDITOR_RECT_KEY)
   window.localStorage.removeItem('dv-canvas-seen:p1')
+  document.documentElement.lang = ''
 })
 
 /**
- * Mount the canvas over scripted `/api/dv` routes and a scripted layout route.
- * @param withTranslate - whether the host passes the Chinese translate.
+ * An API client over scripted `/api/dv` routes and a scripted layout route.
  * @param edit - changes to the fixture state, applied to every state the route serves.
  * @param holdOperations - whether `POST /api/dv/operation` stays unanswered, as a render does until it ends.
- * @returns the rendered view, the recorded writes, and a node lookup.
+ * @param operations - the operation declarations the route serves.
+ * @returns the client, the recorded writes, and the recorded layout writes.
  */
-function mount(withTranslate = true, edit: (state: WireState) => void = () => undefined, holdOperations = false) {
+function scriptedClient(edit: (state: FixtureState) => void, holdOperations: boolean, operations: WireOperation[]) {
   const scripted = scriptedFetch({
     state: () => {
-      const state = fixtureState()
+      const state = withTestRef(fixtureState())
       edit(state)
       return state
     },
+    operations,
   })
   const layoutWrites: unknown[] = []
   const fetchWithLayout: typeof fetch = (input, init) => {
@@ -52,24 +101,75 @@ function mount(withTranslate = true, edit: (state: WireState) => void = () => un
     }
     return scripted.fetch(input, init)
   }
-  const client = new DvClient(fetchWithLayout)
-  const t: CanvasTranslate = makeTranslate(zh)
-  const view = render(<CanvasView projectId="p1" client={client} session="s5" {...withTranslate ? { t } : {}} />)
-  const node = (id: string): HTMLElement => {
+  return { client: new DvClient(fetchWithLayout), writes: scripted.writes, layoutWrites }
+}
+
+/**
+ * @param view - a rendered canvas.
+ * @returns the lookup of a drawn node by its ID.
+ */
+function nodeLookup(view: RenderResult): (id: string) => HTMLElement {
+  return (id) => {
     const element = view.container.querySelector(`[data-node-id="${id}"]`)
     if (!(element instanceof HTMLElement)) throw new Error(`no node ${id}`)
     return element
   }
-  return { view, writes: scripted.writes, layoutWrites, node }
+}
+
+/**
+ * Mount the canvas over scripted `/api/dv` routes and a scripted layout route.
+ * @param withTranslate - whether the host passes the Chinese translate.
+ * @param edit - changes to the fixture state, applied to every state the route serves.
+ * @param holdOperations - whether `POST /api/dv/operation` stays unanswered, as a render does until it ends.
+ * @param operations - the operation declarations the route serves; the fixture's by default.
+ * @param canvas - the `dvCanvas` registries the view reads; the descriptors of `test_ref` and the node type of plans by
+ *   default.
+ * @returns the rendered view, the recorded writes, and a node lookup.
+ */
+function mount(
+  withTranslate = true, edit: (state: FixtureState) => void = () => undefined, holdOperations = false, operations = OPERATIONS,
+  canvas: DvCanvas = planCanvas(refCanvas().canvas),
+) {
+  const { client, writes, layoutWrites } = scriptedClient(edit, holdOperations, operations)
+  const t: CanvasTranslate = makeTranslate(zh)
+  const view = render(<CanvasView projectId="p1" client={client} session="s5" {...withTranslate ? { t } : {}} canvas={canvas} />)
+  return { view, writes, layoutWrites, node: nodeLookup(view) }
+}
+
+/**
+ * Mount the canvas under the real slot runtime, in a frame that declares the slots of its editors as the canvas center
+ * view does, with the asset pool plugin filling the picker and the preview.
+ * @param edit - changes to the fixture state, applied to every state the route serves.
+ * @returns the runtime, the rendered view, the recorded writes, and a node lookup.
+ */
+async function mountWithAssetPool(edit: (state: FixtureState) => void) {
+  const { client, writes } = scriptedClient(edit, false, OPERATIONS)
+  const t: CanvasTranslate = makeTranslate(zh)
+  const canvas = refCanvas().canvas
+  const runtime = await SlotTestRuntime.create()
+  const Frame = ({ renderSlot }: PropsRenderSlots<'dv.canvas.editor' | 'dv.canvas.picker' | 'dv.canvas.preview'>): ReactNode =>
+    <CanvasView projectId="p1" client={client} session="s5" t={t} canvas={canvas} renderSlot={renderSlot} />
+  await runtime.root.declare({
+    'dv.canvas.editor': { kind: 'keyed', scope: 'root' },
+    'dv.canvas.picker': { kind: 'keyed', scope: 'root' },
+    'dv.canvas.preview': { kind: 'keyed', scope: 'root' },
+  }, Frame)
+  runtime.ctx.provide('sidebarRightTabs', new SidebarRightTabRegistry(runtime.ctx) as never)
+  await runtime.mount({ inject: [...assetPoolInject], apply: assetPoolApply })
+  const view = runtime.renderRoot()
+  return { runtime, view, writes, node: nodeLookup(view) }
 }
 
 describe('CanvasView', () => {
   it('draws the project\'s current state with nodes at stored positions, stores the others\' spots, and stores a dragged position', async () => {
-    const { view, node, layoutWrites } = mount()
+    const canvas = planCanvas(refCanvas().canvas)
+    canvas.takesInUse.register({ id: 'clips', uses: () => [], badges: () => [{ asset: 'shot2.mp4', label: '已裁剪' }] })
+    const { view, node, layoutWrites } = mount(true, undefined, false, OPERATIONS, canvas)
     await waitFor(() => { node('g3') })
     expect(node('g1').style.left).toBe('10px')
     expect(node('g2').getAttribute('data-node-stale')).toBe('true')
-    expect(view.getByText(zh['badge.trim'])).toBeTruthy()
+    // A badge that a TakesInUse reports for an asset shows on that asset's take as given.
+    expect(within(node('g2')).getByText('已裁剪')).toBeTruthy()
     // Every node without a stored position gets its spot stored once, without the viewport.
     await waitFor(() => { expect(layoutWrites).toHaveLength(1) })
     expect(layoutWrites[0]).toEqual({ project: 'p1', positions: expect.objectContaining({ g2: { x: 720, y: 0 } }) })
@@ -79,6 +179,24 @@ describe('CanvasView', () => {
     fireEvent.pointerUp(view.getByTestId('dv-canvas-view'), { pointerId: 1 })
     await waitFor(() => { expect(layoutWrites).toHaveLength(2) }, { timeout: 2000 })
     expect(layoutWrites[1]).toMatchObject({ project: 'p1', positions: { g2: { x: 720 + 50, y: 0 + 30 } } })
+  })
+
+  it('reads the chain anchors of its registries: an anchor links and titles the takes of its chains until its disposal', async () => {
+    const canvas = planCanvas()
+    const { view, node } = mount(true, (state) => {
+      state.components.proj.records = state.components.proj.records.map(entry => entry.id === 'g1' ? { ...entry, started_by: { record: 'a1', slot: 1 } } : entry)
+    }, false, OPERATIONS, canvas)
+    const edge = (): Element | null => view.container.querySelector('path[data-edge="plan:p1>g1"]')
+    await waitFor(() => { node('g1') })
+    expect(edge()).toBeNull()
+    let dispose = (): void => undefined
+    act(() => { dispose = canvas.chainAnchors.register(APPROVAL) })
+    // The retake g3 keeps the chain of its root g1, so both read 镜头 1 and hang off plan:p1.
+    await waitFor(() => { expect(edge()).not.toBeNull() })
+    expect(view.container.querySelector('path[data-edge="plan:p1>g3"]')).not.toBeNull()
+    expect([node('g1'), node('g3')].map(element => element.getAttribute('aria-label'))).toEqual(['镜头 1 · 第 1 次', '镜头 1 · 第 2 次'])
+    act(() => { dispose() })
+    await waitFor(() => { expect(edge()).toBeNull() })
   })
 
   it('keeps the node selected after its editor closes; a click on empty canvas then clears the selection', async () => {
@@ -118,6 +236,28 @@ describe('CanvasView', () => {
     expect(node('g1').getAttribute('data-node-selected')).toBeNull()
   }, 10_000)
 
+  it('draws a record of a generation operation from the served declarations as a take titled by the operation label', async () => {
+    const lang = document.documentElement.lang
+    document.documentElement.lang = 'zh-CN'
+    try {
+      const generate: WireOperation = {
+        name: 'image.generate', version: '1', description: 'One image.', inputs: {}, params: {}, outputs: [{ role: 'image', type: 'image' }],
+        deterministic: false, resource: 'gpu', confirm: 'never', label: { zh: '生成图像', en: 'Generate image' },
+      }
+      const { node } = mount(true, (state) => {
+        state.components.proj.records.push(record({ id: 'i1', operation: 'image.generate', deterministic: false, outputs: ['cat.png'] }))
+        state.assets.push(asset('cat.png', 'image/png', 'i1'))
+        state.components.proj.created_by['cat.png'] = 'i1'
+      }, false, [...OPERATIONS, generate])
+      await waitFor(() => { node('i1') })
+      expect(node('i1').getAttribute('data-node-type')).toBe('take')
+      expect(node('i1').getAttribute('aria-label')).toBe('生成图像')
+      expect(node('i1').querySelector('img')?.getAttribute('src')).toBe(assetUrl('cat.png'))
+    } finally {
+      document.documentElement.lang = lang
+    }
+  })
+
   it('marks a take that finished after the first load as unseen until its editor opens', async () => {
     let finished = false
     const { view, node } = mount(true, (state) => {
@@ -137,28 +277,41 @@ describe('CanvasView', () => {
   }, 10_000)
 
   it('draws a character as its name and its first reference image with a count of the rest', async () => {
+    document.documentElement.lang = 'zh-CN'
     const references = ['ref.png', 'r2.png', 'r3.png', 'r4.png', 'r5.png', 'r6.png']
     const { node } = mount(true, (state) => {
       state.assets.push(...references.slice(1).map(id => asset(id, 'image/png', 'u1')))
-      const hero = state.components.bible.characters['hero']?.[0]
+      const hero = state.components.test_ref?.['hero']?.[0]
       if (hero !== undefined) hero.references = references
     })
-    await waitFor(() => { node('bible:hero') })
-    const card = node('bible:hero')
+    await waitFor(() => { node('test_ref:hero') })
+    const card = node('test_ref:hero')
     expect([...card.querySelectorAll('img')].map(image => image.getAttribute('src'))).toEqual([assetUrl('ref.png')])
-    expect(card.textContent).toContain(zh['node.character'])
+    // The card carries the label of the node type of `test_ref`.
+    expect(card.textContent).toContain('参考')
     expect(card.textContent).toContain('Hero')
     expect(card.textContent).toContain('+5')
   })
 
+  it('draws the items of a reference noun and links their version inputs from them only while its descriptors are registered', async () => {
+    const noun = refCanvas()
+    const { view, node } = mount(true, undefined, false, OPERATIONS, noun.canvas)
+    const edge = (): Element | null => view.container.querySelector('path[data-edge="test_ref:hero>g1"]')
+    await waitFor(() => { expect(edge()).not.toBeNull() })
+    expect(node('test_ref:hero').getAttribute('data-node-type')).toBe('test_ref')
+    act(() => { noun.dispose() })
+    await waitFor(() => { expect(view.container.querySelector('[data-node-id="test_ref:hero"]')).toBeNull() })
+    expect(edge()).toBeNull()
+  })
+
   it('draws a character whose first reference is a video as the video\'s first frame', async () => {
     const { node } = mount(true, (state) => {
-      const hero = state.components.bible.characters['hero']?.[0]
+      const hero = state.components.test_ref?.['hero']?.[0]
       if (hero !== undefined) hero.references = ['shot1.mp4', 'ref.png']
     })
-    await waitFor(() => { node('bible:hero') })
-    expect([...node('bible:hero').querySelectorAll('video')].map(video => video.getAttribute('src'))).toEqual([`${assetUrl('shot1.mp4')}#t=0.1`])
-    expect(node('bible:hero').textContent).toContain('+1')
+    await waitFor(() => { node('test_ref:hero') })
+    expect([...node('test_ref:hero').querySelectorAll('video')].map(video => video.getAttribute('src'))).toEqual([`${assetUrl('shot1.mp4')}#t=0.1`])
+    expect(node('test_ref:hero').textContent).toContain('+1')
   })
 
   it('puts a dropped 素材 tile on the canvas under the pointer with asset.place, and 从画布移除 takes it off with asset.unplace', async () => {
@@ -226,7 +379,8 @@ describe('CanvasView', () => {
     fireEvent.pointerDown(node('g1'), { button: 0, clientX: 5, clientY: 5, pointerId: 1 })
     fireEvent.pointerUp(view.getByTestId('dv-canvas-view'), { pointerId: 1 })
     const editor = await view.findByTestId('dv-canvas-node-editor')
-    expect(view.getByTestId('dv-canvas-render-mode').textContent).toBe(`fasth3 · ${zh['task.ref2v']}`)
+    // The task reads its label from the scripted GET /api/dv/tasks, in the language of <html lang> (English here).
+    expect(view.getByTestId('dv-canvas-render-mode').textContent).toBe('fasth3 · From references')
     fireEvent.change(editor.querySelector('textarea') as HTMLTextAreaElement, { target: { value: 'hero runs' } })
     fireEvent.click(view.getByText(zh['editor.renderTake']))
     await waitFor(() => { expect(writes.some(write => write.path === '/api/dv/operation')).toBe(true) })
@@ -234,25 +388,29 @@ describe('CanvasView', () => {
       project: 'p1', operation: 'shot.render', surface: 'canvas', based_on: 'g1', params: { modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3', prompt: 'hero runs' },
       inputs: [{ role: 'reference', ref: 'hero@1' }],
     })
-    fireEvent.pointerDown(node('bible:hero'), { button: 0, clientX: 5, clientY: 5, pointerId: 1 })
+    fireEvent.pointerDown(node('test_ref:hero'), { button: 0, clientX: 5, clientY: 5, pointerId: 1 })
     fireEvent.pointerUp(view.getByTestId('dv-canvas-view'), { pointerId: 1 })
     const composed: DvComposeDetail[] = []
     const listener = (event: Event): void => { composed.push((event as CustomEvent<DvComposeDetail>).detail) }
     window.addEventListener(DV_COMPOSE_EVENT, listener)
     fireEvent.click(await view.findByText(zh['editor.askAgent']))
     window.removeEventListener(DV_COMPOSE_EVENT, listener)
-    expect(composed).toEqual([{ text: '修改 Hero：', refs: [{ kind: 'character', id: 'hero', label: 'Hero', assetId: 'ref.png' }] }])
+    expect(composed).toEqual([{ text: '修改 Hero：', refs: [{ kind: 'test_ref', id: 'hero', label: 'Hero', assetId: 'ref.png' }] }])
     expect(view.queryByTestId('dv-canvas-node-editor')).toBeNull()
     // Choosing a node is a view gesture: it writes nothing.
     expect(writes.map(write => write.path)).toEqual(['/api/dv/operation'])
   })
 
   it('添加素材 adds the characters, locations and assets picked in the picker as references of the take, and an asset chip opens its preview', async () => {
-    const { view, node, writes } = mount(true, (state) => {
-      const bible = state.components.bible
-      bible.characters['villain'] = [{ id: 'villain', version: 2, name: 'Villain', description: '', references: [], created_by: 'e1' }]
-      bible.characters['ghost'] = []
-      bible.locations['studio'] = [{ id: 'studio', version: 1, name: '', description: '', references: ['plan.json'], created_by: 'e1' }]
+    document.documentElement.lang = 'zh-CN'
+    const { runtime, view, node, writes } = await mountWithAssetPool((state) => {
+      state.components.test_ref = {
+        ...state.components.test_ref,
+        villain: [{ id: 'villain', version: 2, name: 'Villain', description: '', references: [], created_by: 'e1' }],
+        ghost: [],
+        studio: [{ id: 'studio', version: 1, name: '', description: '', references: ['plan.json'], created_by: 'e1' }],
+      }
+
       state.assets.push(asset('plan.json', 'application/json', null))
     })
     await waitFor(() => { node('g1') })
@@ -267,10 +425,13 @@ describe('CanvasView', () => {
     expect(view.getByTestId('dv-canvas-node-editor')).toBeTruthy()
     fireEvent.click(view.getByText(zh['editor.addAsset']))
     const picker = await view.findByTestId('dv-canvas-asset-picker')
-    // The take already holds hero@1, so the picker offers the other characters and locations, then the asset pool.
+    // The take already holds hero@1, so the picker offers the other characters and locations, then the asset pool's
+    // `dv.canvas.picker` entry.
     fireEvent.keyDown(window, { key: 'a' })
-    expect(picker.textContent).toContain(zh['picker.bible'])
     const villain = within(picker).getByRole('button', { name: 'Villain' })
+    // Each item sits in the section of its version kind, titled with the kind's label.
+    expect(villain.closest('section')?.querySelector('h3')?.textContent).toBe('参考')
+    expect(within(picker).getByRole('button', { name: 'studio' }).closest('section')?.querySelector('h3')?.textContent).toBe('参考')
     fireEvent.click(within(picker).getByRole('button', { name: 'studio' }))
     fireEvent.click(within(picker).getByRole('button', { name: 'studio' }))
     expect(within(picker).getByRole('button', { name: 'studio' }).getAttribute('aria-pressed')).toBe('false')
@@ -297,6 +458,7 @@ describe('CanvasView', () => {
       operation: 'shot.render',
       inputs: [{ role: 'reference', ref: 'hero@1' }, { role: 'reference', ref: 'villain@2' }, { role: 'reference', ref: 'shot1.mp4' }],
     })
+    await runtime.dispose()
   })
 
   it('a character chip opens the character editor over the take editor, and closing it keeps the take editor\'s changes', async () => {
@@ -311,30 +473,6 @@ describe('CanvasView', () => {
     fireEvent.keyDown(window, { key: 'Escape' })
     expect(view.getAllByTestId('dv-canvas-node-editor')).toHaveLength(1)
     expect((view.getByTestId('dv-canvas-node-editor').querySelector('textarea') as HTMLTextAreaElement).value).toBe('hero runs')
-  })
-
-  it('the character editor appends picked assets to its references and removes one while more than one is left', async () => {
-    const { view, node, writes } = mount()
-    await waitFor(() => { node('bible:hero') })
-    fireEvent.pointerDown(node('bible:hero'), { button: 0, clientX: 5, clientY: 5, pointerId: 1 })
-    fireEvent.pointerUp(view.getByTestId('dv-canvas-view'), { pointerId: 1 })
-    await view.findByTestId('dv-canvas-node-editor')
-    // The only reference cannot be removed: an update without references keeps the current ones.
-    expect(view.getByRole('button', { name: '移除 ref.png' }).hasAttribute('disabled')).toBe(true)
-    fireEvent.click(view.getByText(zh['editor.addAsset']))
-    const picker = await view.findByTestId('dv-canvas-asset-picker')
-    const tile = await waitFor(() => {
-      const found = picker.querySelector('[data-asset-id="shot1.mp4"]')
-      if (!(found instanceof HTMLElement)) throw new Error('no shot1.mp4 tile')
-      return found
-    })
-    fireEvent.click(tile)
-    fireEvent.click(view.getByText('确认（1）'))
-    await waitFor(() => { expect(writes.some(write => write.path === '/api/dv/operation')).toBe(true) })
-    expect(writes.find(write => write.path === '/api/dv/operation')?.body).toMatchObject({
-      operation: 'bible.character_update', params: { character: 'hero' },
-      inputs: [{ role: 'reference', ref: 'ref.png' }, { role: 'reference', ref: 'shot1.mp4' }],
-    })
   })
 
   it('offers 仍然保留 on a stale node, which accepts its record for the chat session beside the canvas', async () => {
@@ -387,6 +525,18 @@ describe('CanvasView', () => {
     await view.findByTestId('dv-canvas-node-editor')
     fireEvent.keyDown(document.body, { key: 'Escape' })
     expect(view.queryByTestId('dv-canvas-node-editor')).toBeNull()
+  })
+
+  it('opens the plan node for a dv:canvas-focus on the record that wrote an earlier plan version', async () => {
+    window.dispatchEvent(new CustomEvent(DV_CANVAS_FOCUS_EVENT, { detail: { recordId: 'p1' } }))
+    const { view, node } = mount(true, (state) => {
+      const [v1] = state.components.plan.plans['p1' as PlanId] ?? []
+      if (v1 === undefined) throw new Error('fixture lacks plan p1')
+      state.components.plan.plans['p1' as PlanId] = [v1, { ...v1, version: 2, created_by: 'q2' as RecordId }]
+    })
+    const editor = await view.findByTestId('dv-canvas-node-editor')
+    expect(editor.getAttribute('aria-label')).toBe(node('plan:p1').getAttribute('aria-label'))
+    expect(node('plan:p1').getAttribute('data-node-selected')).toBe('true')
   })
 
   it('opens the editor centered, moves and resizes it, remembers the rectangle for the next node, and resets on a double click', async () => {
@@ -463,64 +613,6 @@ describe('CanvasView', () => {
     act(() => { canvas.dispatchEvent(overCanvas) })
     expect(overCanvas.defaultPrevented).toBe(true)
     expect(transform()).not.toBe(before)
-  })
-
-  it('the plan editor marks a version replaced before approval as 已被第 {n} 版取代 and shows each shot\'s reference images', async () => {
-    const { view, node } = mount(true, (state) => {
-      const [v1] = state.components.plan.plans['p1'] ?? []
-      if (v1 === undefined) throw new Error('fixture lacks plan p1')
-      const v3 = {
-        ...v1, version: 3, approved_by: null, references: ['hero@1'],
-        shots: [{ prompt: '<Picture 1> walks in the rain', modality: 'video' as const, task: 'ref2v' as const, provider: 'fastvideo', model: 'fasth3' }, { prompt: 'the sky clears', modality: 'video' as const, task: 't2v' as const, provider: 'fastvideo', model: 'fasth3' }],
-      }
-      state.components.plan.plans['p1'] = [v1, { ...v1, version: 2, approved_by: null }, v3]
-    })
-    await waitFor(() => { node('plan:p1') })
-    fireEvent.pointerDown(node('plan:p1'), { button: 0, clientX: 5, clientY: 5, pointerId: 1 })
-    fireEvent.pointerUp(view.getByTestId('dv-canvas-view'), { pointerId: 1 })
-    const editor = await view.findByTestId('dv-canvas-node-editor')
-    const status = (version: number): string => {
-      fireEvent.click(view.getByRole('button', { name: `第 ${String(version)} 版` }))
-      return view.getByTestId('dv-canvas-plan-status').textContent ?? ''
-    }
-    expect([status(1), status(2), status(3)]).toEqual([zh['editor.planApproved'], '已被第 3 版取代', zh['editor.planPending']])
-    // v3's shot renders from Hero's reference image: a "Picture 1 · Hero" chip, and the image in place of <Picture 1> and its brackets.
-    const shot = editor.querySelector('li[data-shot="1"]')
-    expect([...shot?.querySelectorAll('img') ?? []].map(image => [image.getAttribute('alt'), image.getAttribute('src')?.includes('ref.png')]))
-      .toEqual([['', true], ['<Picture 1>', true]])
-    expect(shot?.textContent).toContain('Picture 1 · Hero')
-    expect(shot?.querySelector('p')?.textContent).toBe(' walks in the rain')
-    expect(shot?.textContent).toContain(zh['editor.firstFrameNone'])
-    // A text shot shows its model and task and no reference images.
-    const textShot = editor.querySelector('li[data-shot="2"]')
-    expect(textShot?.querySelectorAll('img')).toHaveLength(0)
-    expect(textShot?.querySelector('[data-testid="dv-canvas-shot-mode"]')?.textContent).toBe(`fasth3 · ${zh['task.t2v']}`)
-    expect(textShot?.textContent).toContain(zh['editor.textOnlyReferences'])
-  })
-
-  it('the plan editor shows reference assets of every media type and numbers only the images as Picture N', async () => {
-    const { view, node } = mount(true, (state) => {
-      const [v1] = state.components.plan.plans['p1'] ?? []
-      if (v1 === undefined) throw new Error('fixture lacks plan p1')
-      state.assets.push(asset('score.wav', 'audio/wav', null))
-      state.components.plan.plans['p1'] = [{
-        ...v1, approved_by: null, references: ['shot1.mp4', 'hero@1'],
-        shots: [{ prompt: '<Video 1> then <Picture 1>', modality: 'video' as const, task: 'ref2v' as const, provider: 'fastvideo', model: 'fasth3', references: ['shot1.mp4', 'hero@1', 'score.wav'] }],
-      }]
-    })
-    await waitFor(() => { node('plan:p1') })
-    fireEvent.pointerDown(node('plan:p1'), { button: 0, clientX: 5, clientY: 5, pointerId: 1 })
-    fireEvent.pointerUp(view.getByTestId('dv-canvas-view'), { pointerId: 1 })
-    const editor = await view.findByTestId('dv-canvas-node-editor')
-    // The plan header lists the video by name and the image as Picture 1.
-    const header = within(editor).getByText(zh['editor.planReferences'])
-    expect(header.textContent).toBe(`${zh['editor.planReferences']}shot1.mp4Picture 1 · Hero`)
-    expect(header.querySelector('video')).not.toBeNull()
-    // The shot lists the video, the image, and the audio in input order; <Picture 1> draws Hero's image.
-    const shot = editor.querySelector('li[data-shot="1"]')
-    expect(shot?.querySelector('dd')?.textContent).toBe('shot1.mp4Picture 1 · Heroscore.wav')
-    expect(shot?.querySelector('p')?.textContent).toBe('<Video 1> then ')
-    expect(shot?.querySelector('p img')?.getAttribute('src')).toBe(assetUrl('ref.png'))
   })
 
   it('follows the DSH interface language in <html lang> when the host passes no translate', async () => {
