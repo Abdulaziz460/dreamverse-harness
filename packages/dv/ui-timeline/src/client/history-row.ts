@@ -1,8 +1,8 @@
 /**
  * The History row of timeline records, as the History panel reads it through `dvHistory.rows`: no subject, and a focus
- * that opens the record's timeline in the timeline editor and selects its clip.
+ * that shows the timeline view of the workspace center on the record's timeline and clip.
  */
-import type { HistoryRow } from '@dv/ui-kit/registries.ts'
+import type { HistoryRow } from '@dv/ui-history/contract'
 import type { ProjectRecord } from '@dv/ui-kit/types.ts'
 
 /** @returns the text value of a param, or null. */
@@ -53,8 +53,8 @@ function timelineOf(record: ProjectRecord, owner: ReadonlyMap<string, string>): 
 }
 
 /**
- * The History row of every `timeline.*` operation. It adds no subject to the operation label. Its focus opens the
- * record's timeline and selects the record's `clip` param, else the first clip the record assigned; a record whose
+ * The History row of every `timeline.*` operation. It adds no subject to the operation label. Its focus shows the
+ * `timeline` center view on the record's timeline and the record's `clip` param, else the first clip the record assigned; a record whose
  * timeline cannot be found focuses nothing.
  */
 export const timelineHistoryRow: HistoryRow = {
@@ -64,6 +64,6 @@ export const timelineHistoryRow: HistoryRow = {
     const timelineId = timelineOf(record, clipTimelines(records))
     if (timelineId === null) return null
     const clipId = text(record.params['clip']) ?? reportedClips(record)[0] ?? null
-    return { event: 'dv:timeline-focus', detail: { timelineId, clipId } }
+    return { view: 'timeline', target: { timeline: timelineId, clip: clipId } }
   },
 }

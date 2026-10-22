@@ -9,9 +9,11 @@ import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import { DvClient } from '@dv/ui-kit/api.ts'
-import { createRegistry, type HistoryRow } from '@dv/ui-kit/registries.ts'
+import { createRegistry } from '@dv/ui-kit/registries.ts'
 import { DV_HISTORY_FOCUS_EVENT } from '@dv/ui-kit/workspace-events.ts'
-import { HistoryTabBody } from './HistoryPanel.tsx'
+import type {} from '@dv/ui-shell/contract'
+import type { DvHistory, HistoryRow } from './contract/index.ts'
+import { HistoryTabBody, type HistoryInjected } from './HistoryPanel.tsx'
 import { HISTORY_ID, HISTORY_KIND, historyDefinition } from './definition.ts'
 
 export { HistoryPanel, type HistoryPanelProps } from './HistoryPanel.tsx'
@@ -21,16 +23,18 @@ export { HISTORY_ID, HISTORY_KIND }
 export const inject = ['slots', 'sidebarRightTabs']
 
 /**
- * Client plugin body: provide `dvHistory`; register the tab type and its body under the type's id; while the right
- * panel service is present, a `dv:history-focus` event opens the tab (the panel itself selects the record).
+ * Client plugin body: provide `dvHistory`; register the tab type and its body under the type's id, whose selected
+ * records move the center through `dvCenter` while `@dv/ui-shell` provides it; while the right panel service is
+ * present, a `dv:history-focus` event opens the tab (the panel itself selects the record).
  * @param ctx - client root context.
  */
 export function apply(ctx: ClientContext): void {
   // At apply's top level, never inside an effect: other plugins register into the registry from their own fibers.
   const rows = createRegistry<HistoryRow>(row => [row.match])
-  ctx.reflect.provide('dvHistory', { rows })
+  const history: DvHistory = { rows }
+  ctx.reflect.provide('dvHistory', history)
   ctx.effect(() => ctx.sidebarRightTabs.register(historyDefinition), 'ui-history: tab type')
-  const injected = { client: new DvClient(), rows }
+  const injected: HistoryInjected = { client: new DvClient(), rows, showInCenter: (target) => { ctx.get('dvCenter')?.show(target) } }
   ctx.effect(() => ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register(
     { name: 'sidebar.right.pane.tab', key: HISTORY_ID, inject: () => injected },
     HistoryTabBody,

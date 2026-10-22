@@ -1,0 +1,721 @@
+// @vitest-environment jsdom
+/**
+ * The DreamVerse center in place of DSH's `main.conversation`, mounted in a slot test runtime with stand-ins for what
+ * it uses: recording shell actions, a Conversation source, a `conversation.content` composer that shows its phase and
+ * the chat view the center hands it, `dv.center.view` and `dv.explore` entries, and a scripted `/api/dv` server.
+ */
+import { act, fireEvent, waitFor, within } from '@testing-library/react'
+import type { ReactNode } from 'react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { Context } from '@deepseek-ai/cordis'
+import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
+import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
+import type { SessionFixture, SlotView } from '@deepseek-ai/dsh-client-test-runtime'
+import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
+import { EMPTY_CONVERSATION_SNAPSHOT } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type { ConversationSnapshot } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type { FactoryComponentPropsOf, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
+import type { WireProjectLink, WireProjectSummary, WireWorkspaces } from '@dv/ui-kit/types.ts'
+import type { ShellActions } from '../src/client/actions.ts'
+
+/** The projects of the scripted server, oldest first. */
+const PROJECTS: WireProjectLink[] = [
+  { id: 'p1', title: 'Launch film', created_at: '2026-01-05T12:00:00Z', path: '/dv/p1', workspace_id: 'ws-p1' },
+  { id: 'p2', title: 'Music video', created_at: '2026-02-05T12:00:00Z', path: '/dv/p2', workspace_id: null },
+  { id: 'p3', title: 'Drama', created_at: '2026-03-05T12:00:00Z', path: '/dv/p3', workspace_id: 'ws-p3' },
+]
+
+/** The DSH Workspaces: the entry Workspace and the Workspaces of p1 and p2, which p2's link names only by path. */
+const WORKSPACES = [
+  { workspaceId: 'ws-entry', path: '/dv/entry', sessionIds: ['s0'] },
+  { workspaceId: 'ws-p1', path: '/dv/p1', sessionIds: ['s1', 's4'] },
+  { workspaceId: 'ws-p2', path: '/dv/p2', sessionIds: ['s2'] },
+]
+
+/** The chat sessions: s0 in the entry Workspace, s1 and the blank s4 in p1, s5 bound to p1, s2 in p2's Workspace. */
+const SESSIONS: SessionFixture[] = [
+  { id: 's0', snapshot: { blank: true }, summary: { blank: true, updatedAt: 1 } },
+  { id: 's1', summary: { displayTitle: 'Opening scene', updatedAt: 3 } },
+  { id: 's2', summary: { displayTitle: 'Chorus', updatedAt: 2 } },
+  { id: 's4', snapshot: { blank: true }, summary: { blank: true, updatedAt: 4 } },
+  { id: 's5', summary: { displayTitle: 'Second take', updatedAt: 5 } },
+]
+
+/** What the scripted `/api/dv` server answers and what it received. */
+interface Server {
+  links: WireWorkspaces
+  summaries: WireProjectSummary[]
+  /** Whether `POST /api/dv/workspaces/bind` fails. */
+  bindFails: boolean
+  binds: unknown[]
+}
+
+/** The shell actions as recorded calls, the actions that fail, and the right-panel seat and fold they observe. */
+interface StandInShell {
+  shell: ShellActions
+  calls: string[]
+  failures: Set<string>
+  mounted: SnapshotStore<SessionId | undefined>
+  expanded: SnapshotStore<boolean>
+}
+
+/**
+ * Shell actions that record each call as `name(args)`; an action named in `failures` throws or rejects.
+ * @param failures - the actions that fail.
+ * @returns the actions and their records.
+ */
+function standInShell(failures: Set<string>): StandInShell {
+  const calls: string[] = []
+  const record = (name: string, ...args: Array<string | undefined>): void => {
+    calls.push(`${name}(${args.filter(arg => arg !== undefined).join(',')})`)
+    if (failures.has(name)) throw new Error(`${name} failed`)
+  }
+  const later = async (name: string, ...args: Array<string | undefined>): Promise<void> => {
+    await Promise.resolve()
+    record(name, ...args)
+  }
+  const mounted = createSnapshotStore<SessionId | undefined>(undefined)
+  const expanded = createSnapshotStore(false)
+  const shell: ShellActions = {
+    newProject: () => later('newProject'),
+    openProject: (projectId, sessionId) => later('openProject', projectId, sessionId),
+    openSession: (sessionId) => { record('openSession', sessionId) },
+    newSession: projectId => later('newSession', projectId),
+    goHome: sessionId => later('goHome', sessionId),
+    openPage: (panelId) => { record('openPage', panelId) },
+    renameProject: (projectId, title) => later('renameProject', projectId, title),
+    deleteProject: projectId => later('deleteProject', projectId),
+    renameSession: (sessionId, title) => later('renameSession', sessionId, title),
+    deleteSession: sessionId => later('deleteSession', sessionId),
+    entryWorkspace: () => Promise.reject(new Error('entryWorkspace is not scripted')),
+    showPanels: () => { record('showPanels') },
+    hidePanels: () => { record('hidePanels') },
+    collapseSidebar: () => { record('collapseSidebar') },
+    restoreSidebar: () => { record('restoreSidebar') },
+    mountedSeat: mounted,
+    panelExpanded: expanded,
+  }
+  return { shell, calls, failures, mounted, expanded }
+}
+
+/**
+ * A `fetch` that answers the shell's `/api/dv` reads from the server; a bind request records the binding.
+ * @param server - the answers.
+ * @returns the fetch.
+ */
+function serverFetch(server: Server): typeof fetch {
+  const json = (body: unknown, status = 200): Promise<Response> => Promise.resolve(new Response(JSON.stringify(body), { status }))
+  return (input, init) => {
+    const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, 'http://host')
+    if (url.pathname === '/api/dv/workspaces/bind') {
+      const body = JSON.parse(typeof init?.body === 'string' ? init.body : '{}') as { session: string; project: string }
+      server.binds.push(body)
+      if (server.bindFails) return json({ error: 'bind refused' }, 500)
+      server.links = { ...server.links, bindings: { ...server.links.bindings, [body.session]: body.project } }
+      return json({ ok: true })
+    }
+    if (url.pathname === '/api/dv/workspaces') return json(server.links)
+    if (url.pathname === '/api/dv/projects/summary') return json(server.summaries)
+    if (url.pathname === '/api/dv/state') return json({ components: {} })
+    return json({ error: `no route ${url.pathname}` }, 404)
+  }
+}
+
+/** A composer that shows its phase and, with a session, the view the center selected for it. */
+function ComposerStandIn({ phase, sessionId, useFactorySlot }: FactoryComponentPropsOf<'conversation.content'>): ReactNode {
+  const Views = useFactorySlot('views', () => null)
+  const WidthControls = useFactorySlot('widthControls', () => <i data-testid="width-handles" />)
+  return (
+    <div data-testid="composer" data-phase={phase}>
+      {sessionId === undefined ? null : <Views />}
+      <WidthControls container={null} phase={phase} />
+    </div>
+  )
+}
+
+/** The chat body of a session, naming the session and the view it was asked for. */
+function ChatStandIn({ sessionId, view }: PropsRuntime<'conversation.session'> & { view?: string }): ReactNode {
+  return <p data-testid="chat">{`${sessionId}:${view ?? 'stored'}`}</p>
+}
+
+/** A center view that prints the project, the session and the target value the workspace handed it. */
+function CenterViewStandIn({ projectId, session, target }: PropsRuntime<'dv.center.view'>): ReactNode {
+  return <p data-testid="center-view">{`${projectId}|${session ?? 'none'}|${JSON.stringify(target?.value ?? null)}`}</p>
+}
+
+/** How a test opens the page. */
+interface MountOptions {
+  /** The URL hash the page loads with. */
+  hash?: string
+  /** The session DSH shows as the main session, if any. */
+  main?: string
+  /** Sessions besides {@link SESSIONS} that DSH knows. */
+  sessions?: SessionFixture[]
+  /** Sessions whose Conversation has an active target. */
+  activeTargets?: readonly string[]
+  /** Whether the DSH session and Workspace lists are still loading. */
+  listsLoading?: boolean
+  /** Whether `dv.center.view` and `dv.explore` entries are registered. */
+  entries?: boolean
+  /** The shell actions that fail. */
+  failures?: readonly string[]
+  /** Server link fields that replace the defaults. */
+  links?: Partial<WireWorkspaces>
+  /** Project summaries the server answers. */
+  summaries?: WireProjectSummary[]
+  /** Whether timers are faked from the first render on. */
+  fakeTimers?: boolean
+}
+
+/** A mounted center and what the tests drive and read. */
+interface Bench {
+  runtime: SlotTestRuntime
+  store: typeof import('../src/client/store.ts')
+  server: Server
+  stand: StandInShell
+  view: SlotView<'main.conversation'>
+  /** Make a session, or none, the main session. */
+  show(sessionId: string | undefined): void
+  /** Read the links from the server, as the shell's links poll does. */
+  refreshLinks(): Promise<void>
+}
+
+const runtimes: SlotTestRuntime[] = []
+const retained: Disposable[] = []
+
+afterEach(async () => {
+  for (const reference of retained.splice(0)) reference[Symbol.dispose]()
+  for (const runtime of runtimes.splice(0)) await runtime.dispose()
+  vi.useRealTimers()
+  vi.restoreAllMocks()
+  vi.unstubAllGlobals()
+  vi.resetModules()
+  window.history.replaceState(null, '', '/')
+})
+
+/**
+ * Load fresh shell modules for a page opened at `options.hash`, and render the center with its stand-ins.
+ * @param options - how the page opens.
+ * @returns the bench.
+ */
+async function mountCenter(options: MountOptions = {}): Promise<Bench> {
+  window.history.replaceState(null, '', `/${options.hash ?? ''}`)
+  vi.resetModules()
+  const server: Server = {
+    links: { entry_path: '/dv/entry', projects: PROJECTS, bindings: {}, ...options.links },
+    summaries: options.summaries ?? [],
+    bindFails: false,
+    binds: [],
+  }
+  vi.stubGlobal('fetch', serverFetch(server))
+  const store = await import('../src/client/store.ts')
+  const { CenterPanel } = await import('../src/client/Center.tsx')
+  const { followSlotTabs } = await import('../src/client/slot-tabs.ts')
+  const stand = standInShell(new Set(options.failures ?? []))
+  const runtime = await SlotTestRuntime.create()
+  runtimes.push(runtime)
+  const locale = new LocaleRuntime(runtime.ctx)
+  runtime.ctx.provide('locale', locale)
+  runtime.slots.installLocale(locale)
+
+  const active = new Set(options.activeTargets ?? [])
+  runtime.ctx.uiSession.provide({
+    hooks: ['conversation'],
+    resolve: binding => ({
+      hooks: {
+        conversation: createSnapshotStore<ConversationSnapshot>(active.has(binding.sessionId)
+          ? { ...EMPTY_CONVERSATION_SNAPSHOT, activeTargets: new Set(['chat']) }
+          : EMPTY_CONVERSATION_SNAPSHOT),
+      },
+    }),
+  })
+  for (const fixture of [...SESSIONS, ...options.sessions ?? []]) await runtime.sessions.add(fixture)
+  await runtime.workspaces.update((draft) => {
+    draft.phase = options.listsLoading === true ? 'pending' : 'ready'
+    draft.items = WORKSPACES.map(item => ({
+      workspaceId: item.workspaceId as WorkspaceId, path: item.path, title: item.path, sessionIds: item.sessionIds as SessionId[],
+      createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z',
+    }))
+  })
+  if (options.listsLoading === true) runtime.sessions.list.update((draft) => { draft.phase = 'pending' })
+
+  await runtime.declare({ 'main.conversation': { kind: 'single', scope: 'session-maybe' } })
+  await runtime.mount({
+    inject: ['slots'],
+    /** Register the stand-in composer, chat body and center, and the center view and explore entries. */
+    apply(ctx: Context) {
+      ctx.effect(() => ctx.slots.registerFactory({
+        name: 'conversation.content',
+        scope: 'session-maybe',
+        children: {
+          'conversation.session': { kind: 'single', scope: 'session' },
+          'conversation.composer': { kind: 'chain', scope: 'session' },
+          'conversation.composer.bar': { kind: 'single', scope: 'session-maybe' },
+          'conversation.input.dock': { kind: 'list', scope: 'session' },
+          'conversation.hero.brand.mark': { kind: 'single', scope: 'root' },
+          'conversation.hero.workspace': { kind: 'single', scope: 'root' },
+          'conversation.hero.agentPreset': { kind: 'single', scope: 'session-maybe' },
+        },
+        inject: () => ({ selectWorkspace: () => Promise.resolve(), hooks: { composerBlock: createSnapshotStore(undefined) } }),
+        locale: 'conversation',
+        slots: { views: { scope: 'session' }, widthControls: { scope: 'root' } },
+      }, ComposerStandIn), 'test: composer')
+      ctx.effect(() => ctx.slots.inject('conversation.session', () => ctx.slots.register(
+        { name: 'conversation.session' }, ChatStandIn,
+      )), 'test: chat')
+      ctx.effect(() => ctx.slots.register({
+        name: 'main.conversation', priority: -1, inject: () => ({ shell: stand.shell }),
+        children: { 'dv.explore': { kind: 'list', scope: 'root' }, 'dv.center.view': { kind: 'list', scope: 'root' } },
+      }, CenterPanel), 'test: center')
+      if (options.entries !== false) {
+        ctx.effect(() => ctx.slots.inject('dv.center.view', function* () {
+          yield ctx.slots.register({ name: 'dv.center.view', id: 'canvas', order: 0, label: () => 'Canvas' }, CenterViewStandIn)
+          yield ctx.slots.register({ name: 'dv.center.view', id: 'timeline', order: 1, label: () => 'Timeline' }, CenterViewStandIn)
+        }), 'test: center views')
+        ctx.effect(() => ctx.slots.inject('dv.explore', function* () {
+          yield ctx.slots.register({ name: 'dv.explore', id: 'mcp', order: 0, label: () => 'MCP tools' }, () => <p>mcp body</p>)
+          yield ctx.slots.register({ name: 'dv.explore', id: 'skills', order: 1, label: () => 'Skills' }, () => <p>skills body</p>)
+        }), 'test: explore tabs')
+      }
+      followSlotTabs(ctx, 'dv.explore')
+      followSlotTabs(ctx, 'dv.center.view')
+    },
+  })
+
+  const reference = (sessionId: string | undefined) => {
+    if (sessionId === undefined) return undefined
+    const held = runtime.sessions.retain(sessionId as SessionId)
+    retained.push(held)
+    return held
+  }
+  if (options.fakeTimers === true) vi.useFakeTimers()
+  const view = runtime.renderSlot('main.conversation', {}, { session: reference(options.main) })
+  return {
+    runtime,
+    store,
+    server,
+    stand,
+    view,
+    show(sessionId) { view.update({}, { session: reference(sessionId) }) },
+    async refreshLinks() { await act(async () => { await store.refreshLinks() }) },
+  }
+}
+
+/**
+ * Advance faked timers inside React's act.
+ * @param ms - the milliseconds.
+ */
+async function advance(ms: number): Promise<void> {
+  await act(async () => { await vi.advanceTimersByTimeAsync(ms) })
+}
+
+/**
+ * Dispatch the Back / Forward event for a URL hash, as the browser does after it moved the URL.
+ * @param hash - the hash the browser moved to.
+ */
+function navigateTo(hash: string): void {
+  act(() => {
+    window.history.replaceState(null, '', `/${hash}`)
+    window.dispatchEvent(new PopStateEvent('popstate'))
+  })
+}
+
+/** @returns an ISO time `days` days before now. */
+function daysAgo(days: number): string {
+  return new Date(Date.now() - days * 86_400_000).toISOString()
+}
+
+describe('the entry page', () => {
+  it('greets a blank chat with the headline, the template chips, the recent projects and the explore tabs', async () => {
+    const bench = await mountCenter({
+      main: 's0',
+      summaries: [
+        { project: 'p3', cover: { video: 'take3.mp4', image: 'still3.png' }, edited_at: daysAgo(0) },
+        { project: 'p2', cover: { video: null, image: 'poster2.png' }, edited_at: daysAgo(1) },
+        { project: 'p1', cover: null, edited_at: null },
+      ],
+    })
+    await bench.refreshLinks()
+    const page = bench.view.view
+    expect(page.getByRole('heading', { level: 1 }).textContent).toBe('What are we making today?')
+    expect(page.getByTestId('composer').getAttribute('data-phase')).toBe('active')
+    // The center hands the composer its chat view alone, without width handles.
+    expect(page.getByTestId('chat').textContent).toBe('s0:chat')
+    expect(page.queryByTestId('width-handles')).toBeNull()
+    expect(bench.stand.calls).toContain('restoreSidebar()')
+
+    const chips = page.getAllByRole('button', { name: /Stream highlight|Product launch|Character drama|Music video$/u })
+      .filter(chip => chip.title === 'Coming soon')
+    expect(chips.map(chip => [chip.textContent, (chip as HTMLButtonElement).disabled]))
+      .toEqual([['Stream highlight', true], ['Product launch', true], ['Character drama', true], ['Music video', true]])
+
+    const recent = within(page.getByRole('region', { name: 'Recent projects' }))
+    const cards = (): string[] => recent.getAllByRole('button').map(button => button.textContent ?? '')
+      .filter(text => text !== 'All projects' && text !== 'Show fewer')
+    await waitFor(() => { expect(cards()[1]).toBe('Music videoYesterday') })
+    expect(cards()[0]).toMatch(/^DramaToday \d\d:\d\d$/u)
+    // A cover with a video shows the take's first frame, muted, and no image; an image cover shows the image; no cover
+    // leaves the frame empty.
+    const drama = recent.getByRole('button', { name: /^Drama/u })
+    const video = drama.querySelector('video')
+    expect([video?.getAttribute('src'), video?.muted]).toEqual(['/dv/assets/take3.mp4#t=0.1', true])
+    expect(drama.querySelector('img')).toBeNull()
+    const musicVideo = recent.getByRole('button', { name: /^Music video/u })
+    expect(musicVideo.querySelector('img')?.getAttribute('src')).toBe('/dv/assets/poster2.png')
+    expect(musicVideo.querySelector('video')).toBeNull()
+    fireEvent.click(recent.getByRole('button', { name: 'All projects' }))
+    expect(cards()).toHaveLength(3)
+    expect(cards()[2]).toBe('Launch filmJan 5')
+    expect(recent.getByRole('button', { name: /^Launch film/u }).querySelector('img, video')).toBeNull()
+    fireEvent.click(recent.getByRole('button', { name: 'Show fewer' }))
+    expect(cards()).toHaveLength(2)
+    fireEvent.click(recent.getAllByRole('button')[1] as HTMLElement)
+    await waitFor(() => { expect(bench.stand.calls).toContain('openProject(p3)') })
+
+    const explore = within(page.getByRole('region', { name: 'Explore' }))
+    expect(explore.getAllByRole('tab').map(tab => [tab.textContent, tab.getAttribute('aria-selected')]))
+      .toEqual([['MCP tools', 'true'], ['Skills', 'false']])
+    expect(explore.getByRole('tabpanel').textContent).toBe('mcp body')
+    fireEvent.click(explore.getByRole('tab', { name: 'Skills' }))
+    expect(explore.getByRole('tabpanel').textContent).toBe('skills body')
+    fireEvent.click(explore.getByRole('button', { name: 'Show less' }))
+    expect(explore.queryByRole('tablist')).toBeNull()
+    fireEvent.click(explore.getByRole('button', { name: 'Show more' }))
+    expect(explore.getByRole('tabpanel').textContent).toBe('skills body')
+  })
+
+  it('keeps the greeting until the chat runs, has a turn, or has an active target, and then shows the chat alone', async () => {
+    const bench = await mountCenter({
+      sessions: [
+        { id: 'waiting', snapshot: { blank: false, awaitingFirstTurn: true } },
+        { id: 'running', snapshot: { blank: true, running: true } },
+        { id: 'targeted', snapshot: { blank: true } },
+      ],
+      activeTargets: ['targeted'],
+    })
+    const greeted = (): boolean => bench.view.view.queryByRole('heading', { level: 1 }) !== null
+    const seen: Array<[string, boolean]> = [['none', greeted()]]
+    for (const sessionId of ['s0', 'waiting', 'running', 's1', 'targeted']) {
+      bench.show(sessionId)
+      seen.push([sessionId, greeted()])
+    }
+    expect(seen).toEqual([['none', true], ['s0', true], ['waiting', true], ['running', false], ['s1', false], ['targeted', false]])
+    expect(bench.view.view.queryByText('Coming soon')).toBeNull()
+    expect(bench.view.container.querySelector('[data-dv-entry]')?.hasAttribute('data-blank')).toBe(false)
+  })
+
+  it('shows a settling composer while a started chat opens, and the greeting while a blank one opens', async () => {
+    const bench = await mountCenter({
+      main: 'opening',
+      sessions: [
+        { id: 'opening', snapshot: { openState: 'loading', blank: true } },
+        { id: 'opening-blank', snapshot: { openState: 'loading', blank: true }, summary: { blank: true } },
+      ],
+    })
+    expect(bench.view.view.getByTestId('composer').getAttribute('data-phase')).toBe('settling')
+    expect(bench.view.view.queryByRole('heading', { level: 1 })).toBeNull()
+    bench.show('opening-blank')
+    expect(bench.view.view.getByTestId('composer').getAttribute('data-phase')).toBe('active')
+    expect(bench.view.view.queryByRole('heading', { level: 1 })).not.toBeNull()
+  })
+
+  it('has no recent projects or explore section without projects and entries', async () => {
+    const bench = await mountCenter({ main: 's0', entries: false, links: { projects: [] } })
+    expect(bench.view.view.queryByRole('region')).toBeNull()
+    await bench.refreshLinks()
+    expect(bench.view.view.queryByRole('region')).toBeNull()
+    expect(bench.view.view.getByRole('heading', { level: 1 })).toBeDefined()
+  })
+
+  it('collapses the right panel once the main session\'s seat mounts, and logs a seat that unbound meanwhile', async () => {
+    const bench = await mountCenter({ main: 's0', failures: ['hidePanels'] })
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    act(() => { bench.stand.mounted.set('s9' as SessionId) })
+    expect(bench.stand.calls).not.toContain('hidePanels()')
+    act(() => { bench.stand.mounted.set('s0' as SessionId) })
+    expect(bench.stand.calls).toContain('hidePanels()')
+    expect(warn).toHaveBeenCalledWith('ui-shell: collapse right panel failed', expect.any(Error))
+  })
+})
+
+describe('the URL restore', () => {
+  it('opens the URL\'s project with its session once the lists are ready, and binds the session to its Workspace\'s project', async () => {
+    const target = encodeURIComponent(JSON.stringify({ timeline: 't2' }))
+    const bench = await mountCenter({ hash: `#project=p1&view=timeline&target=${target}&session=s1`, main: 's1' })
+    // The URL's view and target are in place before the restore.
+    expect(bench.view.view.getByTestId('center-view').textContent).toBe('p1|none|{"timeline":"t2"}')
+    expect(bench.stand.calls.filter(call => call.startsWith('openProject'))).toEqual([])
+    await bench.refreshLinks()
+    await waitFor(() => { expect(bench.stand.calls).toContain('openProject(p1,s1)') })
+    expect(bench.view.view.getByTestId('center-view').textContent).toBe('p1|s1|{"timeline":"t2"}')
+    await waitFor(() => { expect(bench.server.binds).toEqual([{ session: 's1', project: 'p1' }]) })
+    await waitFor(() => { expect(bench.store.getShell().links?.bindings).toEqual({ s1: 'p1' }) })
+    expect(window.location.hash).toBe(`#project=p1&view=timeline&target=${target}&session=s1`)
+
+    // The server drops the binding again: the center does not bind the same pair twice.
+    bench.server.links = { ...bench.server.links, bindings: {} }
+    await bench.refreshLinks()
+    expect(bench.server.binds).toHaveLength(1)
+  })
+
+  it('binds a session found by its Workspace\'s path, and logs a refused bind', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const bench = await mountCenter({ hash: '#project=p2', main: 's2' })
+    bench.server.bindFails = true
+    await bench.refreshLinks()
+    await waitFor(() => { expect(warn).toHaveBeenCalledWith('ui-shell: bind failed', expect.any(Error)) })
+    expect(bench.server.binds).toEqual([{ session: 's2', project: 'p2' }])
+  })
+
+  it('shows the entry page for a project the links do not list, with the URL\'s session, and logs a failed navigation', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const bench = await mountCenter({ hash: '#project=gone&session=s0', main: 's0', failures: ['goHome'] })
+    // The workspace of the URL's project shows its ID until the links name it.
+    expect(bench.view.view.getByTitle('Switch chat or project').textContent).toContain('gone')
+    await bench.refreshLinks()
+    await waitFor(() => { expect(warn).toHaveBeenCalledWith('ui-shell: navigation failed', expect.any(Error)) })
+    expect(bench.stand.calls).toContain('goHome(s0)')
+  })
+
+  it('waits for the DSH session and Workspace lists', async () => {
+    const bench = await mountCenter({ main: 's0', listsLoading: true })
+    await bench.refreshLinks()
+    await bench.runtime.workspaces.update((draft) => { draft.phase = 'ready' })
+    expect(bench.stand.calls.filter(call => call.startsWith('goHome'))).toEqual([])
+    act(() => { bench.runtime.sessions.list.update((draft) => { draft.phase = 'ready' }) })
+    await waitFor(() => { expect(bench.stand.calls).toContain('goHome()') })
+  })
+
+  it('waits for DSH\'s startup session, and proceeds without one after the wait', async () => {
+    const bench = await mountCenter({ fakeTimers: true })
+    await bench.refreshLinks()
+    await advance(3_999)
+    expect(bench.stand.calls.filter(call => call.startsWith('goHome'))).toEqual([])
+    await advance(1)
+    expect(bench.stand.calls).toContain('goHome()')
+  })
+})
+
+describe('Back, Forward, and an edited hash', () => {
+  it('move the page to the location the URL names once the restore ran', async () => {
+    const bench = await mountCenter({ hash: '#project=p1', main: 's1' })
+    // Before the restore the URL keeps what the user typed, and the restore reads it.
+    navigateTo('#project=p3')
+    expect(bench.stand.calls.filter(call => call.startsWith('openProject'))).toEqual([])
+    await bench.refreshLinks()
+    await waitFor(() => { expect(bench.stand.calls).toContain('openProject(p3)') })
+    const opened = (): string[] => bench.stand.calls.filter(call => call.startsWith('openProject') || call.startsWith('goHome'))
+
+    // The URL the shell wrote itself moves nothing.
+    navigateTo(window.location.hash)
+    navigateTo('#project=p1&view=timeline&session=s1')
+    expect(bench.view.view.getByRole('tab', { name: 'Timeline' }).getAttribute('aria-selected')).toBe('true')
+    navigateTo('#project=p3')
+    navigateTo('#project=p1&session=s4')
+    navigateTo('#project=unknown')
+    await waitFor(() => { expect(opened()).toEqual(['openProject(p3)', 'openProject(p3)', 'openProject(p1,s4)', 'goHome()']) })
+  })
+})
+
+describe('the main session\'s project', () => {
+  it('takes the center along when the entry chat is bound to a project after the restore', async () => {
+    const bench = await mountCenter({ main: 's0' })
+    await bench.refreshLinks()
+    await waitFor(() => { expect(bench.stand.calls).toContain('goHome()') })
+    expect(bench.view.container.querySelector('[data-dv-entry]')).not.toBeNull()
+    bench.server.links = { ...bench.server.links, bindings: { s0: 'p2' } }
+    await bench.refreshLinks()
+    expect(bench.store.getShell().projectId).toBe('p2')
+    expect(bench.view.view.getByTitle('Switch chat or project').textContent).toContain('Music video')
+  })
+
+  it('leaves the URL\'s project open when the main session\'s project resolves late or is the open project', async () => {
+    const bench = await mountCenter({ hash: '#project=p1', main: 'elsewhere', sessions: [{ id: 'elsewhere' }] })
+    await bench.refreshLinks()
+    await waitFor(() => { expect(bench.stand.calls).toContain('openProject(p1)') })
+    bench.server.links = { ...bench.server.links, bindings: { elsewhere: 'p2' } }
+    await bench.refreshLinks()
+    expect(bench.store.getShell().projectId).toBe('p1')
+    bench.server.links = { ...bench.server.links, bindings: { elsewhere: 'p1' } }
+    await bench.refreshLinks()
+    expect(bench.store.getShell().projectId).toBe('p1')
+  })
+})
+
+describe('the workspace', () => {
+  it('shows the project and chat in the switcher, the view toggle, and the selected view of the project\'s session', async () => {
+    const bench = await mountCenter({
+      hash: '#project=p1&view=storyboard', main: 's1',
+      summaries: [{ project: 'p1', cover: { video: null, image: 'poster.png' }, edited_at: null }],
+    })
+    await bench.refreshLinks()
+    const page = bench.view.view
+    expect(bench.stand.calls).toContain('collapseSidebar()')
+    const switcher = page.getByTitle('Switch chat or project')
+    expect(switcher.textContent).toBe('Launch film/Opening scene')
+    await waitFor(() => { expect(switcher.querySelector('img')?.getAttribute('src')).toBe('/dv/assets/poster.png') })
+    // An unknown view in the URL shows the first view.
+    expect(page.getAllByRole('tab').map(tab => [tab.textContent, tab.getAttribute('aria-selected')]))
+      .toEqual([['Canvas', 'true'], ['Timeline', 'false']])
+    expect(page.getByTestId('center-view').textContent).toBe('p1|s1|null')
+    fireEvent.click(page.getByRole('tab', { name: 'Timeline' }))
+    expect(bench.store.getShell().view).toBe('timeline')
+    expect(page.getByRole('tab', { name: 'Timeline' }).getAttribute('data-active')).toBe('')
+    act(() => { bench.store.showInCenter({ view: 'timeline', target: { timeline: 't3' } }) })
+    expect(page.getByTestId('center-view').textContent).toBe('p1|s1|{"timeline":"t3"}')
+  })
+
+  it('records no session for its views while the main session is another project\'s, and opens no panels for it', async () => {
+    const bench = await mountCenter({ hash: '#project=p1', main: 's0' })
+    await bench.refreshLinks()
+    const page = bench.view.view
+    expect(page.getByTitle('Switch chat or project').textContent).toBe('Launch film/New chat')
+    expect(page.getByTestId('center-view').textContent).toBe('p1|none|null')
+    act(() => { bench.stand.mounted.set('s0' as SessionId) })
+    fireEvent.click(page.getByRole('button', { name: 'Open the right panel' }))
+    expect(bench.stand.calls).not.toContain('showPanels()')
+  })
+
+  it('shows no view while no plugin registers one', async () => {
+    const bench = await mountCenter({ hash: '#project=p1', entries: false })
+    expect(bench.view.view.queryAllByRole('tab')).toEqual([])
+    expect(bench.view.view.queryByTestId('center-view')).toBeNull()
+  })
+
+  it('opens the panels once when the session\'s seat mounts, and offers the open button only while the panel is hidden', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const bench = await mountCenter({ hash: '#project=p1', main: 's1' })
+    await bench.refreshLinks()
+    const panels = (): number => bench.stand.calls.filter(call => call === 'showPanels()').length
+    act(() => { bench.stand.mounted.set('s1' as SessionId) })
+    expect(panels()).toBe(1)
+    act(() => { bench.stand.mounted.set(undefined) })
+    act(() => { bench.stand.mounted.set('s1' as SessionId) })
+    expect(panels()).toBe(1)
+
+    const open = bench.view.view.getByRole('button', { name: 'Open the right panel' })
+    fireEvent.click(open)
+    expect(panels()).toBe(2)
+    bench.stand.failures.add('showPanels')
+    fireEvent.click(open)
+    expect(warn).toHaveBeenCalledWith('ui-shell: open panels failed', expect.any(Error))
+    act(() => { bench.stand.expanded.set(true) })
+    expect(bench.view.view.queryByRole('button', { name: 'Open the right panel' })).toBeNull()
+  })
+
+  it('retries opening the panels on a timer and when the seat binds again, and gives up after 20 attempts', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const bench = await mountCenter({ hash: '#project=p1', main: 's1', failures: ['showPanels'], fakeTimers: true })
+    await bench.refreshLinks()
+    const panels = (): number => bench.stand.calls.filter(call => call === 'showPanels()').length
+    act(() => { bench.stand.mounted.set('s1' as SessionId) })
+    expect(panels()).toBe(1)
+    await advance(250)
+    expect(panels()).toBe(2)
+    // The seat remounts within one commit: it unbinds and binds the same session again.
+    bench.stand.failures.delete('showPanels')
+    act(() => {
+      bench.stand.mounted.set(undefined)
+      bench.stand.mounted.set('s1' as SessionId)
+    })
+    expect(panels()).toBe(3)
+    await advance(1_000)
+    expect(panels()).toBe(3)
+    expect(warn).not.toHaveBeenCalled()
+  })
+
+  it('stops retrying once a timed attempt succeeds, and logs the failure after 20 failed attempts', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const bench = await mountCenter({
+      hash: '#project=p1', main: 's1', failures: ['showPanels'], fakeTimers: true, sessions: [{ id: 's6' }],
+    })
+    await bench.refreshLinks()
+    const panels = (): number => bench.stand.calls.filter(call => call === 'showPanels()').length
+    act(() => { bench.stand.mounted.set('s1' as SessionId) })
+    await advance(250)
+    bench.stand.failures.delete('showPanels')
+    await advance(250)
+    expect(panels()).toBe(3)
+    await advance(1_000)
+    expect(panels()).toBe(3)
+
+    // Another session of the project fails every attempt.
+    bench.stand.failures.add('showPanels')
+    bench.server.links = { ...bench.server.links, bindings: { s6: 'p1' } }
+    await bench.refreshLinks()
+    bench.show('s6')
+    act(() => { bench.stand.mounted.set('s6' as SessionId) })
+    await advance(19 * 250)
+    expect(panels()).toBe(23)
+    expect(warn).toHaveBeenCalledWith('ui-shell: open chat tab failed', expect.any(Error))
+    await advance(1_000)
+    expect(panels()).toBe(23)
+  })
+})
+
+describe('the session switcher', () => {
+  it('goes home, creates a project, switches among the project\'s chats or starts one, and opens another project', async () => {
+    const bench = await mountCenter({ hash: '#project=p1', main: 's4', links: { bindings: { s5: 'p1' } } })
+    await bench.refreshLinks()
+    const page = bench.view.view
+    const switcher = page.getByTitle('Switch chat or project')
+    expect(switcher.textContent).toBe('Launch film/New chat')
+    const choose = async (name: string | RegExp, call: string): Promise<void> => {
+      fireEvent.click(switcher)
+      expect(switcher.getAttribute('aria-expanded')).toBe('true')
+      fireEvent.click(page.getByRole(typeof name === 'string' ? 'menuitem' : 'menuitemradio', { name }))
+      expect(page.queryByRole('menu')).toBeNull()
+      await waitFor(() => { expect(bench.stand.calls.at(-1)).toBe(call) })
+    }
+
+    fireEvent.click(switcher)
+    const menu = within(page.getByRole('menu'))
+    expect(menu.getByText('Launch film · Chats')).toBeDefined()
+    // The project's chats, newest first: s5 bound to it, the blank main session s4, and s1 of its Workspace.
+    expect(menu.getAllByRole('menuitemradio').map(row => [row.textContent, row.getAttribute('aria-checked')]))
+      .toEqual([['Second take', 'false'], ['New chat', 'true'], ['Opening scene', 'false']])
+    expect(menu.getAllByRole('menuitem').map(item => item.textContent))
+      .toEqual(['Home', 'Create project', 'New chat', 'Drama', 'Music video'])
+    fireEvent.click(menu.getByRole('menuitemradio', { name: 'New chat' }))
+    expect(page.queryByRole('menu')).toBeNull()
+    expect(bench.stand.calls.filter(call => call.startsWith('openSession'))).toEqual([])
+
+    await choose(/Opening scene/u, 'openSession(s1)')
+    await choose('Home', 'goHome()')
+    await choose('Create project', 'newProject()')
+    await choose('New chat', 'newSession(p1)')
+    await choose('Drama', 'openProject(p3)')
+  })
+
+  it('closes on a click outside it and on Escape, which returns the focus to the button', async () => {
+    const bench = await mountCenter({ hash: '#project=p1', main: 's1', links: { projects: PROJECTS.slice(0, 1) } })
+    await bench.refreshLinks()
+    const page = bench.view.view
+    const switcher = page.getByTitle('Switch chat or project')
+    fireEvent.click(switcher)
+    // The only project lists no other projects.
+    expect(page.queryByText('Other projects')).toBeNull()
+    fireEvent.mouseDown(page.getByRole('menu'))
+    expect(page.queryByRole('menu')).not.toBeNull()
+    fireEvent.mouseDown(document.body)
+    expect(page.queryByRole('menu')).toBeNull()
+
+    fireEvent.click(switcher)
+    fireEvent.keyDown(document, { key: 'Enter' })
+    expect(page.queryByRole('menu')).not.toBeNull()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(page.queryByRole('menu')).toBeNull()
+    expect(document.activeElement).toBe(switcher)
+  })
+
+  it('logs a failed navigation and leaves the page as it was', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const bench = await mountCenter({ hash: '#project=p1', main: 's1', failures: ['goHome'] })
+    fireEvent.click(bench.view.view.getByTitle('Switch chat or project'))
+    fireEvent.click(bench.view.view.getByRole('menuitem', { name: 'Home' }))
+    await waitFor(() => { expect(warn).toHaveBeenCalledWith('ui-shell: navigation failed', expect.any(Error)) })
+    expect(bench.store.getShell().projectId).toBe('p1')
+  })
+})

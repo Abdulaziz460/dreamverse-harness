@@ -33,7 +33,7 @@ kind: "package-reference"
   name: '@dv/ui-canvas'
 ```
 
-Host 半边不注册任何东西。浏览器半边提供客户端服务 `dvCanvas`（`@dv/ui-kit/registries.ts` 的 `DvCanvas`：注册表 `nodeTypes`、`chainAnchors`、`takesInUse` 和 `versionKinds`），插件的 UI 半边向其中注册之前它们是空的。它还注册 `dv-canvas` 标签类型（侧栏指南页以"视频画布"提供的页面）、中英文的 `dvCanvas` locale 命名空间，以及以自身 id `@dv/ui-canvas` 为键的标签主体。它把 `CanvasCenter` 注册为 `dv.center.view` 条目 `canvas`（顺序 0，标签为标签类型的 画布 / Canvas），这是按中间区域的所有者属性 `projectId` 和 `session` 绘制项目并记录对话的 `CanvasView`。插件的 UI 半边在 `ctx.inject(['dvCanvas'], …)` 里注册它的描述符，并保留返回的注销函数；键已被占用的第二个描述符会抛错。标签主体和中间区域视图把这些注册表作为 `canvas` 属性传给 `CanvasView`。已注册 `NodeType` 的每个条目画成一个节点，带有其类型的 `data-node-type`，位于其类型的布局列 `column`，用同一张默认卡片绘制：`NodeType.color` 颜色的类型圆点、`NodeType.label()` 和 ` · <subtitle>`；带 `slots` 的条目随后在有位置已有画面时显示画面网格，再显示标题，其他条目显示 40 × 40 的第一张图片或视频、其余数量"+N"和标题；条目的媒体，以及已注册的 `VersionKind` 画成该节点的条目的每个更早版本的素材，都不单独画成 `asset` 节点。画布只通过已注册的 `VersionKind` 读取带版本的条目：版本的输入 `<id>@<n>` 从该条目的版本种类给出的节点连过来，版本编辑器的参考标签显示并打开该条目，素材选择窗口提供每个条目的最新版本，分镜计划编辑器列出每个条目版本的参考素材（`@dv/ui-kit/references.ts` 的 `referenceAssets`）。角色、场景和风格是 `@dv/ui-character`、`@dv/ui-location` 和 `@dv/ui-style` 的节点条目和版本种类。中间区域视图声明键控插槽 `dv.canvas.editor`、`dv.canvas.picker` 和 `dv.canvas.preview`（它们的 `SlotMap` 条目在 `@dv/ui-kit/registries.ts` 中），并把自己的 `renderSlot` 作为 `renderSlot` 传给 `CanvasView`：节点条目的编辑器显示以其 `NodeType.id` 为键的插槽条目，所有者属性为 `{ node, state, host }`，没有注册条目时只显示标题栏。`host`（`EntryEditorHost`）以画布写入的方式运行一个操作（画布的项目、对话会话和 `surface: 'canvas'`；失败显示在画布上方），打开只含素材的素材选择窗口，并打开某个素材的素材库预览。角色、场景或风格的编辑器是其 UI 包的条目。素材选择窗口在带版本的条目下方显示键为 `assets` 的 `dv.canvas.picker` 条目，素材预览显示键为 `assets` 的 `dv.canvas.preview` 条目；`@dv/ui-asset-pool` 用它的素材库面板和预览填充这两个插槽。一个插槽只能由一个条目声明，所以标签主体不声明画布插槽，挂载 `CanvasView` 时不传 `renderSlot`，那里的条目编辑器（包括角色、场景和风格的）只显示标题栏，素材选择窗口只提供带版本的条目，素材标签也不打开预览。
+Host 半边不注册任何东西。浏览器半边提供客户端服务 `dvCanvas`（`@dv/ui-kit/registries.ts` 的 `DvCanvas`：注册表 `nodeTypes`、`chainAnchors`、`takesInUse` 和 `versionKinds`），插件的 UI 半边向其中注册之前它们是空的。它还注册 `dv-canvas` 标签类型（侧栏指南页以"视频画布"提供的页面）、中英文的 `dvCanvas` locale 命名空间，以及以自身 id `@dv/ui-canvas` 为键的标签主体。它把 `CanvasCenter` 注册为 `dv.center.view` 条目 `canvas`（顺序 0，标签为标签类型的 画布 / Canvas），这是按中间区域的所有者属性 `projectId` 和 `session` 绘制项目并记录对话的 `CanvasView`，它打开所有者属性 `target` 指定的记录的节点。插件的 UI 半边在 `ctx.inject(['dvCanvas'], …)` 里注册它的描述符，并保留返回的注销函数；键已被占用的第二个描述符会抛错。标签主体和中间区域视图把这些注册表作为 `canvas` 属性传给 `CanvasView`。已注册 `NodeType` 的每个条目画成一个节点，带有其类型的 `data-node-type`，位于其类型的布局列 `column`，用同一张默认卡片绘制：`NodeType.color` 颜色的类型圆点、`NodeType.label()` 和 ` · <subtitle>`；带 `slots` 的条目随后在有位置已有画面时显示画面网格，再显示标题，其他条目显示 40 × 40 的第一张图片或视频、其余数量"+N"和标题；条目的媒体，以及已注册的 `VersionKind` 画成该节点的条目的每个更早版本的素材，都不单独画成 `asset` 节点。画布只通过已注册的 `VersionKind` 读取带版本的条目：版本的输入 `<id>@<n>` 从该条目的版本种类给出的节点连过来，版本编辑器的参考标签显示并打开该条目，素材选择窗口提供每个条目的最新版本，分镜计划编辑器列出每个条目版本的参考素材（`@dv/ui-kit/references.ts` 的 `referenceAssets`）。角色、场景和风格是 `@dv/ui-character`、`@dv/ui-location` 和 `@dv/ui-style` 的节点条目和版本种类。中间区域视图声明键控插槽 `dv.canvas.editor`、`dv.canvas.picker` 和 `dv.canvas.preview`（它们的 `SlotMap` 条目在 `@dv/ui-kit/registries.ts` 中），并把自己的 `renderSlot` 作为 `renderSlot` 传给 `CanvasView`：节点条目的编辑器显示以其 `NodeType.id` 为键的插槽条目，所有者属性为 `{ node, state, host }`，没有注册条目时只显示标题栏。`host`（`EntryEditorHost`）以画布写入的方式运行一个操作（画布的项目、对话会话和 `surface: 'canvas'`；失败显示在画布上方），打开只含素材的素材选择窗口，并打开某个素材的素材库预览。角色、场景或风格的编辑器是其 UI 包的条目。素材选择窗口在带版本的条目下方显示键为 `assets` 的 `dv.canvas.picker` 条目，素材预览显示键为 `assets` 的 `dv.canvas.preview` 条目；`@dv/ui-asset-pool` 用它的素材库面板和预览填充这两个插槽。一个插槽只能由一个条目声明，所以标签主体不声明画布插槽，挂载 `CanvasView` 时不传 `renderSlot`，那里的条目编辑器（包括角色、场景和风格的）只显示标题栏，素材选择窗口只提供带版本的条目，素材标签也不打开预览。
 
 | 手势 | 请求 |
 | --- | --- |
@@ -47,7 +47,7 @@ Host 半边不注册任何东西。浏览器半边提供客户端服务 `dvCanva
 | 拖动节点、平移或缩放 | `POST /api/dv/layout`，带以节点 ID 为键的移动位置和视口 |
 | 出现一个没有存储位置的节点 | `POST /api/dv/layout`，带它的位置：默认布局位置，每次下移一行，直到不压住其他卡片 |
 
-每个请求都带 `surface: 'canvas'` 和画布旁边的对话，记录把该对话存为它的 `session`。带 `{recordId}` 的 `dv:canvas-focus` 窗口事件把该记录的节点移到中央并打开。记录没有自己的节点时，该事件打开它写下的版本所属的条目节点（条目的 `NodeEntry.records`，例如较早版本的记录对应分镜计划），否则打开它第一个产出的节点。
+每个请求都带 `surface: 'canvas'` 和画布旁边的对话，记录把该对话存为它的 `session`。工作区中间区域把目标 `{ record: <id> }` 交给中间区域视图时，视图打开该记录的节点，例如历史为选中的记录传给 `dvCenter.show({ view: 'canvas', target: { record } })` 的目标。画布把该记录的节点移到中央并打开。记录没有自己的节点时，画布打开它写下的版本所属的条目节点（条目的 `NodeEntry.records`，例如较早版本的记录对应分镜计划），否则打开它第一个产出的节点。每个目标的 `serial` 只打开一次，在布局和状态读到之后打开；记录没有节点的目标不打开任何节点。标签主体不给 `CanvasView` 传 `focus`。
 
 浮动编辑器打开时位于变暗画布的中央，宽度最多 720 px，高度约为画布的 80%。拖动标题行可移动编辑器；拖动右边缘、下边缘或右下角可调整大小，也可以聚焦右下角的调整手柄后按方向键（每次 16 px）；双击标题行恢复到居中的默认位置和大小。浏览器在 `localStorage` 中为所有节点保存同一个最近的位置和大小，下次打开编辑器时把它放进画布范围内。点击变暗的画布或按 Escape 关闭编辑器；上面叠着第二个编辑器时，同样的操作只关闭上面那个。编辑器打开时从它的节点放大出来，关闭时缩回该节点，变暗的画布同时淡入淡出（`@dv/ui-kit/zoom.ts`）。
 
@@ -71,7 +71,7 @@ Host 半边不注册任何东西。浏览器半边提供客户端服务 `dvCanva
 | [`src/client/dv-canvas.ts`](src/client/dv-canvas.ts) | `dvCanvas` 注册表 |
 | [`src/client/definition.ts`](src/client/definition.ts) | 标签类型 |
 | [`src/client/CanvasBody.tsx`](src/client/CanvasBody.tsx) | 标签主体：项目栏下的 `CanvasView` |
-| [`src/client/CanvasCenter.tsx`](src/client/CanvasCenter.tsx) | 中间区域视图：渲染条目编辑器插槽的 `CanvasView` |
+| [`src/client/CanvasCenter.tsx`](src/client/CanvasCenter.tsx) | 中间区域视图：渲染条目编辑器插槽并打开目标记录节点的 `CanvasView` |
 | [`src/client/CanvasView.tsx`](src/client/CanvasView.tsx) | 画布：平移、缩放、拖动、拖放、布局存储 |
 | [`src/client/graph.ts`](src/client/graph.ts) | 节点、边和默认布局 |
 | [`src/client/NodeCard.tsx`](src/client/NodeCard.tsx)、[`src/client/NodeEditor.tsx`](src/client/NodeEditor.tsx) | 节点卡片和浮动编辑器 |
@@ -87,6 +87,7 @@ Host 半边不注册任何东西。浏览器半边提供客户端服务 `dvCanva
 
 - [`@dv/api`](../api/README.zh.md) — 每个手势背后的路由。
 - [`@dv/ui-kit`](../ui-kit/README.zh.md) — API 客户端、wire 类型和 hook。
+- [`@dv/ui-shell`](../ui-shell/README.zh.md) — 工作区中间区域和把它移到画布的 `dvCenter`。
 - [DreamVerse 各包](../../../docs/subsystems/video-harness.zh.md) — 画布所显示的过期、版本和历史规则。
 
 -----

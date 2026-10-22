@@ -13,6 +13,7 @@ import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import { apply as assetPoolApply, inject as assetPoolInject } from '@dv/ui-asset-pool/src/client/index.ts'
 import { defineReferenceUi } from '@dv/ui-reference-kit/reference-kit.tsx'
 import type { NodeType } from '@dv/ui-kit/registries.ts'
+import type { ViewTarget } from '@dv/ui-shell/contract'
 import { fixtureState, scriptedFetch, withTestRef } from '../../ui-kit/tests/fixture.client.tsx'
 import { apply as shotPlanApply } from '../../ui-shot-plan/src/client/index.ts'
 import { apply, inject } from '../src/client/index.ts'
@@ -51,20 +52,22 @@ afterEach(() => {
 /**
  * A slot runtime whose root frame declares the center slot and shows its canvas entry, as the shell's workspace center
  * does, with the ui-canvas plugin mounted on the fixture project and its reference noun `test_ref`.
- * @returns the runtime, the rendered root, and the mounted ui-canvas plugin.
+ * @param target - the target that the center hands the canvas; none by default.
+ * @returns the runtime, the rendered root, the mounted ui-canvas plugin, and the writes of the plugin's client.
  */
-async function centerCanvas() {
+async function centerCanvas(target: ViewTarget | null = null) {
   // The plugin's own client calls the global fetch.
-  vi.stubGlobal('fetch', scriptedFetch({ state: () => withTestRef(fixtureState()) }).fetch)
+  const scripted = scriptedFetch({ state: () => withTestRef(fixtureState()) })
+  vi.stubGlobal('fetch', scripted.fetch)
   const runtime = await SlotTestRuntime.create()
   runtime.ctx.provide('locale', { bind: () => (key: string) => key, register: () => () => {} } as never)
   runtime.ctx.provide('sidebarRightTabs', new SidebarRightTabRegistry(runtime.ctx) as never)
   const Frame = ({ renderSlot }: PropsRenderSlots<'dv.center.view'>): ReactNode =>
-    <div data-testid="center">{renderSlot('dv.center.view', { projectId: 'p1', session: 's5' }, { only: 'canvas' })}</div>
+    <div data-testid="center">{renderSlot('dv.center.view', { projectId: 'p1', session: 's5', target }, { only: 'canvas' })}</div>
   await runtime.root.declare({ 'dv.center.view': { kind: 'list', scope: 'root' } }, Frame)
   const view = runtime.renderRoot()
   const canvas = await runtime.mount({ inject: [...inject], apply })
-  return { runtime, view, canvas }
+  return { runtime, view, canvas, writes: scripted.writes }
 }
 
 /**
@@ -152,6 +155,26 @@ describe('canvas slots in the workspace center', () => {
     // The picked asset's chip opens the asset pool's `dv.canvas.preview` entry.
     fireEvent.click(within(editor).getByRole('button', { name: '查看 shot1.mp4' }))
     expect(await view.findByRole('dialog', { name: 'shot1.mp4' })).toBeTruthy()
+    await runtime.dispose()
+  })
+})
+
+describe('the center target of the canvas', () => {
+  const targets: Array<[string, ViewTarget | null, boolean]> = [
+    ['a string record', { value: { record: 'g2' }, serial: 1 }, true],
+    ['a non-object', { value: 'g2', serial: 1 }, false],
+    ['an array', { value: ['g2'], serial: 1 }, false],
+    ['an object without record', { value: { timeline: 't1' }, serial: 1 }, false],
+    ['a non-string record', { value: { record: ['g2'] }, serial: 1 }, false],
+    ['a null target', null, false],
+  ]
+  it.each(targets)('opens the node of the record that the target names, given %s', async (_name, target, opens) => {
+    const { runtime, view: { container }, writes } = await centerCanvas(target)
+    // The free spots that the canvas stores show that the layout and the graph are loaded, so the target has been read.
+    await waitFor(() => { expect(writes.some(write => write.path === '/api/dv/layout')).toBe(true) })
+    const editor = within(container).queryByTestId('dv-canvas-node-editor')
+    const g2 = container.querySelector('[data-node-id="g2"]')
+    expect(editor?.getAttribute('aria-label') ?? null).toBe(opens ? g2?.getAttribute('aria-label') : null)
     await runtime.dispose()
   })
 })

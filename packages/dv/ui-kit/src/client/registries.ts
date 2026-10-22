@@ -1,9 +1,9 @@
 /**
  * The descriptor registries that plugin UI halves register into, as types and one factory. Each registry is a client
- * service that the UI-core package which reads it provides at its `apply` top level: `@dv/ui-history` provides
- * `dvHistory`, whose rows give the subject of a history row, and `@dv/ui-canvas` provides `dvCanvas`, whose node types,
- * chain anchors, takes in use and version kinds describe the canvas nodes of plugin data. A UI half registers inside
- * `ctx.inject([<service>], …)` of `dvHistory`, `dvCanvas` or `dvMentions` (`@dv/ui-composer`) and keeps its disposers.
+ * service that the UI-core package which reads it provides at its `apply` top level: `@dv/ui-canvas` provides `dvCanvas`,
+ * whose node types, chain anchors, takes in use and version kinds describe the canvas nodes of plugin data. The History
+ * rows are declared in `@dv/ui-history/contract`. A UI half registers inside `ctx.inject([<service>], …)` of `dvCanvas`
+ * or `dvMentions` (`@dv/ui-composer`) and keeps its disposers.
  *
  * @module @dv/ui-kit/registries
  */
@@ -11,7 +11,6 @@ import type {} from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
 import type { DvClient } from './api.ts'
 import type { Asset, OperationRequest, ProjectRecord, WireState } from './types.ts'
-import type { DvWorkspaceEventMap } from './workspace-events.ts'
 import type { ZoomPresence } from './zoom.ts'
 
 /** A list of descriptors that plugins add and remove, with one owner per key. */
@@ -52,29 +51,6 @@ export function createRegistry<D>(keys: (descriptor: D) => readonly string[]): R
     },
   }
 }
-
-/** The registries of the History panel, provided by `@dv/ui-history` as `ctx.dvHistory`. */
-export interface DvHistory {
-  /** Keyed by `match`. */
-  rows: Registry<HistoryRow>
-}
-
-/** How the History panel names the records of one operation, or of every operation of a component key. */
-export interface HistoryRow {
-  /** An operation name, or '<key>.' for every operation of a component key. */
-  match: string
-  /** The subject after the label, with its own separator, such as [' p1 v1', ' p1 v1'] or ['「红伞」', ' “Red umbrella”'];
-   *  null for none. */
-  subject(record: ProjectRecord): readonly [zh: string, en: string] | null
-  /** Where selecting the record moves the center, given the records of the current state (oldest first); absent means
-   *  the record's canvas node. */
-  focus?(record: ProjectRecord, records: readonly ProjectRecord[]): CenterFocus | null
-}
-
-/** Where selecting a history record moves the center: the workspace event to dispatch and its detail. */
-export type CenterFocus =
-  | { event: 'dv:canvas-focus'; detail: DvWorkspaceEventMap['dv:canvas-focus'] }
-  | { event: 'dv:timeline-focus'; detail: DvWorkspaceEventMap['dv:timeline-focus'] }
 
 /** The registries of the canvas, provided by `@dv/ui-canvas` as `ctx.dvCanvas`. */
 export interface DvCanvas {
@@ -178,7 +154,6 @@ export interface MentionKind {
 declare module '@deepseek-ai/cordis' {
   interface Context {
     dvCanvas: DvCanvas
-    dvHistory: DvHistory
     dvMentions: DvMentions
   }
 }
@@ -191,7 +166,5 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
     'dv.canvas.picker': { kind: 'keyed'; scope: 'root'; owner: { projectId: string; session: string | null; client: DvClient; onOpen(asset: Asset): void } }
     /** The preview of one asset; `@dv/ui-canvas` renders the entry at key 'assets'. Without it, the preview shows nothing. */
     'dv.canvas.preview': { kind: 'keyed'; scope: 'root'; owner: { asset: Asset; onClose(): void; zoom: ZoomPresence<Asset> } }
-    /** One view of the open project, such as the canvas; `@dv/ui-shell` shows the selected entry in the workspace center. */
-    'dv.center.view': { kind: 'list'; scope: 'root'; owner: { projectId: string; session: string | null } }
   }
 }

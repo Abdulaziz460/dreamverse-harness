@@ -19,7 +19,7 @@
  * image and video files imports them with `place`, and the asset node's "从画布移除" runs `asset.unplace`. Each of these
  * is a record, so History lists it and undo takes it back.
  */
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { CSSProperties, DragEvent as ReactDragEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import { DvClient } from '@dv/ui-kit/api.ts'
 import { useLanguage } from '@dv/ui-kit/locale.ts'
@@ -27,8 +27,7 @@ import { formatInputRef } from '@dv/ui-kit/references.ts'
 import type { DvCanvas, Registry } from '@dv/ui-kit/registries.ts'
 import type { WireTaskLabels } from '@dv/ui-kit/tool-labels.ts'
 import type { CanvasViewport, NodePosition, OperationRequest, WireState } from '@dv/ui-kit/types.ts'
-import { DV_ASSET_DRAG_TYPE, DV_CANVAS_FOCUS_EVENT } from '@dv/ui-kit/workspace-events.ts'
-import type { DvWorkspaceEventMap } from '@dv/ui-kit/workspace-events.ts'
+import { DV_ASSET_DRAG_TYPE } from '@dv/ui-kit/workspace-events.ts'
 import { readStored, writeStored } from '@dv/ui-kit/storage.ts'
 import { useOperations, useProjectState, useTaskLabels } from '@dv/ui-kit/useProject.ts'
 import { useZoomPresence } from '@dv/ui-kit/zoom.ts'
@@ -40,6 +39,7 @@ import type { CanvasTranslate } from './NodeCard.tsx'
 import { NodeEditor } from './NodeEditor.tsx'
 import type { RenderCanvasSlot } from './NodeEditor.tsx'
 import { en, zh } from './locales.ts'
+import type { DvCanvasKey } from './locales.ts'
 
 /** Props of {@link CanvasView}. */
 export interface CanvasViewProps {
@@ -57,6 +57,14 @@ export interface CanvasViewProps {
    *  and `dv.canvas.preview` entries of the asset pool; without it, an entry's editor shows only its header, the asset picker
    *  offers only versioned items, and the asset preview shows nothing. */
   renderSlot?: RenderCanvasSlot
+  /** The record whose node to open, numbered so that a repeat of one record opens it again; none when null or omitted. */
+  focus?: CanvasFocus | null
+}
+
+/** A request to open the node of a record, such as a History selection. */
+export interface CanvasFocus {
+  record: string
+  serial: number
 }
 
 /** The tallest a card grows (larger text at low zoom plus a badge row), used when fitting. */
@@ -100,31 +108,27 @@ const CANVAS_CSS = `
 `
 
 /**
- * A translate over one `dvCanvas` dictionary, for hosts that mount the canvas without a locale binding.
+ * A translate over one `dvCanvas` dictionary, for hosts that mount the canvas without a locale binding. The canvas asks
+ * only for keys of its own namespace, which each dictionary holds, and never for a key of the common vocabulary.
  * @param dictionary - the Chinese or English dictionary.
  * @returns the translate.
  */
-function dictionaryTranslate(dictionary: Record<string, string>): CanvasTranslate {
+function dictionaryTranslate(dictionary: Record<DvCanvasKey, string>): CanvasTranslate {
   return (key, params) => {
-    let text = dictionary[key] ?? key
+    let text = dictionary[key as DvCanvasKey]
     for (const [name, value] of Object.entries(params ?? {})) text = text.replaceAll(`{${name}}`, String(value))
     return text
   }
 }
 const translates = { zh: dictionaryTranslate(zh), en: dictionaryTranslate(en) }
 
-// A `dv:canvas-focus` request usually arrives while the canvas is unmounted (the shell mounts it in response), so the
-// module keeps the latest requested record until a mounted canvas consumes it.
-let pendingFocus: string | null = null
-const focusListeners = new Set<() => void>()
-if (typeof window !== 'undefined') {
-  window.addEventListener(DV_CANVAS_FOCUS_EVENT, (event) => {
-    pendingFocus = (event as CustomEvent<DvWorkspaceEventMap['dv:canvas-focus']>).detail.recordId
-    for (const listener of focusListeners) listener()
-  })
-}
-
 const clampZoom = (zoom: number): number => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom))
+
+/**
+ * @param error - a failure that a request rejected with.
+ * @returns its message.
+ */
+const messageOf = (error: unknown): string => error instanceof Error ? error.message : String(error)
 
 /** Zoom change per pixel of a mouse wheel's deltaY: one notch (about 100 px) zooms by about 14%. */
 const WHEEL_ZOOM_RATE = 0.0015
@@ -207,11 +211,11 @@ function withoutKeys<V>(map: ReadonlyMap<string, V>, keys: readonly string[]): M
 
 /**
  * The canvas.
- * @param props - the project, chat session, and optional client, translate, registries and editor slot.
+ * @param props - the project, chat session, and optional client, translate, registries, editor slot and focus.
  * @returns the element.
  */
 export function CanvasView(
-  { projectId, client: given, session = null, t: givenT, canvas = NO_CANVAS, renderSlot }: CanvasViewProps,
+  { projectId, client: given, session = null, t: givenT, canvas = NO_CANVAS, renderSlot, focus }: CanvasViewProps,
 ): ReactNode {
   const client = useMemo(() => given ?? new DvClient(), [given])
   const language = useLanguage()
@@ -359,13 +363,39 @@ export function CanvasView(
   // The canvas can change size after the first fit, for example when the right panel opens; keep the automatic fit.
   const fitRef = useRef(fit)
   fitRef.current = fit
-  useEffect(() => {
-    const element = container.current
-    if (element === null || typeof ResizeObserver === 'undefined') return
+  const detachCanvas = useRef<(() => void) | null>(null)
+  /**
+   * Attach the canvas element's native listeners when React mounts it, and detach them when React unmounts it: a size
+   * observer that keeps an automatic fit, and a wheel listener that zooms around the cursor, registered natively because
+   * React's wheel listener is passive.
+   */
+  const attachCanvas = useCallback((element: HTMLDivElement | null) => {
+    container.current = element
+    detachCanvas.current?.()
+    detachCanvas.current = null
+    if (element === null) return
     const observer = new ResizeObserver(() => { if (autoFit.current) fitRef.current() })
     observer.observe(element)
-    return () => { observer.disconnect() }
-  }, [])
+    const onWheel = (event: WheelEvent): void => {
+      // A wheel over a scroll island, such as the floating node editor, scrolls that overlay instead of the canvas.
+      if (event.target instanceof Element && event.target.closest('[data-dv-scroll-island]') !== null) return
+      event.preventDefault()
+      const rect = element.getBoundingClientRect()
+      const px = event.clientX - rect.left
+      const py = event.clientY - rect.top
+      autoFit.current = false
+      setViewport((current) => {
+        const zoom = clampZoom(current.zoom * wheelZoomFactor(event))
+        return { zoom, x: px - (px - current.x) / current.zoom * zoom, y: py - (py - current.y) / current.zoom * zoom }
+      })
+      scheduleSave()
+    }
+    element.addEventListener('wheel', onWheel, { passive: false })
+    detachCanvas.current = () => {
+      observer.disconnect()
+      element.removeEventListener('wheel', onWheel)
+    }
+  }, [scheduleSave])
 
   // Escape closes the top floating editor wherever focus is.
   useEffect(() => {
@@ -391,29 +421,24 @@ export function CanvasView(
     }))
   }, [])
 
-  // Open and center the node of a record that `dv:canvas-focus` asked for, once the layout and the graph are loaded.
-  const [focusRequest, setFocusRequest] = useState(0)
+  // Open and center the node of the focused record once the layout and the graph are loaded; each serial opens once.
+  const opened = useRef<number | null>(null)
   useEffect(() => {
-    const listener = (): void => { setFocusRequest(count => count + 1) }
-    focusListeners.add(listener)
-    return () => { focusListeners.delete(listener) }
-  }, [])
-  useEffect(() => {
-    if (pendingFocus === null || !layoutReady || graph === null) return
+    if (focus === undefined || focus === null || opened.current === focus.serial || !layoutReady || graph === null) return
     // The record's own node, else the entry node whose version it wrote, else the node of its first output.
-    const recordId = pendingFocus
+    const recordId = focus.record
     const firstOutput = graph.state.components.proj.records.find(record => record.id === recordId)?.outputs[0]
     const outputNode = firstOutput === undefined ? undefined : graph.assetNodes[firstOutput]
     const node = graph.nodes.find(candidate => candidate.id === recordId)
       ?? graph.nodes.find(candidate => candidate.record?.id === recordId)
       ?? graph.nodes.find(candidate => candidate.type === 'entry' && candidate.entry.records?.includes(recordId) === true)
       ?? graph.nodes.find(candidate => candidate.id === outputNode)
-    pendingFocus = null
+    opened.current = focus.serial
     if (node === undefined) return
     centerOn(node)
     setSelected(node.id)
     setEditing(node.id)
-  }, [focusRequest, layoutReady, graph, centerOn])
+  }, [focus, layoutReady, graph, centerOn])
 
   /** Move a node to a canvas point and store the position. */
   const placeNode = useCallback((id: string, position: NodePosition) => {
@@ -486,37 +511,12 @@ export function CanvasView(
     setSeen({ project: projectId, ids })
   }, [graph, seenIds, editing, projectId])
 
-  useEffect(() => {
-    const element = container.current
-    if (element === null) return
-    /** Zoom around the cursor; registered natively because React's wheel listener is passive. */
-    const onWheel = (event: WheelEvent): void => {
-      // A wheel over a scroll island, such as the floating node editor, scrolls that overlay instead of the canvas.
-      if (event.target instanceof Element && event.target.closest('[data-dv-scroll-island]') !== null) return
-      event.preventDefault()
-      const rect = element.getBoundingClientRect()
-      const px = event.clientX - rect.left
-      const py = event.clientY - rect.top
-      autoFit.current = false
-      setViewport((current) => {
-        const zoom = clampZoom(current.zoom * wheelZoomFactor(event))
-        return { zoom, x: px - (px - current.x) / current.zoom * zoom, y: py - (py - current.y) / current.zoom * zoom }
-      })
-      scheduleSave()
-    }
-    element.addEventListener('wheel', onWheel, { passive: false })
-    return () => { element.removeEventListener('wheel', onWheel) }
-  }, [scheduleSave])
-
   const capture = (event: ReactPointerEvent): void => {
-    const element = container.current
-    if (element !== null && typeof element.setPointerCapture === 'function') {
-      try {
-        element.setPointerCapture(event.pointerId)
-      } catch (error) {
-        // A synthetic pointer without an active pointer ID cannot be captured; the gesture still works inside the canvas.
-        void error
-      }
+    try {
+      container.current?.setPointerCapture(event.pointerId)
+    } catch (error) {
+      // A synthetic pointer without an active pointer ID cannot be captured; the gesture still works inside the canvas.
+      void error
     }
   }
   const onBackgroundDown = (event: ReactPointerEvent<HTMLDivElement>): void => {
@@ -568,8 +568,8 @@ export function CanvasView(
     autoFit.current = false
     const element = container.current
     const rect = element?.getBoundingClientRect()
-    const cx = (rect?.width ?? 800) / 2
-    const cy = (rect?.height ?? 600) / 2
+    const cx = (rect?.width || 800) / 2
+    const cy = (rect?.height || 600) / 2
     setViewport((current) => {
       const zoom = clampZoom(current.zoom * factor)
       return { zoom, x: cx - (cx - current.x) / current.zoom * zoom, y: cy - (cy - current.y) / current.zoom * zoom }
@@ -581,7 +581,7 @@ export function CanvasView(
     try {
       await work()
     } catch (error) {
-      setNotice(t('error', { message: error instanceof Error ? error.message : String(error) }))
+      setNotice(t('error', { message: messageOf(error) }))
     }
   }
   /**
@@ -592,7 +592,7 @@ export function CanvasView(
    * @returns settles once the new take is revealed; rejects with the error of a request that fails before that.
    */
   const startRender = (request: OperationRequest & { based_on: string }): Promise<void> => new Promise((resolve, reject) => {
-    const known = new Set(graphRef.current?.nodes.map(node => node.id) ?? [])
+    const known = new Set(graphRef.current?.nodes.map(node => node.id))
     const awaited: AwaitedRender = { basedOn: request.based_on, known, resolve }
     awaitedRender.current = awaited
     setNotice(null)
@@ -602,7 +602,7 @@ export function CanvasView(
       setEditing(null)
       resolve()
     }, (error: unknown) => {
-      const message = error instanceof Error ? error.message : String(error)
+      const message = messageOf(error)
       if (awaitedRender.current !== awaited) { setNotice(t('error', { message })); return }
       settleAwaited()
       reject(new Error(message))
@@ -622,7 +622,7 @@ export function CanvasView(
       project: projectId, operation, inputs: record.inputs.map(input => ({ role: input.role, ref: formatInputRef(input.ref) })),
       params: record.params, surface: 'canvas', intent: t('intent.retryTake', { title: nodeTitle(node, t) }), based_on: record.id,
       ...session === null ? {} : { session },
-    }).catch((error: unknown) => { setNotice(t('error', { message: error instanceof Error ? error.message : String(error) })) })
+    }).catch((error: unknown) => { setNotice(t('error', { message: messageOf(error) })) })
   }
   const accepts = (event: ReactDragEvent): boolean => event.dataTransfer.types.includes(DV_ASSET_DRAG_TYPE) || event.dataTransfer.types.includes('Files')
   // A drag the canvas accepts stops here, so the chat composer's document-level file listeners neither show their drop
@@ -649,11 +649,11 @@ export function CanvasView(
     if (!accepts(event)) return
     event.preventDefault()
     event.stopPropagation()
-    const rect = container.current?.getBoundingClientRect()
+    const rect = event.currentTarget.getBoundingClientRect()
     const view = viewportRef.current
     const point = {
-      x: (event.clientX - (rect?.left ?? 0) - view.x) / view.zoom - NODE_WIDTH / 2,
-      y: (event.clientY - (rect?.top ?? 0) - view.y) / view.zoom - DROP_OFFSET_Y,
+      x: (event.clientX - rect.left - view.x) / view.zoom - NODE_WIDTH / 2,
+      y: (event.clientY - rect.top - view.y) / view.zoom - DROP_OFFSET_Y,
     }
     setNotice(null)
     const assetId = event.dataTransfer.getData(DV_ASSET_DRAG_TYPE)
@@ -709,9 +709,9 @@ export function CanvasView(
       <div style={{ position: 'absolute', left: 0, top: 0, transform: `translate(${String(viewport.x)}px, ${String(viewport.y)}px) scale(${String(viewport.zoom)})`, transformOrigin: '0 0' }}>
         <svg style={{ position: 'absolute', left: 0, top: 0, width: 1, height: 1, overflow: 'visible', pointerEvents: 'none' }} aria-hidden="true">
           {edges.map((edge) => {
-            const from = byId.get(edge.from)
-            const to = byId.get(edge.to)
-            if (from === undefined || to === undefined) return null
+            // `buildCanvasGraph` draws an edge only between two of its nodes.
+            const from = byId.get(edge.from) as CanvasNode
+            const to = byId.get(edge.to) as CanvasNode
             const a = positionOf(from)
             const b = positionOf(to)
             const x1 = a.x + NODE_WIDTH
@@ -756,9 +756,11 @@ export function CanvasView(
       </div>
     )
   }
-  // The editor on screen lags `editing` while it shrinks back into its node.
+  // The editor on screen lags `editing` while it shrinks back into its node. The card is looked up inside this canvas,
+  // because the center and the tab can both draw a node.
+  const canvasId = useId()
   const nodeCard = (id: string): Element | null =>
-    [...container.current?.querySelectorAll('[data-node-id]') ?? []].find(card => card.getAttribute('data-node-id') === id) ?? null
+    document.querySelector(`[data-dv-canvas="${canvasId}"] [data-node-id="${id.replace(/["\\]/g, '\\$&')}"]`)
   const editorZoom = useZoomPresence(editing, nodeCard)
   const editingNode = graph?.nodes.find(node => node.id === editorZoom.shown) ?? null
   const stackedNode = editingNode === null ? null : graph?.nodes.find(node => node.id === stacked) ?? null
@@ -785,9 +787,10 @@ export function CanvasView(
   })
   return (
     <div
-      ref={container}
+      ref={attachCanvas}
       style={root}
       data-testid="dv-canvas-view"
+      data-dv-canvas={canvasId}
       aria-label={t('canvas.aria')}
       onPointerDown={onBackgroundDown}
       onPointerMove={onPointerMove}

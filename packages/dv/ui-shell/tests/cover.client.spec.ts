@@ -26,15 +26,15 @@ describe('useProjectSummaries', () => {
     expect(fetchSpy.mock.calls.map(call => call[0])).toEqual(['/api/dv/projects/summary', '/api/dv/projects/summary'])
   })
 
-  it('asks for one project\'s summary on its selected timeline, and again when another timeline is selected', async () => {
+  it('asks for one project\'s summary narrowed by the given fields, and again when the fields change', async () => {
     const fetchSpy = vi.fn<typeof fetch>(() => Promise.resolve(new Response(JSON.stringify(SUMMARIES.slice(0, 1)))))
     vi.stubGlobal('fetch', fetchSpy)
-    const initialProps: { timeline: string | null } = { timeline: null }
-    const { result, rerender } = renderHook(({ timeline }) => useProjectSummaries('p1', null, timeline), { initialProps })
+    const initialProps: { fields: Readonly<Record<string, string>> | undefined } = { fields: undefined }
+    const { result, rerender } = renderHook(({ fields }) => useProjectSummaries('p1', null, fields), { initialProps })
     await waitFor(() => { expect(result.current?.get('p1')?.cover).toEqual({ video: 'shot1.mp4', image: null }) })
-    rerender({ timeline: 't2' })
+    rerender({ fields: { timeline: 't2' } })
     await waitFor(() => { expect(fetchSpy).toHaveBeenCalledTimes(2) })
     expect(fetchSpy.mock.calls.map(call => call[0]))
-      .toEqual(['/api/dv/projects/summary?project=p1', '/api/dv/projects/summary?project=p1&timeline=t2'])
+      .toEqual(['/api/dv/projects/summary?project=p1', '/api/dv/projects/summary?timeline=t2&project=p1'])
   })
 })

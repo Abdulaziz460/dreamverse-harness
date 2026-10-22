@@ -33,19 +33,19 @@ The panel asks for the steps of the project's history list, newest first. Each r
   name: '@dv/ui-history'
 ```
 
-The Host half registers nothing. The browser half provides the client service `dvHistory` (`DvHistory` of `@dv/ui-kit/registries.ts`), registers the `dv-history` tab type (a page the Sidebar's guide offers as "History") and the tab body under its own id `@dv/ui-history`, and opens the tab when a `dv:history-focus` window event arrives. A plugin's UI half names the records of its operations inside `ctx.inject(['dvHistory'], …)` with `ctx.dvHistory.rows.register({ match, subject, focus })`, whose disposer it keeps; `match` is an operation name or `'<key>.'`, the optional `focus(record, records)` gets the records of the current state and returns where selecting the record moves the center (`CenterFocus`) or null, and a second row with the same `match` throws.
+The Host half registers nothing. The browser half provides the client service `dvHistory` (`DvHistory` of `@dv/ui-history/contract`), registers the `dv-history` tab type (a page the Sidebar's guide offers as "History") and the tab body under its own id `@dv/ui-history`, and opens the tab when a `dv:history-focus` window event arrives. A plugin's UI half names the records of its operations inside `ctx.inject(['dvHistory'], …)` with `ctx.dvHistory.rows.register({ match, subject, focus })`, whose disposer it keeps; `match` is an operation name or `'<key>.'`, and a second row with the same `match` throws. The optional `focus(record, records)` gets the records of the current state and returns where selecting the record moves the center, a `CenterTarget` of `@dv/ui-shell/contract` (`view`, the `id` of a `dv.center.view` entry, and `target`, the JSON target that the view reads), or null; without `focus`, the target is the record's canvas node (`{ view: 'canvas', target: { record } }`), except that a `proj` record moves nothing.
 
 | Gesture | Request or event |
 | --- | --- |
 | Open the panel, page with "Load more" | `POST /api/dv/history`; 50 entries per page, `before` for the next page |
-| Select a row of the current state whose matching `HistoryRow` has a `focus`, such as a Timeline row or a timeline export (the `timeline.` row of `@dv/ui-timeline`) | The event that `focus` returns, such as `dv:timeline-focus` `{timelineId, clipId}`; the shell shows the timeline and the editor selects the clip |
-| Select any other row of the current state except a `proj` row, such as a render, character, plan, or asset row | `dv:canvas-focus` `{recordId}`; the shell shows the canvas and the canvas opens the record's node |
+| Select a row of the current state whose matching `HistoryRow` has a `focus`, such as a Timeline row or a timeline export (the `timeline.` row of `@dv/ui-timeline`) | `ctx.dvCenter.show` with the target that `focus` returns, such as `{ view: 'timeline', target: { timeline, clip } }`; the shell shows the timeline and the editor selects the clip |
+| Select any other row of the current state except a `proj` row, such as a render, character, plan, or asset row | `ctx.dvCenter.show({ view: 'canvas', target: { record } })`; the shell shows the canvas and the canvas opens the record's node |
 | "Show in trajectory" in a selected agent row | `dv:trajectory-focus` `{session, toolCall}`; the shell opens 轨迹 on that chat session |
 | Undo in the header (tooltip 撤销（Ctrl+Z / ⌘Z）) | `POST /api/dv/undo`; a refusal shows the server's message |
 | Redo in the header (tooltip 重做（Shift+Ctrl+Z / ⇧⌘Z）), disabled while the current position is the last step | `POST /api/dv/redo` |
 | 回到这一步 / Go back to this step in a row's ⋮ menu | `POST /api/dv/undo` `{to}` |
 
-A `dv:history-focus` event `{session, toolCall}` finds the record that tool call wrote, loads pages until its row is loaded, and selects it. Only steps at or before the current position move the center; greyed steps are only selected.
+A `dv:history-focus` event `{session, toolCall}` finds the record that tool call wrote, loads pages until its row is loaded, and selects it. Only steps at or before the current position move the center; greyed steps are only selected. A selection moves the center only while `@dv/ui-shell` provides `dvCenter`.
 
 -----
 
@@ -55,16 +55,17 @@ A `dv:history-focus` event `{session, toolCall}` finds the record that tool call
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-`HistoryPanel` reads the project's current state with `useProjectState` for the records of the current state, and lists the history through `POST /api/dv/history`. `actionRows` folds each started record under the row of its starter, `actionLabel` names each record, and `centerFocus` decides what a selected row focuses: nothing for a greyed step, else the `focus` of the matching registered row, else nothing for a `proj` record, else the record's canvas node. Each entry's `place` sets the 当前 mark, the grey rows, and the rows that offer 回到这一步. On `/dv/events`, an `update` event replaces the record in the loaded rows, and a `record` or `line` event refetches the loaded window, debounced by 200 ms.
+`HistoryPanel` reads the project's current state with `useProjectState` for the records of the current state, and lists the history through `POST /api/dv/history`. `actionRows` folds each started record under the row of its starter, `actionLabel` names each record, and `centerFocus` decides where a selected row moves the center: nothing for a greyed step, else the `focus` of the matching registered row, else nothing for a `proj` record, else the record's canvas node. Each entry's `place` sets the 当前 mark, the grey rows, and the rows that offer 回到这一步. On `/dv/events`, an `update` event replaces the record in the loaded rows, and a `record` or `line` event refetches the loaded window, debounced by 200 ms.
 
 | File | Content |
 | --- | --- |
 | [`src/css-modules.d.ts`](src/css-modules.d.ts) | The type of the CSS Module imports |
+| [`src/client/contract/index.ts`](src/client/contract/index.ts) | `@dv/ui-history/contract`: `HistoryRow`, `DvHistory`, the text pair `Text`, and the `dvHistory` service type |
 | [`src/client/index.ts`](src/client/index.ts) | The `dvHistory` service, registrations, and the tab opening on `dv:history-focus` |
 | [`src/client/definition.ts`](src/client/definition.ts) | The tab type |
 | [`src/client/HistoryPanel.tsx`](src/client/HistoryPanel.tsx) | The panel, its header with the undo and redo buttons, rows with their ⋮ menus, preview, and the tab body |
 | [`src/client/HistoryPanel.module.css`](src/client/HistoryPanel.module.css) | Styles of the panel |
-| [`src/client/rows.ts`](src/client/rows.ts) | Action rows and the folds of started records, labels with subjects, thumbnails, relative times, and center focus |
+| [`src/client/rows.ts`](src/client/rows.ts) | Action rows and the folds of started records, labels with subjects, thumbnails, relative times, and center targets |
 
 </details>
 
@@ -76,6 +77,7 @@ A `dv:history-focus` event `{session, toolCall}` finds the record that tool call
 - [History rules](../../../docs/subsystems/video-harness.md#history-rules) — which changes are steps, and what undo, redo and 回到这一步 do.
 - [`@dv/api`](../api/README.md) — the history route and the undo and redo routes.
 - [`@dv/project`](../project/README.md) — the history query, undo and redo.
+- [`@dv/ui-shell`](../ui-shell/README.md) — `dvCenter` and `CenterTarget`, which move the workspace center to a selected record.
 - [`@dv/ui-kit`](../ui-kit/README.md) — the API client, the wire types, the window events, and the tool labels.
 
 -----

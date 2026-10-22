@@ -67,8 +67,7 @@ function releaseEventSource(project: string, shared: SharedEventSource): void {
   shared.subscribers -= 1
   if (shared.subscribers > 0) return
   shared.source.close()
-  const sources = eventSources()
-  if (sources.get(project) === shared) sources.delete(project)
+  eventSources().delete(project)
   countStreams()
 }
 
@@ -155,14 +154,15 @@ export class DvClient {
    * Read the card summary of every project, or of one project, in one request.
    * @param signal - cancels the request.
    * @param project - the one project to summarize; null summarizes every project.
-   * @param timeline - with `project`, the timeline whose first clip is the cover when the project has it.
+   * @param fields - with `project`, query fields that narrow its summary, such as `timeline`, the timeline whose first
+   *   clip is the cover when the project has it.
    * @returns per project, the cover and the last edit time.
    * @throws Error when the response is not a list of summaries.
    */
   async listProjectSummaries(
-    signal?: AbortSignal, project: string | null = null, timeline: string | null = null,
+    signal?: AbortSignal, project: string | null = null, fields: Readonly<Record<string, string>> = {},
   ): Promise<WireProjectSummary[]> {
-    const query = { ...project === null ? {} : { project }, ...project === null || timeline === null ? {} : { timeline } }
+    const query = project === null ? {} : { ...fields, project }
     const body = await this.get<unknown>('/api/dv/projects/summary', query, signal)
     if (!Array.isArray(body) || !body.every(isProjectSummary)) throw new Error('ui-kit: malformed /api/dv/projects/summary response')
     return body

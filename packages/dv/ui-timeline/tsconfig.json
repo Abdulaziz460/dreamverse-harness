@@ -27,7 +27,13 @@
       "path": "../timeline/tsconfig.client.json"
     },
     {
+      "path": "../ui-history"
+    },
+    {
       "path": "../ui-kit"
+    },
+    {
+      "path": "../ui-shell"
     }
   ]
 }

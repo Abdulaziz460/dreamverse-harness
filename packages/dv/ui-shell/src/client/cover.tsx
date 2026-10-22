@@ -13,21 +13,26 @@ import { shellClient } from './store.ts'
 import css from './shell.module.css'
 
 /**
- * Read project card summaries in one request when the component mounts and again whenever `refresh` or `timeline`
+ * Read project card summaries in one request when the component mounts and again whenever `refresh` or `fields`
  * changes, keeping the last summaries while a read is in flight or after it failed.
  * @param project - the one project to summarize, or null for every project.
  * @param refresh - a value whose change asks for a fresh read, such as the listed project IDs or a refetched state.
- * @param timeline - with `project`, the selected timeline, whose first clip is the cover.
+ * @param fields - with `project`, the fields that narrow its summary, such as the selected timeline, whose first clip is
+ *   the cover.
  * @returns the summaries by project ID, or null until the first read succeeds.
  */
 export function useProjectSummaries(
-  project: string | null, refresh: unknown, timeline: string | null = null,
+  project: string | null, refresh: unknown, fields: Readonly<Record<string, string>> = NO_FIELDS,
 ): ReadonlyMap<string, WireProjectSummary> | null {
+  const key = JSON.stringify(fields)
   return useLoader(async (signal) => {
-    const list = await shellClient.listProjectSummaries(signal, project, timeline)
+    const list = await shellClient.listProjectSummaries(signal, project, fields)
     return new Map(list.map(summary => [summary.project, summary]))
-  }, [project, refresh, timeline]).value
+  }, [project, refresh, key]).value
 }
+
+/** No narrowing fields. */
+const NO_FIELDS: Readonly<Record<string, string>> = {}
 
 /**
  * A decorative cover frame beside the project title: the first frame of the take's muted video, or the take's image,

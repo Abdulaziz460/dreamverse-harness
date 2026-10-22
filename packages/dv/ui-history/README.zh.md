@@ -33,19 +33,19 @@ kind: "package-reference"
   name: '@dv/ui-history'
 ```
 
-Host 半边不注册任何东西。浏览器半边提供客户端服务 `dvHistory`（`@dv/ui-kit/registries.ts` 的 `DvHistory`），注册 `dv-history` 标签类型（侧栏指南页以"历史"提供的页面）和以自身 id `@dv/ui-history` 为键的标签主体，并在收到 `dv:history-focus` 窗口事件时打开该标签。插件的 UI 半边在 `ctx.inject(['dvHistory'], …)` 里用 `ctx.dvHistory.rows.register({ match, subject, focus })` 为它的操作的记录命名，并保留返回的注销函数；`match` 是一个操作名或 `'<key>.'`，可选的 `focus(record, records)` 接收当前状态的记录，返回选中该记录时中间区域移到哪里（`CenterFocus`）或 null，第二个 `match` 相同的行会抛错。
+Host 半边不注册任何东西。浏览器半边提供客户端服务 `dvHistory`（`@dv/ui-history/contract` 的 `DvHistory`），注册 `dv-history` 标签类型（侧栏指南页以"历史"提供的页面）和以自身 id `@dv/ui-history` 为键的标签主体，并在收到 `dv:history-focus` 窗口事件时打开该标签。插件的 UI 半边在 `ctx.inject(['dvHistory'], …)` 里用 `ctx.dvHistory.rows.register({ match, subject, focus })` 为它的操作的记录命名，并保留返回的注销函数；`match` 是一个操作名或 `'<key>.'`，第二个 `match` 相同的行会抛错。可选的 `focus(record, records)` 接收当前状态的记录，返回选中该记录时中间区域移到哪里，即 `@dv/ui-shell/contract` 的 `CenterTarget`（`view` 是一个 `dv.center.view` 条目的 `id`，`target` 是该视图读取的 JSON 目标），或 null；没有 `focus` 时，目标是记录的画布节点（`{ view: 'canvas', target: { record } }`），但 `proj` 记录不移动中间区域。
 
 | 手势 | 请求或事件 |
 | --- | --- |
 | 打开面板、点"加载更多"翻页 | `POST /api/dv/history`；每页 50 条，下一页用 `before` |
-| 选中当前状态中匹配的 `HistoryRow` 带 `focus` 的行，例如时间线记录或时间线导出的行（`@dv/ui-timeline` 的 `timeline.` 行） | `focus` 返回的事件，例如 `dv:timeline-focus` `{timelineId, clipId}`；shell 显示时间线，编辑器选中该片段 |
-| 选中当前状态中除 `proj` 行以外的其他行，例如渲染、角色、分镜计划或素材的行 | `dv:canvas-focus` `{recordId}`；shell 显示画布，画布打开记录的节点 |
+| 选中当前状态中匹配的 `HistoryRow` 带 `focus` 的行，例如时间线记录或时间线导出的行（`@dv/ui-timeline` 的 `timeline.` 行） | 以 `focus` 返回的目标调用 `ctx.dvCenter.show`，例如 `{ view: 'timeline', target: { timeline, clip } }`；shell 显示时间线，编辑器选中该片段 |
+| 选中当前状态中除 `proj` 行以外的其他行，例如渲染、角色、分镜计划或素材的行 | `ctx.dvCenter.show({ view: 'canvas', target: { record } })`；shell 显示画布，画布打开记录的节点 |
 | 选中的智能体行里的"在轨迹中查看" | `dv:trajectory-focus` `{session, toolCall}`；shell 在该对话上打开 轨迹 |
 | 顶部的撤销（提示 撤销（Ctrl+Z / ⌘Z）） | `POST /api/dv/undo`；被拒绝时显示服务端的消息 |
 | 顶部的重做（提示 重做（Shift+Ctrl+Z / ⇧⌘Z）），当前位置是最后一步时不可用 | `POST /api/dv/redo` |
 | 行 ⋮ 菜单里的 回到这一步 | `POST /api/dv/undo` `{to}` |
 
-`dv:history-focus` 事件 `{session, toolCall}` 找到该工具调用写下的记录，翻页直到它的行已加载，然后选中它。只有在当前位置或之前的步骤会移动中间区域；变灰的步骤只被选中。
+`dv:history-focus` 事件 `{session, toolCall}` 找到该工具调用写下的记录，翻页直到它的行已加载，然后选中它。只有在当前位置或之前的步骤会移动中间区域；变灰的步骤只被选中。只有 `@dv/ui-shell` 提供 `dvCenter` 时，选中才会移动中间区域。
 
 -----
 
@@ -55,16 +55,17 @@ Host 半边不注册任何东西。浏览器半边提供客户端服务 `dvHisto
 <details>
 <summary>实现内部——点击展开</summary>
 
-`HistoryPanel` 用 `useProjectState` 读取项目的当前状态，以得到当前状态的记录，并通过 `POST /api/dv/history` 列出历史。`actionRows` 把每条被启动的记录折叠到启动它的记录那一行下面，`actionLabel` 为每条记录命名，`centerFocus` 决定选中的行定位什么：变灰的步骤不定位，否则用匹配的已注册行的 `focus`，否则 `proj` 记录不定位，否则定位记录的画布节点。每个条目的 `place` 决定 当前 标记、变灰的行，以及哪些行提供 回到这一步。在 `/dv/events` 上，`update` 事件替换已加载行中的记录，`record` 或 `line` 事件以 200 ms 防抖重新拉取已加载的窗口。
+`HistoryPanel` 用 `useProjectState` 读取项目的当前状态，以得到当前状态的记录，并通过 `POST /api/dv/history` 列出历史。`actionRows` 把每条被启动的记录折叠到启动它的记录那一行下面，`actionLabel` 为每条记录命名，`centerFocus` 决定选中的行把中间区域移到哪里：变灰的步骤不移动，否则用匹配的已注册行的 `focus`，否则 `proj` 记录不移动，否则移到记录的画布节点。每个条目的 `place` 决定 当前 标记、变灰的行，以及哪些行提供 回到这一步。在 `/dv/events` 上，`update` 事件替换已加载行中的记录，`record` 或 `line` 事件以 200 ms 防抖重新拉取已加载的窗口。
 
 | 文件 | 内容 |
 | --- | --- |
 | [`src/css-modules.d.ts`](src/css-modules.d.ts) | CSS Module 导入的类型 |
+| [`src/client/contract/index.ts`](src/client/contract/index.ts) | `@dv/ui-history/contract`：`HistoryRow`、`DvHistory`、文字对 `Text` 和 `dvHistory` 服务类型 |
 | [`src/client/index.ts`](src/client/index.ts) | `dvHistory` 服务、注册，以及收到 `dv:history-focus` 时打开标签 |
 | [`src/client/definition.ts`](src/client/definition.ts) | 标签类型 |
 | [`src/client/HistoryPanel.tsx`](src/client/HistoryPanel.tsx) | 面板、带撤销和重做按钮的顶部、带 ⋮ 菜单的行、预览和标签主体 |
 | [`src/client/HistoryPanel.module.css`](src/client/HistoryPanel.module.css) | 面板的样式 |
-| [`src/client/rows.ts`](src/client/rows.ts) | 操作行和被启动记录的折叠、带主体的名称、缩略图、相对时间和中间区域定位 |
+| [`src/client/rows.ts`](src/client/rows.ts) | 操作行和被启动记录的折叠、带主体的名称、缩略图、相对时间和中间区域目标 |
 
 </details>
 
@@ -76,6 +77,7 @@ Host 半边不注册任何东西。浏览器半边提供客户端服务 `dvHisto
 - [历史规则](../../../docs/subsystems/video-harness.zh.md#history-rules) — 哪些修改是步骤，以及撤销、重做和 回到这一步 做什么。
 - [`@dv/api`](../api/README.zh.md) — 历史路由以及撤销和重做路由。
 - [`@dv/project`](../project/README.zh.md) — 历史查询、撤销和重做。
+- [`@dv/ui-shell`](../ui-shell/README.zh.md) — `dvCenter` 和 `CenterTarget`，把工作区中间区域移到选中的记录。
 - [`@dv/ui-kit`](../ui-kit/README.zh.md) — API 客户端、wire 类型、窗口事件和工具名称。
 
 -----

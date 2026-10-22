@@ -16,8 +16,9 @@ import type { CharacterId } from '@dv/character/types'
 import { projectItems } from '@dv/ui-composer/src/client/mention.ts'
 import { actionLabel } from '@dv/ui-history/src/client/rows.ts'
 import { createRegistry } from '@dv/ui-kit/registries.ts'
+import type { DvHistory, HistoryRow } from '@dv/ui-history/contract'
 import type {
-  ChainAnchor, DvCanvas, DvHistory, DvMentions, EntryEditorHost, HistoryRow, MentionKind, NodeType, TakesInUse, VersionKind,
+  ChainAnchor, DvCanvas, DvMentions, EntryEditorHost, MentionKind, NodeType, TakesInUse, VersionKind,
 } from '@dv/ui-kit/registries.ts'
 import type { WireOperation, WireState } from '@dv/ui-kit/types.ts'
 import { fixtureState, record } from '../../ui-kit/tests/fixture.client.tsx'

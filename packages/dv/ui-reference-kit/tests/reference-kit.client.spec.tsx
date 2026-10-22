@@ -11,8 +11,9 @@ import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import { defineReferenceUi, ReferenceEditor } from '../src/client/reference-kit.tsx'
 import type { ReferenceEditorProps } from '../src/client/reference-kit.tsx'
 import { createRegistry } from '@dv/ui-kit/registries.ts'
+import type { DvHistory, HistoryRow } from '@dv/ui-history/contract'
 import type {
-  ChainAnchor, DvCanvas, DvHistory, DvMentions, EntryEditorHost, HistoryRow, MentionKind, NodeEntry, NodeType, TakesInUse, VersionKind,
+  ChainAnchor, DvCanvas, DvMentions, EntryEditorHost, MentionKind, NodeEntry, NodeType, TakesInUse, VersionKind,
 } from '@dv/ui-kit/registries.ts'
 import type { WireState } from '@dv/ui-kit/types.ts'
 import { fixtureState, record, withTestRef } from '../../ui-kit/tests/fixture.client.tsx'

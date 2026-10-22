@@ -5,16 +5,27 @@ import { act, cleanup, fireEvent, render, waitFor, within } from '@testing-libra
 import type { AssetId, RecordId } from '@dv/project/types'
 import type { ClipId, TimelineId } from '@dv/timeline/types'
 import { DvClient } from '@dv/ui-kit/api.ts'
-import { getCurrentTimeline, publishCurrentTimeline } from '@dv/ui-kit/current-timeline.ts'
+import type { WireState } from '@dv/ui-kit/types.ts'
 import { asset, fixtureState, record, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
-import type { FixtureState } from '../../ui-kit/tests/fixture.client.tsx'
+import type { FixtureState, ScriptedRoutes } from '../../ui-kit/tests/fixture.client.tsx'
 import { FALLBACK_CLIP_SECONDS } from '@dv/ui-kit/timeline.ts'
-import { DV_TIMELINE_INSERT_EVENT, dispatchWorkspaceEvent } from '@dv/ui-kit/workspace-events.ts'
-import { TimelineView } from '../src/client/TimelineView.tsx'
+import { DV_ASSET_DRAG_TYPE, DV_TIMELINE_INSERT_EVENT, dispatchWorkspaceEvent } from '@dv/ui-kit/workspace-events.ts'
 import { placeTimeline } from '../src/client/timelines.ts'
+import { copyFor } from '../src/client/TimelineView.tsx'
+import { bootTimeline, centerView } from './center.client.tsx'
+import type { BootedTimeline } from './center.client.tsx'
 
-beforeEach(() => { document.documentElement.lang = 'zh-CN' })
-afterEach(() => { cleanup(); vi.restoreAllMocks(); publishCurrentTimeline('p1', null) })
+/** The plugin booted for each test; its center values and selection are fresh per test. */
+let booted: BootedTimeline
+
+beforeEach(async () => {
+  document.documentElement.lang = 'zh-CN'
+  booted = await bootTimeline()
+})
+afterEach(async () => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); await booted.fiber.dispose() })
+
+/** @returns the selected timeline of project p1 in the plugin's shared selection. */
+const selected = (): string | undefined => booted.center().hooks.selection.getSnapshot().timelines['p1']
 
 /** The shared fixture with a second timeline holding one imported clip. */
 function twoTimelines(): FixtureState {
@@ -24,9 +35,15 @@ function twoTimelines(): FixtureState {
   return state
 }
 
-function mount() {
-  const { fetch, writes } = scriptedFetch({ state: twoTimelines })
-  const view = render(<TimelineView projectId="p1" client={new DvClient(fetch)} />)
+/**
+ * Render the center view of project p1 over scripted `/api/dv` routes.
+ * @param routes - the answers; the two-timeline state by default.
+ * @returns the rendered page, the recorded writes, a clip by its position, the written operation requests, and a finder
+ *   of the video track.
+ */
+function mount(routes: ScriptedRoutes = { state: twoTimelines }) {
+  const { fetch, writes } = scriptedFetch(routes)
+  const view = render(centerView(booted.center(), { client: new DvClient(fetch) }))
   const clip = (position: number): HTMLElement => {
     const element = view.container.querySelector(`[data-clip-position="${String(position)}"]`)
     if (!(element instanceof HTMLElement)) throw new Error(`no clip ${String(position)}`)
@@ -46,7 +63,7 @@ describe('TimelineView', () => {
     expect(clip(2).getAttribute('data-clip-stale')).toBe('true')
     expect(clip(2).getAttribute('data-clip')).toBe('cl2')
     expect(view.getByTestId('dv-timeline-time').textContent).toBe('00:00.00 / 00:07.00')
-    await waitFor(() => { expect(getCurrentTimeline()).toEqual({ projectId: 'p1', timelineId: 't1' }) })
+    await waitFor(() => { expect(selected()).toBe('t1') })
     fireEvent.click(view.getAllByRole('tab')[1] as HTMLElement)
     expect(view.container.querySelectorAll('[data-clip]')).toHaveLength(1)
   })
@@ -116,7 +133,7 @@ describe('TimelineView', () => {
         return state
       },
     })
-    const view = render(<TimelineView projectId="p1" client={new DvClient(fetch)} />)
+    const view = render(centerView(booted.center(), { client: new DvClient(fetch) }))
     await view.findByRole('list', { name: '视频轨道' })
     const frames = (): HTMLVideoElement[] => [...view.getByTestId('dv-timeline-viewer').querySelectorAll('video')]
     expect(frames()[0]?.getAttribute('src')).toBe('/dv/assets/shot1.mp4')
@@ -124,7 +141,7 @@ describe('TimelineView', () => {
     fireEvent.pointerUp(view.getByTestId('dv-timeline-ruler'), { clientX: 200 })
     expect(view.getByTestId('dv-timeline-time').textContent).toBe('00:05.00 / 00:07.00')
 
-    await waitFor(() => { expect(getCurrentTimeline()).toEqual({ projectId: 'p1', timelineId: 't1' }) })
+    await waitFor(() => { expect(selected()).toBe('t1') })
     fireEvent.click(view.getAllByRole('tab')[1] as HTMLElement)
     expect(view.getByTestId('dv-timeline-time').textContent).toBe('00:00.00 / 00:03.00')
     expect(frames()[0]?.getAttribute('src')).toBe('/dv/assets/imported.mp4')
@@ -175,20 +192,42 @@ describe('TimelineView', () => {
     window.sessionStorage.clear()
   })
 
-  it('shares the selected timeline on window and follows a timeline another bundle publishes', async () => {
+  it('keeps the selected timeline in the shared selection, notes a picked timeline as the center target, and follows another editor\'s selection', async () => {
     const { view, track } = mount()
     await track()
-    await waitFor(() => { expect(getCurrentTimeline()).toEqual({ projectId: 'p1', timelineId: 't1' }) })
+    // The first timeline shows by default; the default is selected without a center target.
+    await waitFor(() => { expect(selected()).toBe('t1') })
+    expect(booted.noted).toEqual([])
     fireEvent.click(view.getAllByRole('tab')[1] as HTMLElement)
-    expect(getCurrentTimeline()).toEqual({ projectId: 'p1', timelineId: 't2' })
-    act(() => { publishCurrentTimeline('p1', 't1') })
+    expect(selected()).toBe('t2')
+    expect(booted.noted).toEqual([{ view: 'timeline', target: { timeline: 't2' } }])
+    act(() => { booted.tab().select('p1', 't1') })
     expect(view.getAllByRole('tab').map(tab => tab.getAttribute('aria-selected'))).toEqual(['true', 'false'])
+  })
+
+  it('applies a center target once per serial: its timeline is selected and its clip selected and played from its start', async () => {
+    const { fetch } = scriptedFetch({ state: twoTimelines })
+    const client = new DvClient(fetch)
+    const view = render(centerView(booted.center(), { client, target: { value: { timeline: 't1', clip: 'cl2' }, serial: 1 } }))
+    await view.findByRole('list', { name: '视频轨道' })
+    const pressed = (): Array<string | null> => [...view.container.querySelectorAll('[data-clip]')].map(clip => clip.getAttribute('aria-pressed'))
+    await waitFor(() => { expect(pressed()).toEqual(['false', 'true']) })
+    expect(view.getByTestId('dv-timeline-time').textContent).toBe('00:04.00 / 00:07.00')
+    // Another timeline picked in the editor stays when the center hands the same target again (a remount).
+    fireEvent.click(view.getAllByRole('tab')[1] as HTMLElement)
+    view.rerender(centerView(booted.center(), { client, target: { value: { timeline: 't1', clip: 'cl2' }, serial: 1 } }))
+    expect(view.getAllByRole('tab').map(tab => tab.getAttribute('aria-selected'))).toEqual(['false', 'true'])
+    // A new target with the clip of the second timeline selects it there; a value that is not a timeline target is ignored.
+    view.rerender(centerView(booted.center(), { client, target: { value: { timeline: 't2', clip: 'cl3' }, serial: 2 } }))
+    await waitFor(() => { expect(pressed()).toEqual(['true']) })
+    view.rerender(centerView(booted.center(), { client, target: { value: { timeline: 7 }, serial: 3 } }))
+    expect(selected()).toBe('t2')
   })
 
   it('renames a timeline by double-click and deletes it from the tab menu after a confirmation', async () => {
     const { view, requests, track } = mount()
     await track()
-    await waitFor(() => { expect(getCurrentTimeline()).toEqual({ projectId: 'p1', timelineId: 't1' }) })
+    await waitFor(() => { expect(selected()).toBe('t1') })
     fireEvent.doubleClick(view.getAllByRole('tab')[1] as HTMLElement)
     const box = within(view.getByRole('tablist')).getByRole('textbox')
     fireEvent.change(box, { target: { value: '结尾' } })
@@ -204,7 +243,7 @@ describe('TimelineView', () => {
 
   it('edits the project at once, with the chat session beside it recorded on each edit; undo and redo move the current position', async () => {
     const { fetch, writes } = scriptedFetch({ state: () => ({ ...fixtureState(), tip: 'later' }) })
-    const editing = render(<TimelineView projectId="p1" session="s5" client={new DvClient(fetch)} />)
+    const editing = render(centerView(booted.center(), { client: new DvClient(fetch), session: 's5' }))
     await waitFor(() => { expect((editing.getByRole('button', { name: '拆分' }) as HTMLButtonElement).disabled).toBe(false) })
     // Redo is enabled while a step lies after the current position.
     expect((editing.getByRole('button', { name: '重做' }) as HTMLButtonElement).disabled).toBe(false)
@@ -247,13 +286,18 @@ describe('TimelineView', () => {
     const placed = placeTimeline(state, timeline ?? null).clips.slice(-2)
     expect(placed.map(clip => [clip.status, clip.seconds])).toEqual([['rendering', 2], ['failed', FALLBACK_CLIP_SECONDS]])
     const { fetch } = scriptedFetch({ state: () => state })
-    const view = render(<TimelineView projectId="p1" client={new DvClient(fetch)} />)
+    const view = render(centerView(booted.center(), { client: new DvClient(fetch) }))
     await view.findByRole('list', { name: '视频轨道' })
     expect(view.container.querySelector('[data-clip="cl8"]')?.getAttribute('title')).toContain('渲染中…')
     expect(view.container.querySelector('[data-clip="cl9"]')?.getAttribute('title')).toContain('渲染失败')
     expect(view.container.querySelectorAll('[data-clip="cl8"] [data-trim]')).toHaveLength(0)
     expect(view.getByTestId('dv-timeline-export-waiting').textContent).toBe('片段 3, 4 还没就绪，全部就绪后才能导出')
     expect((view.getByText('导出') as HTMLButtonElement).disabled).toBe(true)
+    // The viewer names the placeholder under the playhead: clip 3 plays from 7 s, clip 4 from 9 s.
+    fireEvent.pointerDown(view.getByTestId('dv-timeline-ruler'), { clientX: 7.5 * 40 })
+    expect(view.getByTestId('dv-timeline-viewer-placeholder').textContent).toBe('片段 3：渲染中…')
+    fireEvent.pointerDown(view.getByTestId('dv-timeline-ruler'), { clientX: 9.5 * 40 })
+    expect(view.getByTestId('dv-timeline-viewer-placeholder').textContent).toBe('片段 4：渲染失败')
   })
 
   it('shows English copy and default timeline names when the DSH language is English', async () => {
@@ -275,10 +319,12 @@ describe('TimelineView', () => {
 
   it('inserts the asset of a dv:timeline-insert request at the end of the selected timeline, for the chat session beside it', async () => {
     const { fetch, writes } = scriptedFetch({ state: twoTimelines })
-    const view = render(<TimelineView projectId="p1" session="s5" client={new DvClient(fetch)} />)
+    const view = render(centerView(booted.center(), { client: new DvClient(fetch), session: 's5' }))
     await view.findByRole('list', { name: '视频轨道' })
     fireEvent.click(view.getAllByRole('tab')[1] as HTMLElement)
     act(() => { dispatchWorkspaceEvent(DV_TIMELINE_INSERT_EVENT, { projectId: 'p1', assetId: 'shot1.mp4' }) })
+    // The request shows the timeline view on the selected timeline.
+    expect(booted.shown.at(-1)).toEqual({ view: 'timeline', target: { timeline: 't2' } })
     await waitFor(() => { expect(writes.filter(write => write.path === '/api/dv/operation')).toHaveLength(1) })
     expect(writes.find(write => write.path === '/api/dv/operation')?.body).toEqual({
       project: 'p1', operation: 'timeline.clip_insert', params: { timeline: 't2', at: 2, asset: 'shot1.mp4' }, intent: '在位置 2 插入片段',
@@ -286,18 +332,425 @@ describe('TimelineView', () => {
     })
   })
 
-  it('keeps a request of its project that arrives before the view mounts, leaves one of another project, and creates t1 holding the clip in a project without timelines', async () => {
+  it('keeps an asset of its project queued before the view mounts, leaves one of another project, and creates t1 holding the clip in a project without timelines', async () => {
     const state = fixtureState()
     state.components.timeline.timelines = []
     const { fetch, writes } = scriptedFetch({ state: () => state })
-    // The request of another project waits for a view of that project.
+    // The asset of another project waits for a view of that project.
     dispatchWorkspaceEvent(DV_TIMELINE_INSERT_EVENT, { projectId: 'p2', assetId: 'other.mp4' })
     dispatchWorkspaceEvent(DV_TIMELINE_INSERT_EVENT, { projectId: 'p1', assetId: 'shot2.mp4' })
-    render(<TimelineView projectId="p1" client={new DvClient(fetch)} />)
+    render(centerView(booted.center(), { client: new DvClient(fetch) }))
     await waitFor(() => {
       expect(writes.filter(write => write.path === '/api/dv/operation').map(write => write.body)).toEqual([{
         project: 'p1', operation: 'timeline.create', params: { timeline: 't1', assets: ['shot2.mp4'] }, intent: '新建时间线', surface: 'timeline',
       }])
     })
+    expect(booted.center().hooks.selection.getSnapshot().inserts).toEqual([{ projectId: 'p2', assetId: 'other.mp4' }])
+  })
+})
+
+/** @returns the fixture state with a fresh copy of its timeline slice removed, as a project whose state holds no timelines. */
+function withoutTimelineSlice(): WireState {
+  const base = fixtureState()
+  return { ...base, components: { proj: base.components.proj, asset: base.components.asset } }
+}
+
+describe('timeline editor gestures', () => {
+  it('drops the selection when the selected clip leaves the timeline, and selects nothing for a target clip the timeline lacks', async () => {
+    let state: FixtureState = twoTimelines()
+    const { fetch } = scriptedFetch({ state: () => state })
+    const view = render(centerView(booted.center(), { client: new DvClient(fetch), target: { value: { timeline: 't1', clip: 'gone' }, serial: 1 } }))
+    await view.findByRole('list', { name: '视频轨道' })
+    const pressed = (): Array<string | null> => [...view.container.querySelectorAll('[data-clip]')].map(clip => clip.getAttribute('aria-pressed'))
+    await waitFor(() => { expect(booted.center().hooks.selection.getSnapshot().clipFocus).toBeNull() })
+    expect(pressed()).toEqual(['false', 'false'])
+    const second = view.container.querySelector('[data-clip="cl2"]') as HTMLElement
+    fireEvent.pointerDown(second, { clientX: 0 })
+    fireEvent.pointerUp(second, { clientX: 0 })
+    expect(pressed()).toEqual(['false', 'true'])
+    // An undo elsewhere in the history takes clip cl2 off the timeline.
+    state = twoTimelines()
+    state.components.timeline.timelines[0]?.clips.pop()
+    fireEvent.click(view.getByRole('button', { name: '撤销' }))
+    await waitFor(() => { expect(pressed()).toEqual(['false']) })
+    expect((view.getByRole('button', { name: '删除片段' }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('inserts an asset tile dropped on the track where it lands, and keeps file and asset drags elsewhere in the editor from the page', async () => {
+    const { view, requests, track } = mount()
+    const list = await track()
+    const assetDrag = (data: string) => ({ types: [DV_ASSET_DRAG_TYPE], getData: () => data })
+    const otherDrag = { types: ['text/plain'], getData: () => '' }
+    expect(fireEvent.dragOver(list, { dataTransfer: assetDrag('shot2.mp4') })).toBe(false)
+    expect(fireEvent.dragOver(list, { dataTransfer: otherDrag })).toBe(true)
+    // At 2.5 s the drop lands after clip 1, whose center is at 2 s, and before clip 2, whose center is at 5.5 s. jsdom has
+    // no DragEvent, so the drop is a mouse event that carries the pointer position.
+    const drop = new MouseEvent('drop', { bubbles: true, cancelable: true, clientX: 2.5 * 40 })
+    Object.defineProperty(drop, 'dataTransfer', { value: assetDrag('shot2.mp4') })
+    expect(fireEvent(list, drop)).toBe(false)
+    await waitFor(() => { expect(requests()).toHaveLength(1) })
+    expect(requests()[0]).toMatchObject({ operation: 'timeline.clip_insert', params: { timeline: 't1', at: 2, asset: 'shot2.mp4' } })
+    const editor = view.getByTestId('dv-timeline-editor')
+    const viewer = view.getByTestId('dv-timeline-viewer')
+    expect(fireEvent.dragEnter(editor, { dataTransfer: { types: ['Files'], getData: () => '' } })).toBe(false)
+    expect(fireEvent.dragOver(editor, { dataTransfer: otherDrag })).toBe(true)
+    expect(fireEvent.drop(viewer, { dataTransfer: otherDrag })).toBe(true)
+    expect(fireEvent.drop(viewer, { dataTransfer: assetDrag('shot2.mp4') })).toBe(false)
+    expect(view.queryByRole('status')).toBeNull()
+    expect(requests()).toHaveLength(1)
+    // The notice about a dropped file goes away after 4 s.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      fireEvent.drop(viewer, { dataTransfer: { types: ['Files'], getData: () => '' } })
+      expect(view.getByRole('status')).toBeTruthy()
+      act(() => { vi.advanceTimersByTime(3999) })
+      expect(view.getByRole('status')).toBeTruthy()
+      act(() => { vi.advanceTimersByTime(1) })
+      expect(view.queryByRole('status')).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('closes the tab menu on Escape or a press outside it, and writes no rename or delete that the user cancels or leaves unchanged', async () => {
+    const { view, requests, track } = mount()
+    await track()
+    const tab = (): HTMLElement => view.getAllByRole('tab')[1] as HTMLElement
+    fireEvent.contextMenu(tab())
+    fireEvent.keyDown(window, { key: 'a' })
+    fireEvent.pointerDown(view.getByRole('menuitem', { name: '重命名' }))
+    expect(view.getByRole('menu')).toBeTruthy()
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(view.queryByRole('menu')).toBeNull()
+    fireEvent.contextMenu(tab())
+    fireEvent.pointerDown(document.body)
+    expect(view.queryByRole('menu')).toBeNull()
+
+    const box = (): HTMLInputElement => within(view.getByRole('tablist')).getByRole('textbox')
+    fireEvent.contextMenu(tab())
+    fireEvent.click(view.getByRole('menuitem', { name: '重命名' }))
+    expect(box().value).toBe('片尾')
+    fireEvent.keyDown(box(), { key: 'b' })
+    fireEvent.keyDown(box(), { key: 'Escape' })
+    expect(within(view.getByRole('tablist')).queryByRole('textbox')).toBeNull()
+    fireEvent.doubleClick(tab())
+    fireEvent.change(box(), { target: { value: '   ' } })
+    fireEvent.keyDown(box(), { key: 'Enter' })
+    fireEvent.doubleClick(tab())
+    fireEvent.blur(box())
+    expect(view.getAllByRole('tab').map(entry => entry.textContent)).toEqual(['时间线 1', '片尾'])
+
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    fireEvent.contextMenu(tab())
+    fireEvent.click(view.getByRole('menuitem', { name: '删除时间线' }))
+    expect(confirm).toHaveBeenCalledWith('删除「片尾」？它的片段所用的素材会保留在项目里。')
+    await act(async () => { await Promise.resolve() })
+    expect(requests()).toEqual([])
+  })
+
+  it('returns to the shown timeline when creating one fails, and keeps the selection when a removal or a move fails', async () => {
+    const { view, clip, requests, track } = mount({ state: twoTimelines, post: () => ({ status: 500, body: { error: 'busy' } }) })
+    await track()
+    await waitFor(() => { expect(selected()).toBe('t1') })
+    fireEvent.click(view.getByText('＋ 新建'))
+    expect(selected()).toBe('t3')
+    await waitFor(() => { expect(selected()).toBe('t1') })
+    expect(view.getByRole('alert').textContent).toBe('失败：busy')
+    fireEvent.pointerDown(clip(2), { clientX: 0 })
+    fireEvent.pointerUp(clip(2), { clientX: 0 })
+    fireEvent.keyDown(view.getByTestId('dv-timeline-editor'), { key: 'Backspace' })
+    fireEvent.pointerDown(clip(1), { clientX: 0 })
+    fireEvent.pointerMove(clip(1), { clientX: 200 })
+    fireEvent.pointerUp(clip(1), { clientX: 200 })
+    await waitFor(() => { expect(requests().map(body => body['operation'])).toEqual(['timeline.create', 'timeline.clip_remove', 'timeline.clip_move']) })
+    await act(async () => { await Promise.resolve() })
+    expect(clip(2).getAttribute('aria-pressed')).toBe('true')
+  })
+
+  it('shows a created timeline once the refetched state lists it', async () => {
+    let created = false
+    const { view, track } = mount({
+      state: () => {
+        const state = twoTimelines()
+        if (created) state.components.timeline.timelines.push({ id: 't3' as TimelineId, name: '', clips: [] })
+        return state
+      },
+      post: () => { created = true; return { status: 200, body: record({ id: 'n1', operation: 'timeline.create' }) } },
+    })
+    await track()
+    fireEvent.click(view.getByText('＋ 新建'))
+    await waitFor(() => { expect(view.getAllByRole('tab').map(tab => [tab.textContent, tab.getAttribute('aria-selected')])).toEqual([['时间线 1', 'false'], ['片尾', 'false'], ['时间线 3', 'true']]) })
+    expect(selected()).toBe('t3')
+  })
+
+  it('tells a project without timelines to create one, and names a created timeline after the first free ID', async () => {
+    const empty = mount({ state: withoutTimelineSlice })
+    await waitFor(() => { expect(empty.view.getByTestId('dv-timeline-viewer-empty').textContent).toBe('项目还没有时间线。点上方的 ＋ 新建 创建一条。') })
+    expect(empty.view.queryByLabelText('插入片段')).toBeNull()
+    empty.view.unmount()
+    const state = fixtureState()
+    state.components.timeline.timelines = [{ id: 't2' as TimelineId, name: '', clips: [] }]
+    const { view, requests } = mount({ state })
+    await waitFor(() => { expect(view.getAllByRole('tab').map(tab => tab.textContent)).toEqual(['时间线 2']) })
+    fireEvent.click(view.getByText('＋ 新建'))
+    await waitFor(() => { expect(requests()).toHaveLength(1) })
+    expect(requests()[0]).toMatchObject({ operation: 'timeline.create', params: { timeline: 't3' } })
+  })
+
+  it('names a clip whose asset the state lacks by its asset ID and gives it the fallback length', async () => {
+    const state = fixtureState()
+    const first = state.components.timeline.timelines[0]?.clips[0]
+    if (first !== undefined) first.asset = 'lost.mp4' as AssetId
+    const { clip, track } = mount({ state })
+    await track()
+    expect(clip(1).getAttribute('aria-label')).toBe('片段 1：lost.mp4')
+    expect(clip(1).style.width).toBe(`${String(FALLBACK_CLIP_SECONDS * 40)}px`)
+  })
+
+  it('trims a clip end without naming its unset start, and writes nothing for a handle click, a drag that keeps the order, or a release without a press', async () => {
+    const { clip, requests, track } = mount()
+    await track()
+    const end = within(clip(1)).getByLabelText('拖动裁剪片段 1 的结尾')
+    fireEvent.pointerDown(end, { clientX: 160 })
+    fireEvent.pointerMove(end, { clientX: 120 })
+    expect(clip(1).style.width).toBe('120px')
+    fireEvent.pointerUp(end, { clientX: 120 })
+    await waitFor(() => { expect(requests()).toHaveLength(1) })
+    expect(requests()[0]?.['params']).toEqual({ clip: 'cl1', out_sec: 3 })
+
+    const start = within(clip(2)).getByLabelText('拖动裁剪片段 2 的开头')
+    fireEvent.pointerDown(start, { clientX: 160 })
+    fireEvent.pointerUp(start, { clientX: 160 })
+    fireEvent.pointerDown(clip(1), { clientX: 0 })
+    fireEvent.pointerMove(clip(1), { clientX: 10 })
+    fireEvent.pointerUp(clip(1), { clientX: 10 })
+    fireEvent.pointerUp(clip(2), { clientX: 0 })
+    await act(async () => { await Promise.resolve() })
+    expect(requests()).toHaveLength(1)
+    expect([clip(1), clip(2)].map(element => element.getAttribute('aria-pressed'))).toEqual(['false', 'false'])
+  })
+
+  it('splits only away from a clip edge, and removes the selected clip from the toolbar', async () => {
+    const { view, clip, requests, track } = mount()
+    await track()
+    fireEvent.click(view.getByRole('button', { name: '拆分' }))
+    fireEvent.pointerDown(clip(2), { clientX: 0 })
+    fireEvent.pointerUp(clip(2), { clientX: 0 })
+    fireEvent.click(view.getByRole('button', { name: '删除片段' }))
+    await waitFor(() => { expect(requests()).toHaveLength(1) })
+    expect(requests()[0]).toMatchObject({ operation: 'timeline.clip_remove', params: { clip: 'cl2' } })
+  })
+
+  it('seeks while the ruler is dragged, and plays and pauses by the play button and by Space on the editor', async () => {
+    vi.spyOn(HTMLMediaElement.prototype, 'play').mockImplementation(() => Promise.resolve())
+    vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined)
+    const { view, track } = mount()
+    await track()
+    const ruler = view.getByTestId('dv-timeline-ruler')
+    const time = (): string | null => view.getByTestId('dv-timeline-time').textContent
+    fireEvent.pointerDown(ruler, { clientX: 40 })
+    fireEvent.pointerMove(ruler, { clientX: 80 })
+    fireEvent.pointerUp(ruler, { clientX: 80 })
+    fireEvent.pointerMove(ruler, { clientX: 120 })
+    expect(time()).toBe('00:02.00 / 00:07.00')
+
+    const playing = (): boolean => view.queryByRole('button', { name: '暂停' }) !== null
+    fireEvent.click(view.getByRole('button', { name: '播放' }))
+    expect(playing()).toBe(true)
+    fireEvent.click(view.getByRole('button', { name: '暂停' }))
+    expect(playing()).toBe(false)
+    const editor = view.getByTestId('dv-timeline-editor')
+    fireEvent.keyDown(editor, { key: ' ' })
+    expect(playing()).toBe(true)
+    fireEvent.keyDown(editor, { key: ' ' })
+    expect(playing()).toBe(false)
+    // Space on a control and an unbound key leave playback alone.
+    fireEvent.keyDown(view.getByTestId('dv-timeline-speed'), { key: ' ' })
+    fireEvent.keyDown(editor, { key: 'x' })
+    expect(playing()).toBe(false)
+  })
+
+  it('shows the preview frame full screen, leaves it inline when the browser refuses, and exits full screen', async () => {
+    const requestFullscreen = vi.fn(() => Promise.reject(new Error('denied')))
+    const exitFullscreen = vi.fn(() => Promise.resolve())
+    let fullscreen: Element | null = null
+    Object.defineProperty(HTMLElement.prototype, 'requestFullscreen', { configurable: true, value: requestFullscreen })
+    Object.defineProperty(document, 'exitFullscreen', { configurable: true, value: exitFullscreen })
+    Object.defineProperty(document, 'fullscreenElement', { configurable: true, get: () => fullscreen })
+    try {
+      const { view, track } = mount()
+      await track()
+      const frame = view.getByTestId('dv-timeline-viewer')
+      fireEvent.click(view.getByRole('button', { name: '全屏' }))
+      expect(requestFullscreen.mock.contexts).toEqual([frame])
+      fullscreen = frame
+      fireEvent.click(view.getByRole('button', { name: '全屏' }))
+      expect(exitFullscreen).toHaveBeenCalledTimes(1)
+      expect(requestFullscreen).toHaveBeenCalledTimes(1)
+    } finally {
+      Reflect.deleteProperty(HTMLElement.prototype, 'requestFullscreen')
+      Reflect.deleteProperty(document, 'exitFullscreen')
+      Reflect.deleteProperty(document, 'fullscreenElement')
+    }
+  })
+
+  it('draws the waveform of each ready clip once its audio decodes', async () => {
+    // A stand-in decoder: one second of samples at 0.5.
+    class StubAudioContext {
+      decodeAudioData(): Promise<unknown> {
+        const samples = new Float32Array(100).fill(0.5)
+        return Promise.resolve({ numberOfChannels: 1, length: 100, sampleRate: 100, getChannelData: () => samples })
+      }
+    }
+    vi.stubGlobal('OfflineAudioContext', StubAudioContext)
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(new ArrayBuffer(4)))))
+    const { view, track } = mount()
+    await track()
+    await waitFor(() => { expect(view.getAllByTestId('dv-timeline-waveform')).toHaveLength(2) })
+    // The bars of the asset's loudest stretch fill the 30 px that the 34 px block leaves inside its padding.
+    expect(view.getAllByTestId('dv-timeline-waveform')[0]?.querySelector('path')?.getAttribute('d')).toMatch(/^M0 2h2v30h-2z/)
+  })
+
+  it('offers no asset to insert in a project without videos, and exports a timeline whose export made no file without a link', async () => {
+    const state = fixtureState()
+    state.assets = state.assets.filter(entry => !entry.mime.startsWith('video/'))
+    const { view, requests } = mount({ state, post: () => ({ status: 200, body: record({ id: 'n1', operation: 'timeline.export' }) }) })
+    fireEvent.click(await view.findByLabelText('插入片段'))
+    expect(within(view.getByRole('dialog')).getByText('项目里还没有视频素材')).toBeTruthy()
+    fireEvent.click(view.getByText('导出'))
+    await waitFor(() => { expect((view.getByText('导出') as HTMLButtonElement).disabled).toBe(false) })
+    expect(requests().map(body => body['operation'])).toEqual(['timeline.export'])
+    expect(view.queryByTestId('dv-timeline-exported')).toBeNull()
+  })
+})
+
+/**
+ * Lay out every element as a browser would, which jsdom does not: every box spans from `top` to `bottom`, and every
+ * element has the given offset height, client height and client width.
+ * @param box - the box edges and sizes in pixels.
+ */
+function layOut(box: { top: number; bottom: number; offsetHeight: number; clientHeight: number; clientWidth: number }): void {
+  vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, box.top, 0, box.bottom - box.top))
+  vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(box.offsetHeight)
+  vi.spyOn(Element.prototype, 'clientHeight', 'get').mockReturnValue(box.clientHeight)
+  vi.spyOn(Element.prototype, 'clientWidth', 'get').mockReturnValue(box.clientWidth)
+}
+
+describe('timeline editor layout', () => {
+  beforeEach(() => { window.localStorage.clear() })
+  afterEach(() => { window.localStorage.clear() })
+
+  it('resizes the track area by drag and by ArrowUp and ArrowDown within its bounds, and remembers the height for the browser', async () => {
+    // The preview and the track area share 800 - 100 - 1 = 699 px, so the track area takes at most 699 - 160 = 539 px;
+    // its toolbar and rows need 300 - 400 + 300 + 14 = 214 px.
+    layOut({ top: 100, bottom: 800, offsetHeight: 300, clientHeight: 400, clientWidth: 0 })
+    const { view, track } = mount()
+    await track()
+    const handle = (): HTMLElement => view.getByRole('separator')
+    const height = (): string | null => handle().getAttribute('aria-valuenow')
+    const stored = (): string | null => window.localStorage.getItem('dv-timeline-track-height')
+    fireEvent.pointerCancel(handle())
+    fireEvent.pointerMove(handle(), { clientY: 0 })
+    fireEvent.pointerUp(handle(), { clientY: 0 })
+    fireEvent.keyDown(handle(), { key: 'Enter' })
+    expect([height(), stored()]).toEqual([null, null])
+    fireEvent.keyDown(handle(), { key: 'ArrowUp' })
+    expect([height(), stored()]).toEqual(['316', '316'])
+    fireEvent.keyDown(handle(), { key: 'ArrowDown' })
+    expect([height(), stored()]).toEqual(['300', '300'])
+    fireEvent.pointerDown(handle(), { clientY: 500 })
+    fireEvent.pointerMove(handle(), { clientY: 300 })
+    expect(height()).toBe('500')
+    fireEvent.pointerMove(handle(), { clientY: 100 })
+    fireEvent.pointerUp(handle(), { clientY: 100 })
+    expect([height(), stored()]).toEqual(['539', '539'])
+    fireEvent.pointerDown(handle(), { clientY: 100 })
+    fireEvent.pointerMove(handle(), { clientY: 700 })
+    fireEvent.pointerCancel(handle())
+    expect([height(), stored()]).toEqual(['214', '214'])
+    view.unmount()
+
+    // A remembered height is clamped again in a shorter editor: 600 - 100 - 1 - 160 = 339 px at most.
+    window.localStorage.setItem('dv-timeline-track-height', '539')
+    vi.restoreAllMocks()
+    layOut({ top: 100, bottom: 600, offsetHeight: 300, clientHeight: 400, clientWidth: 0 })
+    const again = mount()
+    await again.track()
+    expect(again.view.getByRole('separator').getAttribute('aria-valuenow')).toBe('339')
+    // Before layout, as under a hidden editor, a key press steps the height without bounds.
+    vi.restoreAllMocks()
+    fireEvent.keyDown(again.view.getByRole('separator'), { key: 'ArrowUp' })
+    expect(again.view.getByRole('separator').getAttribute('aria-valuenow')).toBe('355')
+  })
+
+  it('fits the timeline to the track width while the panel resizes, until the user picks a zoom, and labels the ruler every 10 s at the narrowest zoom', async () => {
+    const resizes: Array<() => void> = []
+    vi.stubGlobal('ResizeObserver', class {
+      constructor(callback: () => void) { resizes.push(callback) }
+      observe(): void {}
+      disconnect(): void {}
+    })
+    // 1000 px of track width less the 96 px header and 60 px of room fits the 7 s timeline at 844 / 7 ≈ 121 px per second.
+    layOut({ top: 0, bottom: 0, offsetHeight: 0, clientHeight: 0, clientWidth: 1000 })
+    const { view, clip, track } = mount()
+    await track()
+    expect(clip(1).style.width).toBe(`${String(4 * 121)}px`)
+    fireEvent.change(view.getByRole('slider'), { target: { value: '5' } })
+    expect(clip(1).style.width).toBe('20px')
+    // At 5 px per second the 200 px lane spans 40 s: a tick every 5 s and a label every 10 s.
+    const marks = [...view.getByTestId('dv-timeline-ruler').children]
+    expect(marks.filter(mark => mark.textContent === '')).toHaveLength(9)
+    expect(marks.map(mark => mark.textContent).filter(text => text !== '')).toEqual(['00:00', '00:10', '00:20', '00:30', '00:40'])
+    const width = vi.spyOn(Element.prototype, 'clientWidth', 'get')
+    width.mockReturnValue(700)
+    act(() => { for (const resize of resizes) resize() })
+    expect(clip(1).style.width).toBe('20px')
+    // 700 - 96 - 60 = 544 px fits the timeline at 544 / 7 ≈ 78 px per second.
+    fireEvent.click(view.getByRole('button', { name: '适配' }))
+    expect(clip(1).style.width).toBe(`${String(4 * 78)}px`)
+    width.mockReturnValue(1000)
+    act(() => { for (const resize of resizes) resize() })
+    expect(clip(1).style.width).toBe(`${String(4 * 121)}px`)
+  })
+})
+
+describe('the shared timeline selection', () => {
+  it('ignores a target that is no timeline target, and publishes nothing when there is no clip focus or queued asset to take', () => {
+    const center = booted.center()
+    const notified = vi.fn()
+    const unsubscribe = center.hooks.selection.subscribe(notified)
+    const before = center.hooks.selection.getSnapshot()
+    center.applyTarget('p1', { value: 't1', serial: 1 })
+    center.applyTarget('p1', { value: ['t1'], serial: 2 })
+    center.takeClipFocus()
+    expect(center.takeInserts('p1')).toEqual([])
+    unsubscribe()
+    expect(notified).not.toHaveBeenCalled()
+    expect(center.hooks.selection.getSnapshot()).toBe(before)
+  })
+})
+
+describe('TimelineView copy and failures', () => {
+  it('keeps a placeholder that a translation receives no value for', () => {
+    expect(copyFor('en')('tabs.defaultTitle')).toBe('Timeline {n}')
+    expect(copyFor('zh')('tabs.defaultTitle', { n: 2 })).toBe('时间线 2')
+  })
+
+  it('shows a failed state read as an alert', async () => {
+    const { fetch } = scriptedFetch()
+    const failing: typeof fetch = (input, init) => input === '/api/dv/state?project=p1'
+      ? Promise.resolve(new Response(JSON.stringify({ error: 'no state' }), { status: 500 }))
+      : fetch(input, init)
+    const view = render(centerView(booted.center(), { client: new DvClient(failing) }))
+    await waitFor(() => { expect(view.getByRole('alert').textContent).toBe('失败：no state') })
+  })
+
+  it('shows the reason of a write that fails with a value other than an Error', async () => {
+    const { fetch } = scriptedFetch({ state: twoTimelines })
+    // oxlint-disable-next-line typescript/prefer-promise-reject-errors -- the non-Error rejection is the scenario under test.
+    const offline: typeof fetch = (input, init) => input === '/api/dv/operation' ? Promise.reject('offline') : fetch(input, init)
+    const view = render(centerView(booted.center(), { client: new DvClient(offline) }))
+    fireEvent.click(await view.findByText('＋ 新建'))
+    await waitFor(() => { expect(view.getByRole('alert').textContent).toBe('失败：offline') })
   })
 })

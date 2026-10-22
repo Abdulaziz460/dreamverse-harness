@@ -5,8 +5,8 @@
  * agent action the intent the agent gave for the call. The records that a record started (`started_by`) fold under its
  * row. The step at the current position carries 当前; the steps after it, which redo brings back, are greyed. Every other
  * row's ⋮ menu offers 回到这一步, which moves the current position to that step. Selecting a row plays its output under
- * the row and, for a step at or before the current position, moves the center where the registered history row's
- * `focus` says, else to the record's canvas node. The header holds undo and redo; moves write no record, and a new step
+ * the row and, for a step at or before the current position, moves the center (`dvCenter.show`) where the registered
+ * history row's `focus` says, else to the record's canvas node. The header holds undo and redo; moves write no record, and a new step
  * after a move discards the greyed steps.
  *
  * @module @dv/ui-history/HistoryPanel
@@ -16,32 +16,41 @@ import type { CSSProperties, ReactNode } from 'react'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import { DvClient, assetUrl } from '@dv/ui-kit/api.ts'
+import { assetUrl, type DvClient } from '@dv/ui-kit/api.ts'
 import { useCurrentProject } from '@dv/ui-kit/current-project.ts'
 import { useText } from '@dv/ui-kit/locale.ts'
-import { createRegistry, type HistoryRow, type Registry } from '@dv/ui-kit/registries.ts'
+import type { Registry } from '@dv/ui-kit/registries.ts'
 import { isGenerationRecord } from '@dv/ui-kit/state.ts'
 import type { Actor, Asset, HistoryEntry, HistoryQuery, ProjectRecord, RecordStatus, WireHistory } from '@dv/ui-kit/types.ts'
 import { useOperations, useProjectState } from '@dv/ui-kit/useProject.ts'
 import {
   DV_HISTORY_FOCUS_EVENT, DV_TRAJECTORY_FOCUS_EVENT, dispatchWorkspaceEvent, type DvWorkspaceEventMap,
 } from '@dv/ui-kit/workspace-events.ts'
+import type { CenterTarget } from '@dv/ui-shell/contract'
 import {
   actionLabel, actionRows, centerFocus, relativeTime, thumbnailOf, type ActionRow, type LabelContext, type Thumbnail,
 } from './rows.ts'
+import type { HistoryRow } from './contract/index.ts'
 import css from './HistoryPanel.module.css'
+
+/** What the plugin injects into the tab body. */
+export interface HistoryInjected {
+  client: DvClient
+  rows: Registry<HistoryRow>
+  /** Move the workspace center to a target (`dvCenter.show`); nothing while the shell is absent. */
+  showInCenter: (target: CenterTarget) => void
+}
 
 /** Props of {@link HistoryPanel}. */
 export interface HistoryPanelProps {
   projectId: string
-  /** The API client; defaults to one over the page's fetch. */
-  client?: DvClient
-  /** The history rows that plugins register (`dvHistory.rows`); defaults to none. */
-  rows?: Registry<HistoryRow>
+  /** The API client. */
+  client: DvClient
+  /** The history rows that plugins register (`dvHistory.rows`). */
+  rows: Registry<HistoryRow>
+  /** Move the workspace center to the target of a selected record. */
+  showInCenter: (target: CenterTarget) => void
 }
-
-/** The registry of a panel mounted without `dvHistory`. */
-const NO_ROWS = createRegistry<HistoryRow>(row => [row.match])
 
 /** Entries per page. */
 const PAGE = 50
@@ -52,8 +61,8 @@ const MAX_PAGE = 200
 interface Loaded {
   entries: HistoryEntry[]
   assets: Map<string, Asset>
-  /** True while the last page was full, so 加载更多 may find more. */
-  more: boolean
+  /** The oldest loaded record while the last page was full, so 加载更多 may find more before it; null otherwise. */
+  cursor: string | null
 }
 
 /** Who did an action: the creator at the screen, the agent, or the project on its own (renders an approval scheduled). */
@@ -74,13 +83,11 @@ const STATUS_COLORS: Record<RecordStatus, string> = {
  */
 let pendingFocus: DvWorkspaceEventMap['dv:history-focus'] | null = null
 const focusListeners = new Set<(focus: DvWorkspaceEventMap['dv:history-focus']) => void>()
-if (typeof window !== 'undefined') {
-  window.addEventListener(DV_HISTORY_FOCUS_EVENT, (event) => {
-    const focus = (event as CustomEvent<DvWorkspaceEventMap['dv:history-focus']>).detail
-    pendingFocus = focus
-    for (const listener of focusListeners) listener(focus)
-  })
-}
+window.addEventListener(DV_HISTORY_FOCUS_EVENT, (event) => {
+  const focus = (event as CustomEvent<DvWorkspaceEventMap['dv:history-focus']>).detail
+  pendingFocus = focus
+  for (const listener of focusListeners) listener(focus)
+})
 
 /**
  * Merge a page into the loaded window.
@@ -92,10 +99,11 @@ if (typeof window !== 'undefined') {
 function mergePage(loaded: Loaded | null, page: WireHistory, limit: number): Loaded {
   const assets = new Map(loaded?.assets ?? [])
   for (const asset of page.assets) assets.set(asset.id, asset)
+  const oldest = page.entries.at(-1)
   return {
     entries: [...loaded?.entries ?? [], ...page.entries],
     assets,
-    more: page.entries.length >= limit,
+    cursor: oldest !== undefined && page.entries.length >= limit ? oldest.record.id : null,
   }
 }
 
@@ -109,7 +117,7 @@ function mergePage(loaded: Loaded | null, page: WireHistory, limit: number): Loa
 function useHistory(client: DvClient, query: HistoryQuery): {
   loaded: Loaded | null
   error: string | null
-  loadMore: () => Promise<Loaded | null>
+  loadMore: (before: string) => Promise<void>
 } {
   const [loaded, setLoaded] = useState<Loaded | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -157,30 +165,25 @@ function useHistory(client: DvClient, query: HistoryQuery): {
       unsubscribe()
     }
   }, [client, key, store])
-  const loadMore = useCallback(async (): Promise<Loaded | null> => {
+  const loadMore = useCallback(async (before: string): Promise<void> => {
     const shown = current.current
-    const last = shown?.entries.at(-1)
-    if (shown === null || last === undefined) return shown
-    const page = await client.listHistory({ ...query, before: last.record.id, limit: PAGE })
-    const next = mergePage(shown, page, PAGE)
-    store(next, key)
-    return next
+    const page = await client.listHistory({ ...query, before, limit: PAGE })
+    store(mergePage(shown, page, PAGE), key)
   }, [client, key, store])
   return { loaded, error, loadMore }
 }
 
 /**
  * The History panel of one project.
- * @param props - the project and an optional client.
+ * @param props - the project, the client, the registered rows and the center callback.
  * @returns the panel.
  */
 export function HistoryPanel(props: HistoryPanelProps): ReactNode {
-  const { projectId } = props
-  const client = useMemo(() => props.client ?? new DvClient(), [props.client])
+  const { projectId, client } = props
   const t = useText()
   const current = useProjectState(client, projectId)
   const operations = useOperations(client)
-  const registry = props.rows ?? NO_ROWS
+  const registry = props.rows
   const subscribe = useCallback((listener: () => void) => registry.subscribe(listener), [registry])
   const registered = useSyncExternalStore(subscribe, () => registry.list())
   const [selected, setSelected] = useState<string | null>(null)
@@ -231,15 +234,14 @@ export function HistoryPanel(props: HistoryPanelProps): ReactNode {
       setSelected(focusRecord)
       setFocusRecord(null)
       requestAnimationFrame(() => { rowRefs.current.get(focusRecord)?.scrollIntoView({ block: 'nearest' }) })
-    } else if (loaded.more) void loadMore()
+    } else if (loaded.cursor !== null) void loadMore(loaded.cursor)
     else setFocusRecord(null)
   }, [focusRecord, loaded, rows, loadMore])
 
   const choose = (entry: HistoryEntry): void => {
     setSelected(entry.record.id)
     const target = centerFocus(entry, registered, records ?? [])
-    // The focus names its own event and detail, so it is dispatched as is.
-    if (target !== null) window.dispatchEvent(new CustomEvent(target.event, { detail: target.detail }))
+    if (target !== null) props.showInCenter(target)
   }
   const toggle = (record: string): void => {
     setExpanded((shown) => {
@@ -259,6 +261,7 @@ export function HistoryPanel(props: HistoryPanelProps): ReactNode {
     else rowRefs.current.set(record, element)
   }
 
+  const cursor = loaded?.cursor ?? null
   let body: ReactNode
   if (error !== null) body = <p className={`${css.note} ${css.error}`}>{t(`读取失败：${error}`, `Failed to load: ${error}`)}</p>
   else if (loaded === null) body = <p className={css.note}>{t('正在读取…', 'Loading…')}</p>
@@ -298,9 +301,9 @@ export function HistoryPanel(props: HistoryPanelProps): ReactNode {
       {notice === null ? null : <p className={css.notice}>{notice}</p>}
       <div role="listbox" className={css.list}>
         {body}
-        {loaded?.more === true
+        {cursor !== null
           ? (
-            <button type="button" data-testid="dv-history-more" className={`${css.button} ${css.loadMore}`} onClick={() => { void loadMore() }}>
+            <button type="button" data-testid="dv-history-more" className={`${css.button} ${css.loadMore}`} onClick={() => { void loadMore(cursor) }}>
               {t('加载更多', 'Load more')}
             </button>
           )
@@ -568,17 +571,17 @@ function Details(props: { record: ProjectRecord; assets: ReadonlyMap<string, Ass
   const { record } = props
   const outputs = record.outputs.map(id => ({ id, mime: props.assets.get(id)?.mime ?? '' }))
   const video = outputs.find(output => output.mime.startsWith('video/'))
-  const image = outputs.find(output => output.mime.startsWith('image/'))
+  const preview = video ?? outputs.find(output => output.mime.startsWith('image/'))
   const call = record.session !== null && record.tool_call !== null ? { session: record.session, toolCall: record.tool_call } : null
-  if (video === undefined && image === undefined && call === null && props.words === '') return null
+  if (preview === undefined && call === null && props.words === '') return null
   return (
     <div onClick={(event) => { event.stopPropagation() }} className={css.details}>
-      {video === undefined && image === undefined
+      {preview === undefined
         ? null
         : (
           <div data-testid="dv-history-preview">
             {video === undefined
-              ? <img src={assetUrl(image?.id ?? '')} alt="" className={css.preview} />
+              ? <img src={assetUrl(preview.id)} alt="" className={css.preview} />
               : <video src={assetUrl(video.id)} autoPlay muted controls className={css.preview} />}
           </div>
         )}
@@ -591,15 +594,13 @@ function Details(props: { record: ProjectRecord; assets: ReadonlyMap<string, Ass
 /**
  * The tab body: the History panel of the project that the DreamVerse shell has open, beside the chat session whose
  * right panel holds the tab.
- * @param props - the tab's props, the injected client and the history rows.
+ * @param props - the tab's props, the injected client, the history rows and the center callback.
  * @returns the panel, or a notice while no project is open.
  */
-export function HistoryTabBody(
-  props: PropsRuntime<'sidebar.right.pane.tab'> & { client: DvClient; rows: Registry<HistoryRow> },
-): ReactNode {
+export function HistoryTabBody(props: PropsRuntime<'sidebar.right.pane.tab'> & HistoryInjected): ReactNode {
   const project = useCurrentProject()
   const t = useText()
   if (project === null) return <p data-testid="dv-history-empty" className={css.note} style={{ padding: 12 }}>{t('先打开一个项目', 'Open a project first')}</p>
   // Keyed by project so a switch starts from an empty panel instead of showing the previous project's records.
-  return <HistoryPanel key={project} projectId={project} client={props.client} rows={props.rows} />
+  return <HistoryPanel key={project} projectId={project} client={props.client} rows={props.rows} showInCenter={props.showInCenter} />
 }

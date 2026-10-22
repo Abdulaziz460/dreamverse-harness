@@ -1,10 +1,10 @@
 /**
  * The center of the DreamVerse shell, shadowing DSH's `main.conversation`. Without an open project it is the entry
  * page: a DreamVerse headline, the DSH composer, the template chips, and recent project cards, and the chat itself
- * once it starts. With a project open it is the workspace: a top bar (session switcher, 画布 | 时间线 toggle, right
- * panel open button) above the selected `dv.center.view` entry, such as the canvas or the timeline editor. Every view
- * shows the project's current state, the state at the current position of its history. The left sidebar collapses
- * while a project is open and expands again on the entry page.
+ * once it starts. With a project open it is the workspace: a top bar (session switcher, the view toggle of the
+ * `dv.center.view` entries, right panel open button) above the selected entry, which gets the latest target that
+ * `dvCenter.show` or the URL handed it. Every view shows the project's current state, the state at the current position
+ * of its history. The left sidebar collapses while a project is open and expands again on the entry page.
  *
  * The center also keeps the shell's open project and the DSH main session together: once the client lists are ready
  * it restores the location the URL names, and afterwards it adopts the project of a main session that moves to
@@ -18,13 +18,9 @@ import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { ConversationViewsProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type { PropsRenderFactories, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import { DV_CURRENT_TIMELINE_EVENT, getTimelineOf, publishCurrentTimeline, useCurrentTimeline } from '@dv/ui-kit/current-timeline.ts'
 import { useText } from '@dv/ui-kit/locale.ts'
-import type {} from '@dv/ui-kit/registries.ts'
+import type {} from './contract/index.ts'
 import { useProjectState } from '@dv/ui-kit/useProject.ts'
-import {
-  DV_CANVAS_FOCUS_EVENT, DV_TIMELINE_FOCUS_EVENT, DV_TIMELINE_INSERT_EVENT, type DvWorkspaceEventMap,
-} from '@dv/ui-kit/workspace-events.ts'
 import type { WireProjectSummary, WireWorkspaces } from '@dv/ui-kit/types.ts'
 import type { ShellActions } from './actions.ts'
 import { CoverFrame, editedText, useProjectSummaries } from './cover.tsx'
@@ -33,8 +29,8 @@ import { SessionSwitcher } from './SessionSwitcher.tsx'
 import { useSlotTabs } from './slot-tabs.ts'
 import type { ShellLocation } from './store.ts'
 import {
-  applyingLocation, formatLocation, getShell, NO_PROJECTS, parseLocation, projectOfSession, refreshLinks, setShell, shellClient,
-  startUrlMirror, useShell,
+  applyingLocation, formatLocation, getShell, locationOf, NO_PROJECTS, parseLocation, projectOfSession, refreshLinks, setShell,
+  shellClient, showLocation, startUrlMirror, summaryFields, useShell,
 } from './store.ts'
 import css from './shell.module.css'
 
@@ -79,7 +75,7 @@ function NoWidthControls(): ReactNode {
 
 /**
  * Move the page to a location the URL names, without adding browser history entries: open its project (and its
- * session), or the entry page, then its center view and timeline.
+ * session), or the entry page, then its center view and that view's target.
  * @param shell - the shell actions.
  * @param links - the project links.
  * @param target - the location.
@@ -97,8 +93,7 @@ function applyLocation(shell: ShellActions, links: WireWorkspaces, target: Shell
     if (restore || projectId !== current.projectId || (target.sessionId !== undefined && target.sessionId !== current.sessionId)) {
       run(() => shell.openProject(projectId, target.sessionId))
     }
-    if (target.timeline !== null) publishCurrentTimeline(projectId, target.timeline)
-    setShell({ view: target.view, timeline: target.timeline ?? getTimelineOf(projectId) })
+    showLocation(target.view, target.target)
   })
 }
 
@@ -150,7 +145,7 @@ export function CenterPanel(props: CenterProps): ReactNode {
     // Back, Forward, and an edited hash move the page to the location the URL names.
     const follow = (): void => {
       const current = getShell()
-      if (!restored || current.links === null || window.location.hash === formatLocation(current)) return
+      if (!restored || current.links === null || window.location.hash === formatLocation(locationOf(current))) return
       applyLocation(shell, current.links, parseLocation(window.location.hash), false)
     }
     window.addEventListener('popstate', follow)
@@ -160,15 +155,6 @@ export function CenterPanel(props: CenterProps): ReactNode {
       window.removeEventListener('hashchange', follow)
     }
   }, [shell])
-  useEffect(() => {
-    // The timeline the timeline editor selects goes into the URL.
-    const follow = (): void => {
-      const open = getShell().projectId
-      if (open !== null) setShell({ timeline: getTimelineOf(open) })
-    }
-    window.addEventListener(DV_CURRENT_TIMELINE_EVENT, follow)
-    return () => { window.removeEventListener(DV_CURRENT_TIMELINE_EVENT, follow) }
-  }, [])
   useEffect(() => {
     // After the restore, a main session that moves into another project by itself takes the center with it: the
     // entry chat bound to a project the agent created, or a chat of the open project rebound to another project. A
@@ -182,9 +168,10 @@ export function CenterPanel(props: CenterProps): ReactNode {
     if (open !== null && open !== previous) return
     setShell({ projectId: sessionProject })
   }, [sessionProject])
+  const projectSession = sessionProject === projectId ? sessionId : undefined
   return projectId === null
     ? <EntryPage {...props} />
-    : <WorkspacePage key={projectId} {...props} projectId={projectId} sessionInProject={sessionProject === projectId} />
+    : <WorkspacePage key={projectId} {...props} projectId={projectId} projectSession={projectSession} />
 }
 
 /**
@@ -355,13 +342,14 @@ function ProjectCard(
 
 /**
  * The workspace of an open project.
- * @param props - the DSH UI slot props, the project, and whether the main session belongs to the project.
+ * @param props - the DSH UI slot props, the project, and the main session when it belongs to the project.
  * @returns the top bar and the center view.
  */
-function WorkspacePage(props: CenterProps & { projectId: string; sessionInProject: boolean }): ReactNode {
-  const { sessionId, useSessions, projectId, sessionInProject, shell } = props
+function WorkspacePage(props: CenterProps & { projectId: string; projectSession: string | undefined }): ReactNode {
+  const { sessionId, useSessions, projectId, projectSession, shell } = props
   const t = useText()
   const view = useShell(s => s.view)
+  const targets = useShell(s => s.targets)
   // The registered center views; an unknown view in the URL shows the first one.
   const views = useSlotTabs('dv.center.view')
   const shown = views.find(tab => tab.id === view)?.id ?? views[0]?.id
@@ -375,18 +363,18 @@ function WorkspacePage(props: CenterProps & { projectId: string; sessionInProjec
   const state = useProjectState(client, projectId)
   // The chat session the workspace sits beside, recorded as the `session` of the views' edits; none until the main
   // session belongs to this project.
-  const session = sessionInProject ? sessionId ?? null : null
-  // The switcher's cover: the first clip of the selected timeline, read again whenever the current state is refetched
-  // after a project change or another timeline is selected.
-  const selectedTimeline = useCurrentTimeline(projectId)
-  const cover = useProjectSummaries(projectId, state.value, selectedTimeline)?.get(projectId)?.cover ?? null
+  const session = projectSession ?? null
+  // The switcher's cover: the first clip of the timeline that the view targets name, read again whenever the current
+  // state is refetched after a project change or another timeline is picked.
+  const fields = useMemo(() => summaryFields(targets), [targets])
+  const cover = useProjectSummaries(projectId, state.value, fields)?.get(projectId)?.cover ?? null
   const mounted = useSyncExternalStore(shell.mountedSeat.subscribe, shell.mountedSeat.getSnapshot)
   // The right panel's own strip holds its collapse control while it is shown, so the open button sits in the same
   // top-right corner only while the panel is hidden.
   const panelExpanded = useSyncExternalStore(shell.panelExpanded.subscribe, shell.panelExpanded.getSnapshot)
   const opened = useRef(new Set<string>())
   useEffect(() => {
-    // The canvas and the timeline get the width: an open project starts with the left sidebar collapsed.
+    // The center views get the width: an open project starts with the left sidebar collapsed.
     shell.collapseSidebar()
   }, [shell])
   useEffect(() => {
@@ -394,12 +382,12 @@ function WorkspacePage(props: CenterProps & { projectId: string; sessionInProjec
     // as soon as the project is chosen, while the main session is still the entry chat until openProject moves it;
     // panels opened for that session would keep its chat as a hidden second 对话 tab. The first attempt runs at once,
     // so a tab the user picks right after the project opens stays in front.
-    if (sessionId === undefined || !sessionInProject || mounted !== sessionId || opened.current.has(sessionId)) return
+    if (projectSession === undefined || mounted !== projectSession || opened.current.has(projectSession)) return
     let failure: unknown = null
     const open = (): boolean => {
       try {
         shell.showPanels()
-        opened.current.add(sessionId)
+        opened.current.add(projectSession)
         return true
       } catch (error) {
         failure = error
@@ -420,36 +408,14 @@ function WorkspacePage(props: CenterProps & { projectId: string; sessionInProjec
       else if (attempts >= 20) { stop(); console.warn('ui-shell: open chat tab failed', failure) }
     }, 250)
     const unsubscribe = shell.mountedSeat.subscribe(() => {
-      if (shell.mountedSeat.getSnapshot() === sessionId && open()) stop()
+      if (shell.mountedSeat.getSnapshot() === projectSession && open()) stop()
     })
     return stop
-  }, [mounted, sessionId, sessionInProject, shell])
-  useEffect(() => {
-    // A `dv:canvas-focus` request asks the center to show the canvas.
-    const focus = (): void => { setShell({ view: 'canvas' }) }
-    window.addEventListener(DV_CANVAS_FOCUS_EVENT, focus)
-    return () => { window.removeEventListener(DV_CANVAS_FOCUS_EVENT, focus) }
-  }, [])
-  useEffect(() => {
-    // A `dv:timeline-focus` request selects its timeline and asks the center to show the timeline view.
-    const focus = (event: Event): void => {
-      const { timelineId } = (event as CustomEvent<DvWorkspaceEventMap['dv:timeline-focus']>).detail
-      publishCurrentTimeline(projectId, timelineId)
-      setShell({ view: 'timeline' })
-    }
-    window.addEventListener(DV_TIMELINE_FOCUS_EVENT, focus)
-    return () => { window.removeEventListener(DV_TIMELINE_FOCUS_EVENT, focus) }
-  }, [projectId])
-  useEffect(() => {
-    // 插入片段 from the 素材库 panel shows the timeline view, whose editor inserts the clip (`@dv/ui-timeline`).
-    const insert = (): void => { setShell({ view: 'timeline' }) }
-    window.addEventListener(DV_TIMELINE_INSERT_EVENT, insert)
-    return () => { window.removeEventListener(DV_TIMELINE_INSERT_EVENT, insert) }
-  }, [])
+  }, [mounted, projectSession, shell])
   const showPanels = (): void => {
     // Until the main session belongs to this project, the panels would open for the entry chat; the session's own
     // panels open when it mounts.
-    if (!sessionInProject) return
+    if (projectSession === undefined) return
     try {
       shell.showPanels()
     } catch (error) {
@@ -487,7 +453,7 @@ function WorkspacePage(props: CenterProps & { projectId: string; sessionInProjec
         </div>
       </header>
       <div className={css.viewArea}>
-        {shown !== undefined && props.renderSlot('dv.center.view', { projectId, session }, { only: shown })}
+        {shown !== undefined && props.renderSlot('dv.center.view', { projectId, session, target: targets[shown] ?? null }, { only: shown })}
       </div>
     </div>
   )

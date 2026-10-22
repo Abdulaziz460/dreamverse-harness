@@ -38,7 +38,7 @@ The Host half registers nothing. The browser half registers the `dv-asset-pool` 
 | Open the panel, any project change | `GET /api/dv/state` for the project's current state, refetched on every `/dv/events` event |
 | Drop images or videos on the drop zone, or click it to choose files | `POST /api/dv/assets/import` once per image or video file with `surface=asset_pool` and the tab's chat session; the `asset.import` record is a step after the project's current position. The zone imports no other file and shows 「<name>」不是图片或视频，没有导入。 / "<name>" is not an image or a video, so it was not imported. for each one |
 | Drag a thumbnail | a drag that carries the asset ID as `application/x-dv-asset`; the canvas moves the asset's node to the drop point, the timeline inserts a clip at the drop position |
-| 插入片段 / Insert clip in the preview of a video, while a project is open | `dv:timeline-insert` `{projectId, assetId}` with the open project; the shell shows the timeline view, whose editor (`@dv/ui-timeline`) appends the clip to the timeline selected in the editor (else the first timeline, else a new timeline `t1`) |
+| 插入片段 / Insert clip in the preview of a video, while a project is open | `dv:timeline-insert` `{projectId, assetId}` with the open project; `@dv/ui-timeline` shows its timeline view through `dvCenter.show`, and that view appends the clip to the timeline selected in the editor (else the first timeline, else a new timeline `t1`) |
 | 让智能体使用 / Ask the agent to use it in the preview | `dv:compose` with the text 使用这个素材： / "Use this asset: " and the asset as an `@` reference; the composer fills its draft and sends nothing |
 
 Thumbnails and the preview load the asset files from `GET /dv/assets/<AssetId>`.

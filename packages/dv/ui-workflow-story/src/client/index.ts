@@ -6,7 +6,8 @@
  * @module @dv/ui-workflow-story/client
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
-import type { ChainAnchor, HistoryRow } from '@dv/ui-kit/registries.ts'
+import type { HistoryRow } from '@dv/ui-history/contract'
+import type { ChainAnchor } from '@dv/ui-kit/registries.ts'
 
 /** The operation of `@dv/workflow-story` whose records approve a plan version and start its renders and layout. */
 const APPROVE = 'story.approve'

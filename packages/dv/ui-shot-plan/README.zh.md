@@ -61,8 +61,8 @@ Host 半边不注册任何东西。浏览器半边在 `ctx.inject(['dvCanvas'], 
 
 - [`@dv/shot-plan`](../shot-plan/README.zh.md)：`plan.create`、`plan.update` 和 `plan` 切片。
 - [`@dv/ui-canvas`](../ui-canvas/README.zh.md)：画布如何用默认卡片画条目并填充它的画面网格。
-- [`@dv/ui-history`](../ui-history/README.zh.md)：历史行如何得到主语。
-- [`@dv/ui-kit`](../ui-kit/README.zh.md)：`NodeType`、`NodeEntry`、`TakesInUse` 和 `HistoryRow` 描述符类型。
+- [`@dv/ui-history`](../ui-history/README.zh.md)：历史行如何得到主语，以及 `@dv/ui-history/contract` 的 `HistoryRow` 描述符类型。
+- [`@dv/ui-kit`](../ui-kit/README.zh.md)：`NodeType`、`NodeEntry` 和 `TakesInUse` 描述符类型。
 
 -----
 

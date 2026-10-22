@@ -57,8 +57,8 @@ The client state type of `@dv/ui-kit` gives the `story` slice the type `unknown`
 
 - [`@dv/workflow-story`](../workflow-story/README.md): `story.approve` and the `story` slice.
 - [`@dv/ui-canvas`](../ui-canvas/README.md): how the canvas groups the records of an anchored chain and shows plan approval status.
-- [`@dv/ui-history`](../ui-history/README.md): how a History row gets its subject.
-- [`@dv/ui-kit`](../ui-kit/README.md): the `ChainAnchor` and `HistoryRow` descriptor types.
+- [`@dv/ui-history`](../ui-history/README.md): how a History row gets its subject, and the `HistoryRow` descriptor type of `@dv/ui-history/contract`.
+- [`@dv/ui-kit`](../ui-kit/README.md): the `ChainAnchor` descriptor type.
 
 -----
 

@@ -1,5 +1,6 @@
 /**
- * Browser half of the DreamVerse shell: the center workspace in place of DSH's main Conversation, the DreamVerse
+ * Browser half of the DreamVerse shell: `dvCenter`, which moves the workspace center to a view and hands the view a
+ * target; the center workspace in place of DSH's main Conversation, the DreamVerse
  * navigator and brand in the left sidebar, the DreamVerse theme, the 对话 / 轨迹 right-panel tabs and the right panel's
  * default width, DSH's New Session action redirected into the open project, the `dv:trajectory-focus` link that opens
  * 轨迹 at one tool call, and the Ctrl+Z and Shift+Ctrl+Z keys that undo and redo one step of the open project.
@@ -18,7 +19,8 @@ import { BrandName, Navigator } from './Navigator.tsx'
 import { followPanelEntries } from './panels.ts'
 import { applyRightPanelWidth } from './right-panel.ts'
 import { followSlotTabs } from './slot-tabs.ts'
-import { getShell, refreshLinks } from './store.ts'
+import type { DvCenter } from './contract/index.ts'
+import { getShell, noteInCenter, refreshLinks, showInCenter } from './store.ts'
 import { applyTheme } from './theme.ts'
 import { CHAT_ID, ChatTab, chatDefinition, TRAJECTORY_ID, TrajectoryTab, trajectoryDefinition } from './tabs.tsx'
 import { listenHistoryKeys } from './undo-keys.ts'
@@ -33,10 +35,14 @@ export const inject = ['slots', 'sidebarRightTabs', 'sidebarRight', 'workspaces'
 const LINKS_POLL_MS = 4000
 
 /**
- * Register the shell's DSH UI slot entries and tab types. The center and the navigator shadow DSH's entries at priority -1.
+ * Provide `dvCenter`, and register the shell's DSH UI slot entries and tab types. The center and the navigator shadow
+ * DSH's entries at priority -1.
  * @param ctx - client root context.
  */
 export function apply(ctx: ClientContext): void {
+  // At apply's top level, never inside an effect: the views and the History panel call it from their own fibers.
+  const center: DvCenter = { show: showInCenter, note: noteInCenter }
+  ctx.reflect.provide('dvCenter', center)
   applyTheme(ctx)
   const injected: ShellInjected = { shell: createActions(ctx) }
   ctx.effect(() => ctx.slots.inject('main.conversation', () => ctx.slots.register(
@@ -72,8 +78,7 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => {
     // DSH's New Session buttons (sidebar header and macOS window chrome) call `uiWorkspace.startSession`. In
     // DreamVerse they start a chat session in the open project, and on the entry page they equal 首页.
-    const navigation = ctx.get('uiWorkspace')
-    if (navigation === undefined) return () => {}
+    const navigation = ctx.uiWorkspace
     Object.defineProperty(navigation, 'startSession', {
       configurable: true, writable: true,
       value: () => {
@@ -88,8 +93,7 @@ export function apply(ctx: ClientContext): void {
     // DSH's first-use start creates a default Workspace in the user's documents folder, which fails on hosts without
     // one and toasts "Unable to create default workspace". DreamVerse's first chat belongs to the entry Workspace, so
     // first-use initialization prepares that one instead.
-    const workspaces = ctx.get('workspaces')
-    if (workspaces === undefined) return () => {}
+    const workspaces = ctx.workspaces
     Object.defineProperty(workspaces, 'initializeDefault', {
       configurable: true, writable: true,
       value: () => injected.shell.entryWorkspace(),
