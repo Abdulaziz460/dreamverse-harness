@@ -113,9 +113,13 @@ const FACTS: RenderModelFacts = {
 /** The key params of the fake model in task `t2v`. */
 const TXT = { modality: 'video', task: 't2v', provider: 'test', model: 'fake' }
 
-/** One fake model: it streams the prompt as bytes and finds the problems that `problems` returns. */
+/**
+ * One fake model: it reads its facts from `facts`, streams the prompt as bytes, and finds the problems that `problems`
+ * returns; a throw of `problems` rejects the validation, as an unreachable model does.
+ */
 class FakeModel {
   readonly requests: RenderRequest[] = []
+  facts: () => Promise<RenderModelFacts> = () => Promise.resolve(FACTS)
   problems: (request: RenderRequest) => string[] = () => []
   /** When set, a render waits for it before streaming, so its record stays unfinished. */
   hold: Promise<void> | null = null
@@ -123,9 +127,9 @@ class FakeModel {
   entry(task: TaskOfPrimitive<'video'>): ModelEntry<TaskOfPrimitive<'video'>> {
     return {
       modality: 'video', task, provider: 'test', model: 'fake', description: 'Probe clips', gpuSecondsPerVideoSecond: 3,
-      facts: () => Promise.resolve(FACTS),
+      facts: () => this.facts(),
       schema: () => Promise.resolve({}),
-      validateGenerationRequest: request => Promise.resolve(this.problems(request)),
+      validateGenerationRequest: request => new Promise((resolve) => { resolve(this.problems(request)) }),
       render: request => this.stream(request),
     }
   }
@@ -287,6 +291,26 @@ describe('defineGeneration', () => {
     // A version stands for the assets that its kind answers; a kind that is not loaded answers none.
     const version = { role: 'reference', ref: { prop: 'p1', version: 1 } as never }
     expect(await ctx.dvProbeGenerate.check(fixture.call({ prompt: 'dog' }, [version]), state())).toEqual([])
+    expect(fixture.model.requests).toEqual([])
+  })
+
+  it('names an unavailable model, and ends its refusal with the sentence that no change to the call helps', async () => {
+    const fixture = await start()
+    const { ctx, project } = fixture
+    const state = () => ctx.dvProject.getState(project)
+    const unavailableEnd = 'Nothing was generated; no change to the call helps while the model is unavailable.'
+    fixture.model.facts = () => Promise.reject(new Error('The server at http://127.0.0.1:1 cannot be reached.'))
+    expect(await ctx.dvProbeGenerate.check(fixture.call({ prompt: 'dog' }), state()))
+      .toEqual(['Model video/t2v/test/fake is unavailable: The server at http://127.0.0.1:1 cannot be reached.'])
+    const before = ctx.dvProject.listHistory({ project }).length
+    await expect(ctx.dvProbeGenerate.render(fixture.call({ prompt: 'dog' }))).rejects.toHaveProperty('message',
+      `Model video/t2v/test/fake is unavailable: The server at http://127.0.0.1:1 cannot be reached. ${unavailableEnd}`)
+    expect(ctx.dvProject.listHistory({ project })).toHaveLength(before)
+    // A rejected validation is the same case, and the agent reads the same refusal.
+    fixture.model.facts = () => Promise.resolve(FACTS)
+    fixture.model.problems = () => { throw 'busy' }
+    const refused = await fixture.tool('dv_probe_generate', { ...TXT, reason: 'try', prompt: 'dog' })
+    expect(refused.isError ? refused.error.message : '').toContain(`Model video/t2v/test/fake is unavailable: busy ${unavailableEnd}`)
     expect(fixture.model.requests).toEqual([])
   })
 

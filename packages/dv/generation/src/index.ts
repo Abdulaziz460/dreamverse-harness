@@ -45,7 +45,8 @@ export interface GenerationApi {
    * for code calls.
    * @param chained - input roles whose producer the caller schedules before this call. Each reaches `toRequest` as
    *   `{ role, ref: null, resolved_asset: null }`, so role counts and citations see it; the model check waits for execute.
-   * @returns [] when the call runs; else the first refusal, or the model problems joined as one reason.
+   * @returns [] when the call runs; else the first refusal, or the model problems joined as one reason. A rejected
+   *   `facts()` or `validateGenerationRequest` of the entry reads `Model <key> is unavailable: <its message>`.
    */
   check(call: Pick<GenerationCall, 'project' | 'params' | 'inputs'>, state: ProjectState,
     chained?: readonly string[]): Promise<string[]>
@@ -116,8 +117,14 @@ export type GenerationSpec<P extends PrimitiveId> = GenerationSpecFields<P> & ({
 /** The seed range of the generation backends. */
 const SEED_LIMIT = 2 ** 31
 
-/** The sentence that ends every refusal of a call. */
+/** The sentence that ends the refusal of a call that other inputs or params can fix. */
 const REFUSAL_END = 'Nothing was generated; change the inputs or params, then call again.'
+
+/** The sentence that ends the refusal of a call whose model's `facts()` or `validateGenerationRequest` rejected. */
+const UNAVAILABLE_END = 'Nothing was generated; no change to the call helps while the model is unavailable.'
+
+/** The reasons against a call and the sentence that ends their refusal. */
+interface Refusal { reasons: string[]; end: string }
 
 /** A required string param with its description. */
 function requiredText(description: string): OperationSpec['params'][string] {
@@ -167,6 +174,18 @@ function inputRefs(inputs: ReadonlyArray<{ role: string; ref: RecordInputRef }>)
   return [...inputs].sort((a, b) => a.role.localeCompare(b.role)).map(({ role, ref }) => ({ role, ref }))
 }
 
+/** The message of a thrown value. */
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
+/** A rejected `facts()` or `validateGenerationRequest` of a model, as the reason `Model <key> is unavailable: <message>`. */
+class Unavailable extends Error {
+  constructor(entry: ModelEntry, cause: unknown) {
+    super(`Model ${formatModelKey(entry)} is unavailable: ${messageOf(cause)}`, { cause })
+  }
+}
+
 /** The reason for the problems that a model finds in a request. */
 function modelReason(entry: ModelEntry, problems: readonly string[]): string {
   return `Model ${formatModelKey(entry)} cannot generate this: ${problems.join(' ')}`
@@ -194,8 +213,9 @@ export function importOne(run: OperationContext,
  * @returns a Cordis service class named `spec.service`. It registers the component and, with `dvModels.labelTasks`,
  *   the task labels; registers the operation while the catalog serves one of `spec.tasks`, with `deterministic: false`,
  *   `resource: 'gpu'`, `confirm: 'over_gpu_budget'` and the spec's label; draws and reports the seed unless `spec.seed`
- *   is false; refuses a call before its record with every reason of `check` and a neutral closing sentence; imports
- *   the outputs through `spec.toOutputs`; and implements `GenerationApi`.
+ *   is false; refuses a call before its record with every reason of `check` and a closing sentence, which for an
+ *   unavailable model says that no change to the call helps; imports the outputs through `spec.toOutputs`; and
+ *   implements `GenerationApi`.
  */
 export function defineGeneration<P extends PrimitiveId>(spec: GenerationSpec<P>): new (ctx: Context) => Service & GenerationApi {
   // The task names are the keys of the label record; Object.keys loses their type.
@@ -225,21 +245,29 @@ export function defineGeneration<P extends PrimitiveId>(spec: GenerationSpec<P>)
 
     async check(call: Pick<GenerationCall, 'project' | 'params' | 'inputs'>, state: ProjectState,
       chained: readonly string[] = []): Promise<string[]> {
+      return (await this.refusal(call, state, chained)).reasons
+    }
+
+    /** The reasons of `check`, and `UNAVAILABLE_END` for an unavailable model, else `REFUSAL_END`. */
+    private async refusal(call: Pick<GenerationCall, 'project' | 'params' | 'inputs'>, state: ProjectState,
+      chained: readonly string[]): Promise<Refusal> {
       try {
         const entry = this.ctx.dvModels.resolve(tasks, call.params)
+        const unavailable = (error: unknown): never => { throw new Unavailable(entry, error) }
+        const facts = await entry.facts().catch(unavailable)
         const inputs: RequestInput[] = [
           ...call.inputs.flatMap(({ role, ref }) =>
             this.assetsOf(call.project, state, ref).map(asset => ({ role, ref, resolved_asset: asset }))),
           ...chained.map(role => ({ role, ref: null, resolved_asset: null })),
         ]
-        const { request } = requestOf(spec, await entry.facts(), call.params, inputs)
+        const { request } = requestOf(spec, facts, call.params, inputs)
         // An input without an asset yet (its producer has not finished, or the role is chained): execute checks the
         // full request before the model runs.
-        if (inputs.some(input => input.resolved_asset === null)) return []
-        const problems = await entry.validateGenerationRequest(request)
-        return problems.length === 0 ? [] : [modelReason(entry, problems)]
+        if (inputs.some(input => input.resolved_asset === null)) return { reasons: [], end: REFUSAL_END }
+        const problems = await entry.validateGenerationRequest(request).catch(unavailable)
+        return { reasons: problems.length === 0 ? [] : [modelReason(entry, problems)], end: REFUSAL_END }
       } catch (error) {
-        return [error instanceof Error ? error.message : String(error)]
+        return { reasons: [messageOf(error)], end: error instanceof Unavailable ? UNAVAILABLE_END : REFUSAL_END }
       }
     }
 
@@ -270,8 +298,8 @@ export function defineGeneration<P extends PrimitiveId>(spec: GenerationSpec<P>)
 
     /** Throw the refusal of a call that `check` finds reasons against; no role is chained on this path. */
     private async refuse(call: GenerationCall, state: ProjectState): Promise<void> {
-      const reasons = await this.check(call, state)
-      if (reasons.length > 0) throw new Error(`${reasons.join(' ')} ${REFUSAL_END}`)
+      const { reasons, end } = await this.refusal(call, state, [])
+      if (reasons.length > 0) throw new Error(`${reasons.join(' ')} ${end}`)
     }
 
     /**
