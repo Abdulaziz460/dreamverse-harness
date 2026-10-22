@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-使用本包在 DreamVerse 视图中显示 `@dv/character` 的角色。`@dv/ui-kit/reference-kit.tsx` 的一个 `defineReferenceUi` 声明给这个名词它的画布节点类型 `character`（名称 角色 / Character，节点 ID `character:<id>`）、版本种类、在用参考、`dv.canvas.editor` 条目（默认的 `ReferenceEditor`）、`@` 菜单种类（分区 角色 / Characters，顺序 1，地址 `dv:character/<id>`）和历史行（`character.`）。
+使用本包在 DreamVerse 视图中显示 `@dv/character` 的角色。`@dv/ui-reference-kit/reference-kit.tsx` 的一个 `defineReferenceUi` 声明给这个名词它的画布节点类型 `character`（名称 角色 / Character，节点 ID `character:<id>`）、版本种类、在用参考、`dv.canvas.editor` 条目（默认的 `ReferenceEditor`）、`@` 菜单种类（分区 角色 / Characters，顺序 1，地址 `dv:character/<id>`）和历史行（`character.`）。
 
 ## 目录
 

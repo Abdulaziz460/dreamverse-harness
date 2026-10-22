@@ -5,16 +5,16 @@
  * editor body. Every descriptor reads only the noun's own slice and the `proj` records, and every write runs
  * `<key>.update` through the canvas host.
  *
- * @module @dv/ui-kit/reference-kit
+ * @module @dv/ui-reference-kit/reference-kit
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { CSSProperties, ReactNode } from 'react'
-import { assetUrl } from './api.ts'
-import { pickText, useText } from './locale.ts'
-import type { HistoryRow, MentionKind, NodeType, TakesInUse, VersionKind } from './registries.ts'
-import type { WireState } from './types.ts'
+import { assetUrl } from '@dv/ui-kit/api.ts'
+import { pickText, useText } from '@dv/ui-kit/locale.ts'
+import type { HistoryRow, MentionKind, NodeType, TakesInUse, VersionKind } from '@dv/ui-kit/registries.ts'
+import type { WireState } from '@dv/ui-kit/types.ts'
 
 /** One version of a reference noun item as the wire sends it. */
 export interface WireReferenceVersion {

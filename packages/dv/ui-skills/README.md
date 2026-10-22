@@ -48,7 +48,7 @@ The Host half registers nothing. The browser half registers the page in the `mai
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-`apply` builds the injected `list` and `use` actions and registers the page, the entry, and the tab through `ctx.effect`, so disposing the plugin removes all three. `SkillsPage` and `SkillsShelf` (the tab) share `SkillList`, which keeps one read state (`loading`, `ready`, `failed`) and sorts the skills by name.
+`apply` builds the injected `list` and `use` actions and registers the page, the entry, and the tab through `ctx.effect`, so disposing the plugin removes all three. `SkillsPage` and `SkillsShelf` (the tab) share `SkillList`, which keeps one read state (`loading`, `ready`, `failed`) and sorts the skills by name. The type of the `dv.explore` slot comes from the shell contract `@dv/ui-shell/contract`, a type-only import.
 
 | File | Content |
 | --- | --- |

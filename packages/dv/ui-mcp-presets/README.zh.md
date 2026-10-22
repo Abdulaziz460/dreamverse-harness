@@ -47,7 +47,7 @@ Host 端不注册任何内容。预设本身来自 [`@dv/mcp-presets`](../mcp-pr
 <details>
 <summary>实现细节 — 点击展开</summary>
 
-`followMcpShelf` 通过 `ctx.inject(['remote', 'remote.pluginManager'])` 接上开关，通过 `ctx.inject(['remote', 'remote.mcpServers'])` 跟随服务器列表，所以 MCP 插件的 Remote 挂载时卡片解锁，卸载时卡片重新锁定。页面链接通过 `layout` 服务选择 DSH 主面板。
+`followMcpShelf` 通过 `ctx.inject(['remote', 'remote.pluginManager'])` 接上开关，通过 `ctx.inject(['remote', 'remote.mcpServers'])` 跟随服务器列表，所以 MCP 插件的 Remote 挂载时卡片解锁，卸载时卡片重新锁定。页面链接通过 `layout` 服务选择 DSH 主面板。`dv.explore` 插槽的类型来自外壳契约 `@dv/ui-shell/contract`，只导入类型。
 
 | 文件 | 内容 |
 | --- | --- |

@@ -23,13 +23,18 @@ interface Recorded {
 
 const SKILL = { name: 'storyboard', description: 'Storyboard', modelInvocable: true }
 
+/** The session list of {@link boot}: `s2` is the newest session. */
+const SESSIONS: Record<string, { id: string; updatedAt: number }> = { s0: { id: 's0', updatedAt: 1 }, s2: { id: 's2', updatedAt: 2 } }
+
 /**
  * Boot the client plugin over a recording `ctx.slots` registry, a scripted `skills` Remote, a recording layout, and a
- * recording session input.
+ * recording session input. The session `closed` has no scope.
  * @param mounted - the session the right panel's seat shows.
+ * @param byId - the listed sessions.
+ * @param failure - the error the `skills` Remote answers, or undefined for the skill list.
  * @returns the registered entries, the Remote calls, the selected panels, the input calls, and the plugin fiber.
  */
-async function boot(mounted: string | undefined) {
+async function boot(mounted: string | undefined, byId = SESSIONS, failure?: { code: string; message: string }) {
   const ctx = new Context()
   const registered: Recorded[] = []
   const calls: unknown[] = []
@@ -47,15 +52,15 @@ async function boot(mounted: string | undefined) {
   const skills = {
     list: vi.fn((request: unknown) => {
       calls.push(request)
-      return Promise.resolve({ ok: true, value: { skills: [SKILL] } })
+      return Promise.resolve(failure === undefined ? { ok: true, value: { skills: [SKILL] } } : { ok: false, error: failure })
     }),
   }
   ctx.provide('slots', slots as never)
   ctx.provide('remote', { skills } as never)
   ctx.provide('remote.skills', skills as never)
   ctx.provide('sessions', {
-    list: { getSnapshot: () => ({ byId: { s0: { id: 's0', updatedAt: 1 }, s2: { id: 's2', updatedAt: 2 } } }) },
-    scope: (sessionId: string) => ({
+    list: { getSnapshot: () => ({ byId }) },
+    scope: (sessionId: string) => (sessionId === 'closed' ? undefined : {
       get: (name: string) => (name === 'conversation' ? { input: { for: () => { inputs.push(`session ${sessionId}`); return input } } } : undefined),
     }),
   } as never)
@@ -93,6 +98,14 @@ describe('ui-skills apply', () => {
     expect(second.calls).toEqual([{ sessionId: 's2' }])
   })
 
+  it('lists no skill before any session exists, and rejects with the code and message of a failed read', async () => {
+    const empty = await boot(undefined, {})
+    await expect(empty.registered[0]?.inject?.().list()).resolves.toEqual([])
+    expect(empty.calls).toEqual([])
+    const failing = await boot('s1', SESSIONS, { code: 'NOT_FOUND', message: 'no preset' })
+    await expect(failing.registered[0]?.inject?.().list()).rejects.toThrow('NOT_FOUND: no preset')
+  })
+
   it('closes the page and prefills /name on 使用', async () => {
     const { registered, selected } = await boot('s1')
     const composed: DvComposeDetail[] = []
@@ -114,6 +127,14 @@ describe('ui-skills apply', () => {
     expect(inputs).toEqual(['session s1', 'draft /storyboard ', 'focus'])
     expect(selected).toEqual([])
     expect(composed).toEqual([])
+  })
+
+  it('writes no draft on 使用 in the 探索 tab while the right panel shows no session or a session without a scope', async () => {
+    for (const mounted of [undefined, 'closed']) {
+      const { registered, inputs } = await boot(mounted)
+      registered[2]?.inject?.().use('storyboard')
+      expect(inputs).toEqual([])
+    }
   })
 
   it('removes the page, the entry, and the tab when the plugin is disposed', async () => {

@@ -47,7 +47,7 @@ The Host half registers nothing. The presets themselves come from the `dv-mcp-pr
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-`followMcpShelf` wires the switch through `ctx.inject(['remote', 'remote.pluginManager'])` and follows the roster through `ctx.inject(['remote', 'remote.mcpServers'])`, so the cards unlock when the MCP plugin's Remote mounts and lock again when it unmounts. The page links select the DSH main panel through the `layout` service.
+`followMcpShelf` wires the switch through `ctx.inject(['remote', 'remote.pluginManager'])` and follows the roster through `ctx.inject(['remote', 'remote.mcpServers'])`, so the cards unlock when the MCP plugin's Remote mounts and lock again when it unmounts. The page links select the DSH main panel through the `layout` service. The type of the `dv.explore` slot comes from the shell contract `@dv/ui-shell/contract`, a type-only import.
 
 | File | Content |
 | --- | --- |

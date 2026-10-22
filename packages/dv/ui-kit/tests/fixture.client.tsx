@@ -6,7 +6,7 @@
 import type { AssetId, RecordId } from '@dv/project/types'
 import type { PlanId } from '@dv/shot-plan/types'
 import type { ClipId, TimelineId } from '@dv/timeline/types'
-import type { WireReferenceVersion } from '../src/client/reference-kit.tsx'
+import type { WireReferenceVersion } from '../../ui-reference-kit/src/client/reference-kit.tsx'
 import type { WireTaskLabels } from '../src/client/tool-labels.ts'
 import type { ComponentStates, OperationRequest, ProjectAsset, ProjectRecord, WireOperation, WireProject, WireState } from '../src/client/types.ts'
 

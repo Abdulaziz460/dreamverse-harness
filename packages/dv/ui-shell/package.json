@@ -10,6 +10,7 @@
       "types": "./lib/types/client/index.d.ts",
       "default": "./lib/client.js"
     },
+    "./contract": "./src/client/contract/index.ts",
     "./package.json": "./package.json"
   },
   "dsh": {

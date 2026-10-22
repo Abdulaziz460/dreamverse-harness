@@ -48,7 +48,7 @@ Host 端不注册任何东西。浏览器端在 `main` 槽位以面板 id `skill
 <details>
 <summary>实现细节 — 点击展开</summary>
 
-`apply` 构造注入的 `list` 和 `use` 操作，并通过 `ctx.effect` 注册页面、入口和标签，所以卸载插件会移除这三者。`SkillsPage` 和 `SkillsShelf`（标签）共用 `SkillList`，它保存一个读取状态（`loading`、`ready`、`failed`），并按名称排序技能。
+`apply` 构造注入的 `list` 和 `use` 操作，并通过 `ctx.effect` 注册页面、入口和标签，所以卸载插件会移除这三者。`SkillsPage` 和 `SkillsShelf`（标签）共用 `SkillList`，它保存一个读取状态（`loading`、`ready`、`failed`），并按名称排序技能。`dv.explore` 插槽的类型来自外壳契约 `@dv/ui-shell/contract`，只导入类型。
 
 | 文件 | 内容 |
 | --- | --- |

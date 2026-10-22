@@ -11,7 +11,7 @@ import type { PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-
 import { SidebarRightTabRegistry } from '@deepseek-ai/dsh-client-ui-sidebar-right/src/client/tab-registry.ts'
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import { apply as assetPoolApply, inject as assetPoolInject } from '@dv/ui-asset-pool/src/client/index.ts'
-import { defineReferenceUi } from '@dv/ui-kit/reference-kit.tsx'
+import { defineReferenceUi } from '@dv/ui-reference-kit/reference-kit.tsx'
 import type { NodeType } from '@dv/ui-kit/registries.ts'
 import { fixtureState, scriptedFetch, withTestRef } from '../../ui-kit/tests/fixture.client.tsx'
 import { apply as shotPlanApply } from '../../ui-shot-plan/src/client/index.ts'

@@ -18,7 +18,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { dispatchCompose } from '@dv/ui-kit/compose.ts'
 import { pickText } from '@dv/ui-kit/locale.ts'
-import type {} from '@dv/ui-shell'
+import type {} from '@dv/ui-shell/contract'
 import { SkillsPage, SkillsPanelIcon, SkillsShelf, type SkillsInjected } from './SkillsPage.tsx'
 
 export { SkillsPage, SkillsShelf, type SkillsInjected } from './SkillsPage.tsx'

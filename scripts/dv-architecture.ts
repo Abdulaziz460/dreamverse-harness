@@ -29,7 +29,7 @@ export const RULE_STATEMENTS: Readonly<Record<string, string>> = {
   marker: 'The only exception marker is "// dv-arch-allow R<k>: temporary exception", and it suppresses a match on its line.',
 }
 
-type Layer = 'kernel' | 'base' | 'provider' | 'domain' | 'workflow-lib' | 'workflow' | 'surface' | 'ui-core' | 'ui' | 'bundle'
+type Layer = 'kernel' | 'base' | 'provider' | 'domain' | 'workflow-lib' | 'workflow' | 'surface' | 'ui-core' | 'ui-lib' | 'ui' | 'bundle'
 
 /** One parsed TypeScript source file and its package. */
 interface Source { path: string; pkg: string; sf: ts.SourceFile }
@@ -45,8 +45,6 @@ interface Facts {
   /** `PrimitiveTypes` keys declared outside `@dv/models`, and the packages that declare them. */
   primitives: Set<string>
   primitivePackages: Set<string>
-  /** Packages whose `src` merges a slot into `SlotMap`. */
-  slotPackages: Set<string>
   /** Packages whose `package.json` exports a `./types` entry. */
   typesEntries: Set<string>
   /** Packages whose `src` calls `registerReferenceKind(` or `defineReference(` (R8 f). */
@@ -77,7 +75,10 @@ const UI_ROWS: Readonly<Record<string, [OwnerWhat, string]>> = {
 
 const BASE = ['models', 'generation', 'asset-pool', 'ffmpeg', 'reference-kit']
 const SURFACE = ['api', 'chat-references', 'mcp-presets']
-const UI_CORE = ['ui-kit', 'ui-canvas', 'ui-history', 'ui-shell', 'ui-composer']
+const UI_CORE = ['ui-kit', 'ui-canvas', 'ui-history', 'ui-shell', 'ui-composer', 'ui-media']
+/** Kit libraries that one family of UI plugins value-imports: the UI halves of host base kits. */
+const UI_LIB = ['ui-reference-kit', 'ui-generation']
+const UI_LAYERS: readonly Layer[] = ['ui-core', 'ui-lib', 'ui']
 /** Value-import targets, then extra `import type` targets, of each host layer (R7). */
 const IMPORTS: Partial<Record<Layer, [Layer[], Layer[]]>> = {
   base: [['kernel', 'base'], []],
@@ -167,7 +168,7 @@ function walk(node: ts.Node, visit: (node: ts.Node) => void): void {
 function collectFacts(sources: readonly Source[], files: readonly ScanFile[]): Facts {
   const facts: Facts = {
     packages: new Set(files.map(file => packageOf(file.path))), owners: new Map(), claims: [], providers: new Set(),
-    primitives: new Set(), primitivePackages: new Set(), slotPackages: new Set(), typesEntries: new Set(), kindOwners: new Set(),
+    primitives: new Set(), primitivePackages: new Set(), typesEntries: new Set(), kindOwners: new Set(),
     ownerRows: [],
   }
   for (const file of files) {
@@ -215,9 +216,6 @@ function collectFacts(sources: readonly Source[], files: readonly ScanFile[]): F
         facts.primitivePackages.add(pkg)
         for (const member of node.members) facts.primitives.add(textOf(member.name) ?? '')
       }
-      if (ts.isInterfaceDeclaration(node) && node.name.text === 'SlotMap' && ts.findAncestor(node, ts.isModuleDeclaration)) {
-        facts.slotPackages.add(pkg)
-      }
     })
   }
   return facts
@@ -232,21 +230,26 @@ function layerOf(pkg: string, facts: Facts): Layer {
   if (pkg === 'workflow-kit') return 'workflow-lib'
   if (pkg.startsWith('workflow-')) return 'workflow'
   if (SURFACE.includes(pkg)) return 'surface'
+  if (UI_LIB.includes(pkg)) return 'ui-lib'
   if (UI_CORE.includes(pkg)) return 'ui-core'
   return pkg.startsWith('ui-') ? 'ui' : 'domain'
 }
 
 /**
- * R7 (a): whether package `from` may import `specifier`.
+ * R7 (a): whether package `from` may import `specifier`. Every UI layer value-imports `@dv/ui-kit` and type-imports the
+ * `./contract` entry of a UI-core package; a UI plugin also value-imports a kit (`ui-lib`) and type-imports its host
+ * package's `./types`; UI core imports no kit.
  * @param typeOnly - the import is `import type` or `export type`.
- * @param bare - the import is `import type {}`, which only merges declarations such as a slot type.
  */
-function importAllowed(from: string, specifier: string, typeOnly: boolean, bare: boolean, facts: Facts): boolean {
+function importAllowed(from: string, specifier: string, typeOnly: boolean, facts: Facts): boolean {
   const to = specifier.split('/')[1] ?? ''
   const [source, target] = [layerOf(from, facts), layerOf(to, facts)]
-  if (from === to || (to === 'ui-kit' && (source === 'ui-core' || source === 'ui'))) return true
-  if (source === 'ui') {
-    return (typeOnly && specifier === `@dv/${from.slice('ui-'.length)}/types`) || (bare && target === 'ui-core' && facts.slotPackages.has(to))
+  if (from === to) return true
+  if (UI_LAYERS.includes(source)) {
+    if (to === 'ui-kit') return true
+    if (typeOnly && target === 'ui-core' && specifier === `@dv/${to}/contract`) return true
+    if (source !== 'ui') return false
+    return target === 'ui-lib' || (typeOnly && specifier === `@dv/${from.slice('ui-'.length)}/types`)
   }
   if (source === 'provider' && target === 'provider') return to === `${from}-generation-client`
   if (source === 'provider' && target === 'domain') return typeOnly && facts.primitivePackages.has(to)
@@ -316,11 +319,9 @@ function scanSource({ path, pkg, sf }: Source, facts: Facts, out: Violation[]): 
     if (declaration !== undefined && specifier?.startsWith('@dv/') === true) {
       const clause = ts.isImportDeclaration(declaration) ? declaration.importClause : undefined
       const typeOnly = ts.isExportDeclaration(declaration) ? declaration.isTypeOnly : clause?.phaseModifier === ts.SyntaxKind.TypeKeyword
-      const bare = typeOnly && clause?.name === undefined && clause?.namedBindings !== undefined
-        && ts.isNamedImports(clause.namedBindings) && clause.namedBindings.elements.length === 0
       if (pkg === 'project') report('R1a', specifier)
       if (/^@dv\/[^/]+\/src\//u.test(specifier)) report('R6', specifier)
-      if (!importAllowed(pkg, specifier, typeOnly, bare, facts)) report('R7a', specifier)
+      if (!importAllowed(pkg, specifier, typeOnly, facts)) report('R7a', specifier)
     }
     const literal = ts.isStringLiteralLike(node) ? node.text : undefined
     const access = ts.isPropertyAccessExpression(node) ? [textOf(node.expression), node.name.text]

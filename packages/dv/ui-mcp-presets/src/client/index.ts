@@ -7,7 +7,7 @@
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
-import type {} from '@dv/ui-shell'
+import type {} from '@dv/ui-shell/contract'
 import { McpShelf } from './McpShelf.tsx'
 import { followMcpShelf } from './shelf.ts'
 
