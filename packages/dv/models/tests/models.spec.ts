@@ -15,7 +15,7 @@ import SkillRegistry from '@deepseek-ai/dsh-skill'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import { afterEach, describe, expect, it } from 'vitest'
-import DvModels, { formatModelKey, modelKey, type ModelEntry, type RenderModelFacts, type TaskId } from '../src/index.ts'
+import DvModels, { formatModelKey, modelKey, servesTask, type ModelEntry, type RenderModelFacts, type TaskId } from '../src/index.ts'
 
 /** The facts every fake entry reports. */
 const FACTS: RenderModelFacts = {
@@ -172,6 +172,8 @@ describe('dvModels', () => {
     expect(modelKey({ modality: 'video', task: 'ref2v', provider: 'test', model: 'alpha', prompt: 'a cat' }))
       .toEqual({ modality: 'video', task: 'ref2v', provider: 'test', model: 'alpha' })
     expect(formatModelKey(modelKey({ modality: 'video', task: 7 }))).toBe('video///')
+    expect(servesTask(entry('ref2v', 'test', 'alpha'), ['t2v', 'ref2v'])).toBe(true)
+    expect(servesTask(entry('ref2v', 'test', 'alpha'), ['t2v'])).toBe(false)
     const alpha = { modality: 'video', task: 'ref2v', provider: 'test', model: 'alpha' }
     expect(ctx.dvModels.resolve(['t2v', 'ref2v'], alpha).description).toBe('alpha for ref2v')
     expect(() => ctx.dvModels.resolve(['t2v'], alpha)).toThrow('Unknown model "video/ref2v/test/alpha"; call dv_models_list for the models.')

@@ -45,7 +45,7 @@ DreamVerse bundle [`@dv/bundle`](../../bundle/dv/README.zh.md) 以行 `dv-models
 <a id="model-keys"></a>
 ### 模型键
 
-提供方是一个视频生成系统，如 FastVideo、fal 或 SGLang。服务器是提供方的一个运行中的后端。每个条目有一个由四个字段组成的键。`formatModelKey(key)` 把键写成一个字符串，如 `video/ref2v/fastvideo/fasth3`。`modelKey(params)` 从调用的 `modality`、`task`、`provider` 和 `model` 参数读取键；不是字符串的字段读作空字符串。
+提供方是一个视频生成系统，如 FastVideo、fal 或 SGLang。服务器是提供方的一个运行中的后端。每个条目有一个由四个字段组成的键。`formatModelKey(key)` 把键写成一个字符串，如 `video/ref2v/fastvideo/fasth3`。`modelKey(params)` 从调用的 `modality`、`task`、`provider` 和 `model` 参数读取键；不是字符串的字段读作空字符串。`servesTask(entry, tasks)` 判断条目是否服务给定任务之一，并把条目收窄到这些任务；它只读取条目的 `task`。
 
 | 字段 | 含义 | 本包中的值 |
 | --- | --- | --- |
@@ -164,7 +164,7 @@ DSH skill 注册表（`skills`）挂载期间，本服务从 `skills/video-model
 
 | 文件 | 内容 |
 | --- | --- |
-| [`src/index.ts`](src/index.ts) | `Config`、`formatModelKey`、`modelKey`、`DvModels` 服务和两个工具 |
+| [`src/index.ts`](src/index.ts) | `Config`、`formatModelKey`、`modelKey`、`servesTask`、`DvModels` 服务和两个工具 |
 | [`src/types.ts`](src/types.ts) | `PrimitiveTypes`、`PrimitiveId`、`TaskMap`、`ModalityId`、`TaskOfPrimitive`、`ModelKey`、`RenderModelFacts`、`RenderRequest`、`RenderStreamEvent`、`ModelEntry`、`ModelFilter` |
 | [`skills/video-model-selection.md`](skills/video-model-selection.md) | 模型选择 skill |
 | [`tests/models.spec.ts`](tests/models.spec.ts) | Loader 组合中的模型目录、工具、skill 和系统提示词 |

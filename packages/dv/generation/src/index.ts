@@ -10,7 +10,7 @@ import { randomInt } from 'node:crypto'
 import { Service, type Context } from '@deepseek-ai/cordis'
 import { deepEqualJson } from '@deepseek-ai/dsh-util-values'
 import {
-  formatModelKey, modelKey, type ModelEntry, type PrimitiveId, type PrimitiveTypes, type TaskId, type TaskOfPrimitive,
+  formatModelKey, modelKey, servesTask, type ModelEntry, type PrimitiveId, type PrimitiveTypes, type TaskOfPrimitive,
 } from '@dv/models'
 import type {
   AssetId, OperationContext, OperationInput, OperationOutput, OperationResult, OperationSpec, OperationToolCall, ProjectId,
@@ -152,11 +152,6 @@ function declaredParams(params: Record<string, unknown>, declared: readonly stri
 /** The roles and references of inputs, sorted by role with the order inside a role kept, for comparing two calls. */
 function inputRefs(inputs: ReadonlyArray<{ role: string; ref: RecordInputRef }>): Array<{ role: string; ref: RecordInputRef }> {
   return [...inputs].sort((a, b) => a.role.localeCompare(b.role)).map(({ role, ref }) => ({ role, ref }))
-}
-
-/** Whether an entry serves one of the given tasks. */
-function servesTask<T extends TaskId>(entry: ModelEntry, tasks: readonly T[]): entry is ModelEntry<T> {
-  return (tasks as readonly TaskId[]).includes(entry.task)
 }
 
 /** The reason for the problems that a model finds in a request. */
