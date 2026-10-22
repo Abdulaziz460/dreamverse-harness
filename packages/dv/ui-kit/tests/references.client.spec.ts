@@ -1,9 +1,9 @@
 /**
- * Stored input references read without kind names, the reference assets of a shot, which of them the model numbers as
- * Picture N, and the split of a prompt at its Picture N tokens.
+ * Stored input references read without kind names, the reference assets of a shot, and the split of a prompt at its
+ * Picture N tokens.
  */
 import { describe, expect, it } from 'vitest'
-import { formatInputRef, isPicture, parseVersionedReference, pictureParts, referenceAssets, versionRefOf } from '../src/client/references.ts'
+import { formatInputRef, parseVersionedReference, pictureParts, referenceAssets, versionRefOf } from '../src/client/references.ts'
 import type { VersionKind } from '../src/client/registries.ts'
 import type { WireInputRef } from '../src/client/types.ts'
 import { asset, fixtureState } from './fixture.client.tsx'
@@ -76,13 +76,6 @@ describe('referenceAssets', () => {
 
   it('adds nothing for a record output whose record, or whose output, the state does not hold', () => {
     expect(referenceAssets(fixtureState(), ['missing#0', 'g1#9'], [])).toEqual([])
-  })
-})
-
-describe('isPicture', () => {
-  it('numbers images only', () => {
-    expect([asset('a.png', 'image/png', null), asset('b.mp4', 'video/mp4', null), asset('c.wav', 'audio/wav', null)].map(isPicture))
-      .toEqual([true, false, false])
   })
 })
 

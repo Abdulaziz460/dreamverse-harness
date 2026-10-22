@@ -52,6 +52,7 @@ Host 半边不注册任何东西。浏览器半边在 `ctx.inject(['dvCanvas'], 
 | [`src/index.ts`](src/index.ts) | 不做任何事的 Host Loader 入口 |
 | [`src/client/index.ts`](src/client/index.ts) | `planNodeType`、`planReferencesInUse`、`planHistoryRow` 和各项注册 |
 | [`src/client/PlanEditor.tsx`](src/client/PlanEditor.tsx) | `PlanEditor`、`shotReferences` 和 `totalSec` |
+| [`src/client/picture.ts`](src/client/picture.ts) | `isPicture(asset)`：一个镜头的哪些参考素材被视频模型按输入顺序编号为 `Picture 1`、`Picture 2`……，即其中的图片 |
 
 -----
 
