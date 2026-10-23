@@ -1,8 +1,7 @@
 // @vitest-environment jsdom
 /**
- * The DreamVerse center in place of DSH's `main.conversation`, mounted in a slot test runtime with stand-ins for what
- * it uses: recording shell actions, a Conversation source, a `conversation.content` composer that shows its phase and
- * the chat view the center hands it, `dv.center.view` and `dv.explore` entries, and a scripted `/api/dv` server.
+ * The DreamVerse center in place of DSH's `main.conversation`, mounted in a slot test runtime. The real `@dv/ui-media`
+ * and asset pool plugins mount beside it because their image and video views draw the project covers.
  */
 import { act, fireEvent, waitFor, within } from '@testing-library/react'
 import type { ReactNode } from 'react'
@@ -14,10 +13,13 @@ import type { SessionFixture, SlotView } from '@deepseek-ai/dsh-client-test-runt
 import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { EMPTY_CONVERSATION_SNAPSHOT } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { ConversationSnapshot } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import { SidebarRightTabRegistry } from '@deepseek-ai/dsh-client-ui-sidebar-right/src/client/tab-registry.ts'
 import type { FactoryComponentPropsOf, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import type { WireProjectLink, WireProjectSummary, WireWorkspaces } from '@dv/ui-kit/types.ts'
+import { apply as assetPoolApply, inject as assetPoolInject } from '../../ui-asset-pool/src/client/index.ts'
+import { apply as mediaApply, inject as mediaInject } from '../../ui-media/src/client/index.ts'
 import type { ShellActions } from '../src/client/actions.ts'
 
 const PROJECTS: WireProjectLink[] = [
@@ -219,6 +221,9 @@ async function mountCenter(options: MountOptions = {}): Promise<Bench> {
   if (options.listsLoading === true) runtime.sessions.list.update((draft) => { draft.phase = 'pending' })
 
   await runtime.declare({ 'main.conversation': { kind: 'single', scope: 'session-maybe' } })
+  runtime.ctx.provide('sidebarRightTabs', new SidebarRightTabRegistry(runtime.ctx) as never)
+  await runtime.mount({ inject: [...mediaInject], apply: mediaApply })
+  await runtime.mount({ inject: [...assetPoolInject], apply: assetPoolApply })
   await runtime.mount({
     inject: ['slots'],
     /** Register the stand-in composer, chat body and center, and the center view and explore entries. */
@@ -304,8 +309,8 @@ describe('the entry page', () => {
     const bench = await mountCenter({
       main: 's0',
       summaries: [
-        { project: 'p3', cover: { video: 'take3.mp4', image: 'still3.png' }, edited_at: daysAgo(0) },
-        { project: 'p2', cover: { video: null, image: 'poster2.png' }, edited_at: daysAgo(1) },
+        { project: 'p3', cover: { asset: 'take3.mp4', mime: 'video/mp4' }, edited_at: daysAgo(0) },
+        { project: 'p2', cover: { asset: 'poster2.png', mime: 'image/png' }, edited_at: daysAgo(1) },
         { project: 'p1', cover: null, edited_at: null },
       ],
     })
@@ -511,7 +516,7 @@ describe('the workspace', () => {
   it('shows the project and chat in the switcher, the view toggle, and the selected view of the project\'s session', async () => {
     const bench = await mountCenter({
       hash: '#project=p1&view=storyboard', main: 's1',
-      summaries: [{ project: 'p1', cover: { video: null, image: 'poster.png' }, edited_at: null }],
+      summaries: [{ project: 'p1', cover: { asset: 'poster.png', mime: 'image/png' }, edited_at: null }],
     })
     await bench.refreshLinks()
     const page = bench.view.view

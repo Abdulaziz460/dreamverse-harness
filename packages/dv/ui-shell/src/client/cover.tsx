@@ -5,12 +5,12 @@
  * @module @dv/ui-shell/cover
  */
 import type { ReactNode } from 'react'
-import { assetUrl } from '@dv/ui-kit/api.ts'
+import type { PropsRenderFactories } from '@deepseek-ai/dsh-client-ui-slots'
 import type { PickText } from '@dv/ui-kit/locale.ts'
 import type { SummaryQuery, WireProjectCover, WireProjectSummary } from '@dv/ui-kit/types.ts'
 import { useLoader } from '@dv/ui-kit/useProject.ts'
+import type { MediaPurpose } from '@dv/ui-media/contract'
 import { shellClient } from './store.ts'
-import css from './shell.module.css'
 
 /**
  * Read project card summaries in one request when the component mounts and again whenever `refresh` or `narrow`
@@ -33,21 +33,23 @@ export function useProjectSummaries(
 const NO_NARROWING: SummaryQuery = {}
 
 /**
- * A decorative cover frame beside the project title: the first frame of the take's muted video, or the take's image,
- * or a neutral block without a take.
- * @param props - the cover, the class of the frame box, and overlays drawn on the frame.
+ * A decorative cover frame beside the project title: the cover asset drawn through `dv.media`, or a neutral block
+ * without a cover.
+ * @param props - the cover, the purpose it is drawn at, the class of the frame box, the Factory renderer, and overlays
+ *   drawn on the frame.
  * @returns the frame.
  */
 export function CoverFrame(
-  { cover, className, children }: { cover: WireProjectCover | null; className: string | undefined; children?: ReactNode },
+  { cover, purpose, className, renderFactorySlot, children }: PropsRenderFactories & {
+    cover: WireProjectCover | null
+    purpose: MediaPurpose
+    className: string | undefined
+    children?: ReactNode
+  },
 ): ReactNode {
   return (
     <span className={className} aria-hidden="true">
-      {cover?.video != null && (
-        // `#t=0.1` asks the browser to decode a frame past the first keyframe's black lead-in.
-        <video className={css.coverMedia} src={`${assetUrl(cover.video)}#t=0.1`} muted playsInline preload="metadata" />
-      )}
-      {cover?.video == null && cover?.image != null && <img className={css.coverMedia} src={assetUrl(cover.image)} alt="" />}
+      {cover !== null && renderFactorySlot('dv.media', { asset: { id: cover.asset, mime: cover.mime }, purpose })}
       {children}
     </span>
   )

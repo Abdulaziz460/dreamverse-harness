@@ -12,6 +12,9 @@
       "path": "../../../vendor/cordis"
     },
     {
+      "path": "../../client/ui-primitives"
+    },
+    {
       "path": "../../client/ui-renderer"
     },
     {
@@ -25,6 +28,9 @@
     },
     {
       "path": "../ui-kit"
+    },
+    {
+      "path": "../ui-media"
     }
   ]
 }
