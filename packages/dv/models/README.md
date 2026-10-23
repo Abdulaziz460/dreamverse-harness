@@ -45,7 +45,7 @@ The plugin has no configuration fields.
 <a id="model-keys"></a>
 ### Model keys
 
-A provider is a video generation system, such as FastVideo, fal, or SGLang. A server is one running backend of a provider. Each entry has a key of four fields. `formatModelKey(key)` writes a key as one string, such as `video/ref2v/fastvideo/fasth3`. `modelKey(params)` reads a key from the `modality`, `task`, `provider` and `model` params of a call; a field that is not a string reads as an empty string.
+A provider is a video generation system, such as FastVideo, fal, or SGLang. A server is one running backend of a provider. Each entry has a key of four fields. `formatModelKey(key)` writes a key as one string, such as `video/ref2v/fastvideo/fasth3`. `modelKey(params)` reads a key from the `modality`, `task`, `provider` and `model` params of a call; a field that is not a string reads as an empty string. `servesTask(entry, tasks)` tells whether an entry serves one of the given tasks and narrows the entry to those tasks; it reads only the entry's `task`.
 
 | Field | Meaning | Values in this package |
 | --- | --- | --- |
@@ -164,7 +164,7 @@ While the DSH skill registry (`skills`) is mounted, the service registers the ru
 
 | File | Content |
 | --- | --- |
-| [`src/index.ts`](src/index.ts) | `Config`, `formatModelKey`, `modelKey`, the `DvModels` service, and the two tools |
+| [`src/index.ts`](src/index.ts) | `Config`, `formatModelKey`, `modelKey`, `servesTask`, the `DvModels` service, and the two tools |
 | [`src/types.ts`](src/types.ts) | `PrimitiveTypes`, `PrimitiveId`, `TaskMap`, `ModalityId`, `TaskOfPrimitive`, `ModelKey`, `RenderModelFacts`, `RenderRequest`, `RenderStreamEvent`, `ModelEntry`, `ModelFilter` |
 | [`skills/video-model-selection.md`](skills/video-model-selection.md) | The model selection skill |
 | [`tests/models.spec.ts`](tests/models.spec.ts) | The catalog, the tools, the skill, and the system prompt in a Loader composition |

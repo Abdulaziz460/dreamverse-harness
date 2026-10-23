@@ -10,7 +10,7 @@ import { randomInt } from 'node:crypto'
 import { Service, type Context } from '@deepseek-ai/cordis'
 import { deepEqualJson } from '@deepseek-ai/dsh-util-values'
 import {
-  formatModelKey, modelKey, type ModelEntry, type PrimitiveId, type PrimitiveTypes, type TaskId, type TaskOfPrimitive,
+  formatModelKey, modelKey, servesTask, type ModelEntry, type PrimitiveId, type PrimitiveTypes, type TaskOfPrimitive,
 } from '@dv/models'
 import type {
   AssetId, OperationContext, OperationInput, OperationOutput, OperationResult, OperationSpec, OperationToolCall, ProjectId,
@@ -45,7 +45,8 @@ export interface GenerationApi {
    * for code calls.
    * @param chained - input roles whose producer the caller schedules before this call. Each reaches `toRequest` as
    *   `{ role, ref: null, resolved_asset: null }`, so role counts and citations see it; the model check waits for execute.
-   * @returns [] when the call runs; else the first refusal, or the model problems joined as one reason.
+   * @returns [] when the call runs; else the first refusal, or the model problems joined as one reason. A rejected
+   *   `facts()` or `validateGenerationRequest` of the entry reads `Model <key> is unavailable: <its message>`.
    */
   check(call: Pick<GenerationCall, 'project' | 'params' | 'inputs'>, state: ProjectState,
     chained?: readonly string[]): Promise<string[]>
@@ -63,8 +64,7 @@ export interface GenerationApi {
   parseInputs(raw: Record<string, string | string[]>, state: ProjectState): RunRequest['inputs']
 }
 
-/** The declaration of one generation primitive: one component key, one operation, and the code that differs. */
-export interface GenerationSpec<P extends PrimitiveId> {
+interface GenerationSpecFields<P extends PrimitiveId> {
   /** The Cordis service name, such as `dvImageGenerate`. */
   service: string
   /** The component key that the service registers, such as `image`. */
@@ -83,17 +83,9 @@ export interface GenerationSpec<P extends PrimitiveId> {
   params: OperationSpec['params']
   inputs: Record<string, OperationInput>
   outputs: OperationOutput[]
-  /** false: the operation has no `seed` param, draws no seed and reports none, for models without a seed. */
-  seed?: false
   toolParams?: OperationSpec['params']
   /** Change an agent call before the check, such as a tool-only argument that becomes an input. */
   prepareToolCall?(call: OperationToolCall): void
-  /**
-   * Build the request from the model's facts, the call's params and inputs, and the seed (the `seed` param, else a
-   * random one; null when `seed` is false). A throw refuses the call.
-   */
-  toRequest(facts: PrimitiveTypes[P]['facts'], params: Record<string, unknown>,
-    inputs: readonly RequestInput[], seed: number | null): PrimitiveTypes[P]['request']
   /** Import the model's result as the record's outputs; without a `cost` in the result, the helper records the estimate. */
   toOutputs(ctx: Context, run: OperationContext, result: PrimitiveTypes[P]['result'],
     facts: PrimitiveTypes[P]['facts'], request: PrimitiveTypes[P]['request']): Promise<OperationResult>
@@ -105,11 +97,30 @@ export interface GenerationSpec<P extends PrimitiveId> {
   summarize(record: ProjectRecord): string
 }
 
+/**
+ * The declaration of one generation primitive: one component key, one operation, and the code that differs. `toRequest`
+ * builds the request from the model's facts and the call's params and inputs; a throw refuses the call. A seeded
+ * declaration's `toRequest` also takes the seed: the `seed` param, else a random one. With `seed: false`, the operation
+ * has no `seed` param, draws no seed and reports none, for models without a seed.
+ */
+export type GenerationSpec<P extends PrimitiveId> = GenerationSpecFields<P> & ({
+  seed?: undefined
+  toRequest(facts: PrimitiveTypes[P]['facts'], params: Record<string, unknown>,
+    inputs: readonly RequestInput[], seed: number): PrimitiveTypes[P]['request']
+} | {
+  seed: false
+  toRequest(facts: PrimitiveTypes[P]['facts'], params: Record<string, unknown>,
+    inputs: readonly RequestInput[]): PrimitiveTypes[P]['request']
+})
+
 /** The seed range of the generation backends. */
 const SEED_LIMIT = 2 ** 31
 
-/** The sentence that ends every refusal of a call. */
 const REFUSAL_END = 'Nothing was generated; change the inputs or params, then call again.'
+
+const UNAVAILABLE_END = 'Nothing was generated; no change to the call helps while the model is unavailable.'
+
+interface Refusal { reasons: string[]; end: string }
 
 /** A required string param with its description. */
 function requiredText(description: string): OperationSpec['params'][string] {
@@ -138,10 +149,11 @@ const EXTRA_PARAM: OperationSpec['params'] = {
   },
 }
 
-/** The `seed` param of a call, else a random seed; null for a declaration without a seed. */
-function seedOf(params: Record<string, unknown>, seeded: boolean): number | null {
-  if (!seeded) return null
-  return typeof params['seed'] === 'number' ? params['seed'] : randomInt(SEED_LIMIT)
+function requestOf<P extends PrimitiveId>(spec: GenerationSpec<P>, facts: PrimitiveTypes[P]['facts'],
+  params: Record<string, unknown>, inputs: readonly RequestInput[]): { request: PrimitiveTypes[P]['request']; seed: number | null } {
+  if (spec.seed === false) return { request: spec.toRequest(facts, params, inputs), seed: null }
+  const seed = typeof params['seed'] === 'number' ? params['seed'] : randomInt(SEED_LIMIT)
+  return { request: spec.toRequest(facts, params, inputs, seed), seed }
 }
 
 /** The params of a call that the operation declares, for comparing two calls; an undeclared param is left out. */
@@ -154,9 +166,14 @@ function inputRefs(inputs: ReadonlyArray<{ role: string; ref: RecordInputRef }>)
   return [...inputs].sort((a, b) => a.role.localeCompare(b.role)).map(({ role, ref }) => ({ role, ref }))
 }
 
-/** Whether an entry serves one of the given tasks. */
-function servesTask<T extends TaskId>(entry: ModelEntry, tasks: readonly T[]): entry is ModelEntry<T> {
-  return (tasks as readonly TaskId[]).includes(entry.task)
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
+class Unavailable extends Error {
+  constructor(entry: ModelEntry, cause: unknown) {
+    super(`Model ${formatModelKey(entry)} is unavailable: ${messageOf(cause)}`, { cause })
+  }
 }
 
 /** The reason for the problems that a model finds in a request. */
@@ -186,14 +203,16 @@ export function importOne(run: OperationContext,
  * @returns a Cordis service class named `spec.service`. It registers the component and, with `dvModels.labelTasks`,
  *   the task labels; registers the operation while the catalog serves one of `spec.tasks`, with `deterministic: false`,
  *   `resource: 'gpu'`, `confirm: 'over_gpu_budget'` and the spec's label; draws and reports the seed unless `spec.seed`
- *   is false; refuses a call before its record with every reason of `check` and a neutral closing sentence; imports
- *   the outputs through `spec.toOutputs`; and implements `GenerationApi`.
+ *   is false; refuses a call before its record with every reason of `check` and a closing sentence, which for an
+ *   unavailable model says that no change to the call helps; imports the outputs through `spec.toOutputs`; and
+ *   implements `GenerationApi`.
  */
 export function defineGeneration<P extends PrimitiveId>(spec: GenerationSpec<P>): new (ctx: Context) => Service & GenerationApi {
   // The task names are the keys of the label record; Object.keys loses their type.
   const tasks = Object.keys(spec.tasks) as Array<TaskOfPrimitive<P>>
-  const seeded = spec.seed !== false
-  const operationParams: OperationSpec['params'] = { ...KEY_PARAMS, ...spec.params, ...seeded ? SEED_PARAM : {}, ...EXTRA_PARAM }
+  const operationParams: OperationSpec['params'] = {
+    ...KEY_PARAMS, ...spec.params, ...spec.seed === false ? {} : SEED_PARAM, ...EXTRA_PARAM,
+  }
   // findTake compares only these keys, because the kernel also stores undeclared params.
   const declared = Object.keys(operationParams)
   return class GenerationService extends Service implements GenerationApi {
@@ -216,21 +235,29 @@ export function defineGeneration<P extends PrimitiveId>(spec: GenerationSpec<P>)
 
     async check(call: Pick<GenerationCall, 'project' | 'params' | 'inputs'>, state: ProjectState,
       chained: readonly string[] = []): Promise<string[]> {
+      return (await this.refusal(call, state, chained)).reasons
+    }
+
+    /** The reasons of `check`, and `UNAVAILABLE_END` for an unavailable model, else `REFUSAL_END`. */
+    private async refusal(call: Pick<GenerationCall, 'project' | 'params' | 'inputs'>, state: ProjectState,
+      chained: readonly string[]): Promise<Refusal> {
       try {
         const entry = this.ctx.dvModels.resolve(tasks, call.params)
+        const unavailable = (error: unknown): never => { throw new Unavailable(entry, error) }
+        const facts = await entry.facts().catch(unavailable)
         const inputs: RequestInput[] = [
           ...call.inputs.flatMap(({ role, ref }) =>
             this.assetsOf(call.project, state, ref).map(asset => ({ role, ref, resolved_asset: asset }))),
           ...chained.map(role => ({ role, ref: null, resolved_asset: null })),
         ]
-        const request = spec.toRequest(await entry.facts(), call.params, inputs, seedOf(call.params, seeded))
+        const { request } = requestOf(spec, facts, call.params, inputs)
         // An input without an asset yet (its producer has not finished, or the role is chained): execute checks the
         // full request before the model runs.
-        if (inputs.some(input => input.resolved_asset === null)) return []
-        const problems = await entry.validateGenerationRequest(request)
-        return problems.length === 0 ? [] : [modelReason(entry, problems)]
+        if (inputs.some(input => input.resolved_asset === null)) return { reasons: [], end: REFUSAL_END }
+        const problems = await entry.validateGenerationRequest(request).catch(unavailable)
+        return { reasons: problems.length === 0 ? [] : [modelReason(entry, problems)], end: REFUSAL_END }
       } catch (error) {
-        return [error instanceof Error ? error.message : String(error)]
+        return { reasons: [messageOf(error)], end: error instanceof Unavailable ? UNAVAILABLE_END : REFUSAL_END }
       }
     }
 
@@ -261,8 +288,8 @@ export function defineGeneration<P extends PrimitiveId>(spec: GenerationSpec<P>)
 
     /** Throw the refusal of a call that `check` finds reasons against; no role is chained on this path. */
     private async refuse(call: GenerationCall, state: ProjectState): Promise<void> {
-      const reasons = await this.check(call, state)
-      if (reasons.length > 0) throw new Error(`${reasons.join(' ')} ${REFUSAL_END}`)
+      const { reasons, end } = await this.refusal(call, state, [])
+      if (reasons.length > 0) throw new Error(`${reasons.join(' ')} ${end}`)
     }
 
     /**
@@ -272,8 +299,7 @@ export function defineGeneration<P extends PrimitiveId>(spec: GenerationSpec<P>)
     private async execute(run: OperationContext): Promise<OperationResult> {
       const entry = this.ctx.dvModels.resolve(tasks, run.params)
       const facts = await entry.facts()
-      const seed = seedOf(run.params, seeded)
-      const request = spec.toRequest(facts, run.params, run.inputs, seed)
+      const { request, seed } = requestOf(spec, facts, run.params, run.inputs)
       const problems = await entry.validateGenerationRequest(request)
       if (problems.length > 0) throw new Error(`${modelReason(entry, problems)} ${REFUSAL_END}`)
       const result = await spec.toOutputs(this.ctx, run, entry.render(request, run.signal), facts, request)

@@ -32,7 +32,7 @@ A primitive package declares its row of `PrimitiveTypes` and its tasks in `TaskM
 | `primitive`, `tasks`, `label`, `description` | The primitive, every task of the primitive with its label in Chinese and English, the operation label, and the tool description |
 | `params`, `inputs`, `outputs`                | The params besides the shared ones, the input roles, and the outputs; a declaration may restate `prompt` to describe it         |
 | `seed`, `toolParams`, `prepareToolCall`      | `false` for a model without a seed; tool-only arguments, and the change of an agent call before the check                       |
-| `toRequest`, `toOutputs`                     | Build the model request from facts, params, `RequestInput`s and seed (null without one); import the model result as outputs     |
+| `toRequest`, `toOutputs`                     | Build the model request from facts, params and `RequestInput`s, and from the seed for a seeded declaration; import the model result as outputs |
 | `estimate`, `confirmText`, `summarize`       | The required GPU estimate from the entry, the confirmation text, and the one-line record summary                                |
 
 | `GenerationApi` method         | Behavior                                                                                                                               |
@@ -73,7 +73,7 @@ The service registers the component, then the task labels with `dvModels.labelTa
 
 #### What the model sees
 
-The kernel turns each generation operation into the agent tool `dv_<component>_<verb>`. Its params begin with `modality`, `task`, `provider`, `model` and `prompt`, and end with `seed` and `extra`, with the descriptions below; a declaration with `seed: false` has no `seed`. The tool takes `user_requested`, and a call without it is refused when the turn passes the GPU budget, with the text `<label.en> with <provider>/<model>: about <n> GPU seconds.` unless the declaration gives its own. A refused call fails the tool call with the reasons and the sentence `Nothing was generated; change the inputs or params, then call again.` A model problem reads `Model <modality>/<task>/<provider>/<model> cannot generate this: <problems>`. A result report carries `seed`.
+The kernel turns each generation operation into the agent tool `dv_<component>_<verb>`. Its params begin with `modality`, `task`, `provider`, `model` and `prompt`, and end with `seed` and `extra`, with the descriptions below; a declaration with `seed: false` has no `seed`. The tool takes `user_requested`, and a call without it is refused when the turn passes the GPU budget, with the text `<label.en> with <provider>/<model>: about <n> GPU seconds.` unless the declaration gives its own. A refused call fails the tool call with the reasons and the sentence `Nothing was generated; change the inputs or params, then call again.` When the entry's `facts()` or `validateGenerationRequest` rejects, the reason reads `Model <modality>/<task>/<provider>/<model> is unavailable: <message>` and the sentence is `Nothing was generated; no change to the call helps while the model is unavailable.` A model problem reads `Model <modality>/<task>/<provider>/<model> cannot generate this: <problems>`. A result report carries `seed`.
 
 ##### Shared param descriptions
 

@@ -78,6 +78,7 @@ class FakeLane {
   readonly requests: RenderRequest[] = []
   /** When set, `render` rejects with this error before streaming. */
   failure: Error | null = null
+  unreachable: Error | null = null
   /** When set, `render` waits for it before rendering, so the record stays unfinished. */
   hold: Promise<void> | null = null
   /** An event to leave out of the stream, to exercise the stream checks. */
@@ -128,7 +129,7 @@ function fakeEntry(task: VideoTask, lane: FakeLane, model = 'fake'): ModelEntry<
   return {
     modality: 'video', task, provider: 'test', model, description: 'Solid-color clips',
     gpuSecondsPerVideoSecond: task === 'ref2v' ? 3 : 1.5,
-    facts: () => Promise.resolve(lane.facts),
+    facts: () => lane.unreachable === null ? Promise.resolve(lane.facts) : Promise.reject(lane.unreachable),
     schema: () => Promise.resolve({}),
     validateGenerationRequest: request => lane.validate(request),
     render: request => lane.render(request),
@@ -505,6 +506,18 @@ describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
       .rejects.toThrow(/Nothing was generated; change the inputs or params, then call again\.$/)
     expect(fixture.ctx.dvProject.listHistory({ project: fixture.project })).toHaveLength(before)
     expect(fixture.reference.requests).toHaveLength(0)
+  })
+
+  it('refuses a call to an unreachable model before recording anything, and tells the agent that no change to the call helps', async () => {
+    const fixture = await start()
+    fixture.text.unreachable = new Error('The server at http://127.0.0.1:1 cannot be reached.')
+    const refusal = 'Model video/t2v/test/fake is unavailable: The server at http://127.0.0.1:1 cannot be reached. '
+      + 'Nothing was generated; no change to the call helps while the model is unavailable.'
+    const before = fixture.ctx.dvProject.listHistory({ project: fixture.project }).length
+    expect(failure(await fixture.call('dv_shot_render', { ...TXT, reason: 'cat', prompt: 'a cat' }))).toContain(refusal)
+    await expect(fixture.record('shot.render', { ...TXT, prompt: 'a cat' })).rejects.toThrow(refusal)
+    expect(fixture.ctx.dvProject.listHistory({ project: fixture.project })).toHaveLength(before)
+    expect(fixture.text.requests).toHaveLength(0)
   })
 
   it('validates the request the model renders before recording and again before rendering', async () => {

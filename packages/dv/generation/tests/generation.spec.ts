@@ -23,8 +23,7 @@ import DvProject, {
 import { afterEach, describe, expect, it } from 'vitest'
 import { defineGeneration, importOne, type GenerationCall, type RequestInput } from '../src/index.ts'
 
-/** The inputs and the seed of each `toRequest` call of the test declarations, oldest first. */
-const seen: Array<{ inputs: readonly RequestInput[]; seed: number | null }> = []
+const seen: Array<readonly RequestInput[]> = []
 
 /** The test primitive service: component `probe`, operation `probe.generate`, tasks `t2v` and `ref2v`. */
 const DvProbeGenerate = defineGeneration({
@@ -50,7 +49,7 @@ const DvProbeGenerate = defineGeneration({
     if (typeof from === 'string') call.request.inputs.push({ role: 'first_frame', ref: { record: brandString<RecordId>(from), output: 0 } })
   },
   toRequest(facts, params, inputs, seed): RenderRequest {
-    seen.push({ inputs, seed })
+    seen.push(inputs)
     const prompt = String(params['prompt'])
     // A prompt cites an input of the call as dv:input/<role>.
     for (const [, role] of prompt.matchAll(/dv:input\/(\w+)/g)) {
@@ -62,7 +61,7 @@ const DvProbeGenerate = defineGeneration({
       inputs.flatMap(input => input.role === role && input.resolved_asset !== null ? [input.resolved_asset] : [])
     return {
       prompt, references: assets('reference'), firstFrame: assets('first_frame')[0] ?? null,
-      frameWidth: 16, frameHeight: 16, numFrames: durationSec * 24, seed: seed ?? 0, extra: {},
+      frameWidth: 16, frameHeight: 16, numFrames: durationSec * 24, seed, extra: {},
     }
   },
   async toOutputs(_ctx, run, result, facts, request) {
@@ -84,8 +83,8 @@ const DvPlainGenerate = defineGeneration({
   tasks: { t2v: { zh: '普通文字', en: 'Plain from text' }, ref2v: { zh: '普通参考', en: 'Plain from references' } },
   label: { zh: '普通生成', en: 'Generate plainly' }, description: 'Generate a plain clip.', params: {}, inputs: {},
   outputs: [{ role: 'clip', type: 'video' }], seed: false,
-  toRequest(_facts, params, inputs, seed): RenderRequest {
-    seen.push({ inputs, seed })
+  toRequest(_facts, params, inputs): RenderRequest {
+    seen.push(inputs)
     if (params['prompt'] === 'boom') throw 'The prompt is a bomb.'
     return { prompt: String(params['prompt']), references: [], firstFrame: null, frameWidth: 16, frameHeight: 16, numFrames: 24, seed: 0, extra: {} }
   },
@@ -113,9 +112,13 @@ const FACTS: RenderModelFacts = {
 /** The key params of the fake model in task `t2v`. */
 const TXT = { modality: 'video', task: 't2v', provider: 'test', model: 'fake' }
 
-/** One fake model: it streams the prompt as bytes and finds the problems that `problems` returns. */
+/**
+ * One fake model: it reads its facts from `facts`, streams the prompt as bytes, and finds the problems that `problems`
+ * returns; a throw of `problems` rejects the validation, as an unreachable model does.
+ */
 class FakeModel {
   readonly requests: RenderRequest[] = []
+  facts: () => Promise<RenderModelFacts> = () => Promise.resolve(FACTS)
   problems: (request: RenderRequest) => string[] = () => []
   /** When set, a render waits for it before streaming, so its record stays unfinished. */
   hold: Promise<void> | null = null
@@ -123,9 +126,9 @@ class FakeModel {
   entry(task: TaskOfPrimitive<'video'>): ModelEntry<TaskOfPrimitive<'video'>> {
     return {
       modality: 'video', task, provider: 'test', model: 'fake', description: 'Probe clips', gpuSecondsPerVideoSecond: 3,
-      facts: () => Promise.resolve(FACTS),
+      facts: () => this.facts(),
       schema: () => Promise.resolve({}),
-      validateGenerationRequest: request => Promise.resolve(this.problems(request)),
+      validateGenerationRequest: request => new Promise((resolve) => { resolve(this.problems(request)) }),
       render: request => this.stream(request),
     }
   }
@@ -290,6 +293,25 @@ describe('defineGeneration', () => {
     expect(fixture.model.requests).toEqual([])
   })
 
+  it('names an unavailable model, and ends its refusal with the sentence that no change to the call helps', async () => {
+    const fixture = await start()
+    const { ctx, project } = fixture
+    const state = () => ctx.dvProject.getState(project)
+    const unavailableEnd = 'Nothing was generated; no change to the call helps while the model is unavailable.'
+    fixture.model.facts = () => Promise.reject(new Error('The server at http://127.0.0.1:1 cannot be reached.'))
+    expect(await ctx.dvProbeGenerate.check(fixture.call({ prompt: 'dog' }), state()))
+      .toEqual(['Model video/t2v/test/fake is unavailable: The server at http://127.0.0.1:1 cannot be reached.'])
+    const before = ctx.dvProject.listHistory({ project }).length
+    await expect(ctx.dvProbeGenerate.render(fixture.call({ prompt: 'dog' }))).rejects.toHaveProperty('message',
+      `Model video/t2v/test/fake is unavailable: The server at http://127.0.0.1:1 cannot be reached. ${unavailableEnd}`)
+    expect(ctx.dvProject.listHistory({ project })).toHaveLength(before)
+    fixture.model.facts = () => Promise.resolve(FACTS)
+    fixture.model.problems = () => { throw 'busy' }
+    const refused = await fixture.tool('dv_probe_generate', { ...TXT, reason: 'try', prompt: 'dog' })
+    expect(refused.isError ? refused.error.message : '').toContain(`Model video/t2v/test/fake is unavailable: busy ${unavailableEnd}`)
+    expect(fixture.model.requests).toEqual([])
+  })
+
   it('checks a chained role as an input without an asset, and only through check', async () => {
     const fixture = await start()
     const { ctx, project } = fixture
@@ -298,7 +320,7 @@ describe('defineGeneration', () => {
     const call = fixture.call({ prompt: 'From @[the frame](dv:input/first_frame).' })
     // The citation sees the chained role, and the model check waits for execute.
     expect(await ctx.dvProbeGenerate.check(call, state, ['first_frame'])).toEqual([])
-    expect(seen.at(-1)?.inputs).toEqual([{ role: 'first_frame', ref: null, resolved_asset: null }])
+    expect(seen.at(-1)).toEqual([{ role: 'first_frame', ref: null, resolved_asset: null }])
     expect(await ctx.dvProbeGenerate.check(call, state)).toEqual(['The prompt cites dv:input/first_frame, but the call has no such input.'])
     await expect(ctx.dvProbeGenerate.render(call)).rejects.toThrow(
       'The prompt cites dv:input/first_frame, but the call has no such input. Nothing was generated; change the inputs or params, then call again.')
@@ -412,7 +434,6 @@ describe('defineGeneration', () => {
     const record = ctx.dvProject.getState(project).components.proj.records.at(-1)
     expect(record).toMatchObject({ operation: 'plain.generate', status: 'done', cost: { gpu_seconds: 2 } })
     expect(record?.report ?? {}).not.toHaveProperty('seed')
-    expect(seen.at(-1)?.seed).toBeNull()
     const asset = ctx.dvAssetPool.get(record?.outputs[0] ?? brandString<AssetId>('none'))
     expect(asset).toMatchObject({ name: `${String(record?.id.slice(0, 8))}.plain`, mime: 'text/plain', created_by: record?.id })
     expect(() => importOne({ record: null } as never, { bytes: Buffer.from('x'), mime: 'image/png' }))
