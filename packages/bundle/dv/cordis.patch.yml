@@ -79,6 +79,17 @@
     - id: dv-image-generate
       name: '@dv/image-generate'
 
+    - id: dv-sglang-omni
+      name: '@dv/sglang-omni'
+      config:
+        models:
+          fish-audio-drama-3:
+            baseUrl: http://127.0.0.1:8000
+            gpuSecondsPerCall: 3
+
+    - id: dv-audio-generate
+      name: '@dv/audio-generate'
+
     - id: dv-character
       name: '@dv/character'
 
@@ -117,6 +128,9 @@
 
     - id: dv-ui-image-generate
       name: '@dv/ui-image-generate'
+
+    - id: dv-ui-audio-generate
+      name: '@dv/ui-audio-generate'
 
     - id: dv-ui-media
       name: '@dv/ui-media'

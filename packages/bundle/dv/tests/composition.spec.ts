@@ -15,6 +15,7 @@ import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import DvAssetPool from '@dv/asset-pool'
+import DvAudioGenerate from '@dv/audio-generate'
 import DvCharacter from '@dv/character'
 import DvFfmpeg from '@dv/ffmpeg'
 import DvInspector from '@dv/inspector'
@@ -29,6 +30,7 @@ import DvChatReferences from '@dv/chat-references'
 import DvModels, { formatModelKey } from '@dv/models'
 import DvImageGenerate from '@dv/image-generate'
 import * as SglangDiffusion from '@dv/sglang-diffusion'
+import * as SglangOmni from '@dv/sglang-omni'
 import DvStory from '@dv/workflow-story'
 import * as yaml from 'js-yaml'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -68,6 +70,7 @@ const PLUGINS: Record<string, object> = {
   '@dv/api': DvApi, '@dv/chat-references': DvChatReferences,
   '@dv/models': DvModels, '@dv/fastvideo': FakeFastVideo, '@dv/workflow-story': DvStory,
   '@dv/sglang-diffusion': SglangDiffusion, '@dv/image-generate': DvImageGenerate,
+  '@dv/sglang-omni': SglangOmni, '@dv/audio-generate': DvAudioGenerate,
 }
 
 /** One row of a Loader entry list. */
@@ -110,7 +113,7 @@ describe('DreamVerse bundle composition', () => {
     const rows = bundleRows()
     expect(rows.map(row => row.id)).toEqual(expect.arrayContaining([
       'dv-models', 'dv-fastvideo', 'dv-project', 'dv-shot-plan', 'dv-shot-render', 'dv-timeline', 'dv-workflow-story', 'dv-chat-references', 'dv-api',
-      'dv-sglang-diffusion', 'dv-image-generate',
+      'dv-sglang-diffusion', 'dv-image-generate', 'dv-sglang-omni', 'dv-audio-generate',
     ]))
     // Each row keeps its id and `!!js` config; its package name points at a module that re-exports the plugin class.
     const entries = [
@@ -134,8 +137,11 @@ describe('DreamVerse bundle composition', () => {
     expect(ctx.get('dvChatReferences')).toBeDefined()
     expect(ctx.get('dvApi')).toBeDefined()
     expect(ctx.get('dvProject')?.listOperations().map(spec => spec.name))
-      .toEqual(expect.arrayContaining(['plan.create', 'shot.render', 'timeline.create', 'timeline.update', 'image.generate']))
+      .toEqual(expect.arrayContaining([
+        'plan.create', 'shot.render', 'timeline.create', 'timeline.update', 'image.generate', 'audio.generate',
+      ]))
     expect(ctx.get('tools')?.get('dv_shot_render')).toBeDefined()
+    expect(ctx.get('tools')?.get('dv_audio_generate')).toBeDefined()
     // The story workflow approves plans: the agent sees its preview and approve tools and no plan tool that approves.
     expect(ctx.get('tools')?.get('dv_story_preview')).toBeDefined()
     expect(ctx.get('tools')?.get('dv_story_approve')).toBeDefined()
@@ -150,12 +156,14 @@ describe('DreamVerse bundle composition', () => {
         t2v: { baseUrl: 'http://10.244.16.130:8031', gpuSecondsPerVideoSecond: 1.5 },
       },
     })
-    // The image row names its server; registering the entry reads no server.
     expect(rows.find(row => row.id === 'dv-sglang-diffusion')?.config).toEqual({
       models: { 'qwen-image-2.1-turbo': { baseUrl: 'http://127.0.0.1:30010', gpuSecondsPerMegapixel: 0.6 } },
     })
+    expect(rows.find(row => row.id === 'dv-sglang-omni')?.config).toEqual({
+      models: { 'fish-audio-drama-3': { baseUrl: 'http://127.0.0.1:8000', gpuSecondsPerCall: 3 } },
+    })
     expect(ctx.dvModels.list().map(entry => formatModelKey(entry))).toEqual([
-      'video/ref2v/fastvideo/fasth3', 'image/t2i/sglang-diffusion/qwen-image-2.1-turbo',
+      'video/ref2v/fastvideo/fasth3', 'image/t2i/sglang-diffusion/qwen-image-2.1-turbo', 'audio/t2a/sglang-omni/fish-audio-drama-3',
     ])
     const renderer = fasth3
 
