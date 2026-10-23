@@ -52,6 +52,7 @@ The Host half registers nothing. The browser half registers both descriptors ins
 | [`src/index.ts`](src/index.ts) | The inert Host Loader entry |
 | [`src/client/index.ts`](src/client/index.ts) | `planNodeType`, `planReferencesInUse`, `planHistoryRow`, and the registrations |
 | [`src/client/PlanEditor.tsx`](src/client/PlanEditor.tsx) | `PlanEditor`, `shotReferences`, and `totalSec` |
+| [`src/client/picture.ts`](src/client/picture.ts) | `isPicture(asset)`: which reference assets of a shot the video model numbers as `Picture 1`, `Picture 2`, … in input order, the images |
 
 -----
 

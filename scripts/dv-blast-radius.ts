@@ -51,6 +51,7 @@ const WIRING = new Set([
   ...['cordis.patch.yml', 'package.json', 'tests/composition.spec.ts', 'README.md', 'README.zh.md', 'README.i18n.yaml']
     .map(file => `packages/bundle/dv/${file}`),
   ...['md', 'zh.md', 'i18n.yaml'].map(extension => `docs/subsystems/video-harness.${extension}`),
+  'scripts/verify-package-readme-model-experience.ts', 'packages/extensions/cordis-client-runner/src/client/slot-catalog.ts',
 ])
 /** The ratchet baseline of `scripts/dv-architecture.spec.ts`: W with an implied `:net-delete` once it exists at the
  *  merge base. */

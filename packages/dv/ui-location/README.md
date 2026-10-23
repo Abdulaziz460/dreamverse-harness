@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to show the locations of `@dv/location` in the DreamVerse views. One `defineReferenceUi` declaration of `@dv/ui-kit/reference-kit.tsx` gives the noun its canvas node type `location` (label 场景 / Location, node ID `location:<id>`), its version kind, its references in use, its `dv.canvas.editor` entry (the default `ReferenceEditor`), its `@` menu kind (section 场景 / Locations, order 2, address `dv:location/<id>`), and its History row (`location.`).
+Use this package to show the locations of `@dv/location` in the DreamVerse views. One `defineReferenceUi` declaration of `@dv/ui-reference-kit/reference-kit.tsx` gives the noun its canvas node type `location` (label 场景 / Location, node ID `location:<id>`), its version kind, its references in use, its `dv.canvas.editor` entry (the default `ReferenceEditor`), its `@` menu kind (section 场景 / Locations, order 2, address `dv:location/<id>`), and its History row (`location.`).
 
 ## Table of Contents
 

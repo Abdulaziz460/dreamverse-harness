@@ -10,12 +10,13 @@ import type { PlanVersion, Shot } from '@dv/shot-plan/types'
 import { assetUrl, type DvClient } from '@dv/ui-kit/api.ts'
 import { AssetMedia } from '@dv/ui-kit/asset-media.tsx'
 import { useText } from '@dv/ui-kit/locale.ts'
-import { isPicture, parseVersionedReference, pictureParts, referenceAssets } from '@dv/ui-kit/references.ts'
+import { parseVersionedReference, pictureParts, referenceAssets } from '@dv/ui-kit/references.ts'
 import type { DvCanvas, Registry, VersionKind } from '@dv/ui-kit/registries.ts'
 import { clockText } from '@dv/ui-kit/timeline.ts'
 import { taskLabel, type WireTaskLabels } from '@dv/ui-kit/tool-labels.ts'
 import type { ProjectAsset, WireState } from '@dv/ui-kit/types.ts'
 import { useTaskLabels } from '@dv/ui-kit/useProject.ts'
+import { isPicture } from './picture.ts'
 
 /** What the plugin injects: the `dvCanvas` registries (chain anchors, version kinds) and the client that reads task labels. */
 export interface PlanEditorInjected { canvas: DvCanvas; client: DvClient }

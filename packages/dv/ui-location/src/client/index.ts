@@ -5,7 +5,7 @@
  * @module @dv/ui-location/client
  */
 import type { LocationState } from '@dv/location/types'
-import { defineReferenceUi } from '@dv/ui-kit/reference-kit.tsx'
+import { defineReferenceUi } from '@dv/ui-reference-kit/reference-kit.tsx'
 
 declare module '@dv/ui-kit/types.ts' { interface ComponentStates { location: LocationState } }
 

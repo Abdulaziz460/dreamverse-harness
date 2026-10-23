@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-使用本包在 DreamVerse 视图中显示 `@dv/location` 的场景。`@dv/ui-kit/reference-kit.tsx` 的一个 `defineReferenceUi` 声明给这个名词它的画布节点类型 `location`（名称 场景 / Location，节点 ID `location:<id>`）、版本种类、在用参考、`dv.canvas.editor` 条目（默认的 `ReferenceEditor`）、`@` 菜单种类（分区 场景 / Locations，顺序 2，地址 `dv:location/<id>`）和历史行（`location.`）。
+使用本包在 DreamVerse 视图中显示 `@dv/location` 的场景。`@dv/ui-reference-kit/reference-kit.tsx` 的一个 `defineReferenceUi` 声明给这个名词它的画布节点类型 `location`（名称 场景 / Location，节点 ID `location:<id>`）、版本种类、在用参考、`dv.canvas.editor` 条目（默认的 `ReferenceEditor`）、`@` 菜单种类（分区 场景 / Locations，顺序 2，地址 `dv:location/<id>`）和历史行（`location.`）。
 
 ## 目录
 

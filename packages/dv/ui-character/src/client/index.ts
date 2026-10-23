@@ -5,7 +5,7 @@
  * @module @dv/ui-character/client
  */
 import type { CharacterState } from '@dv/character/types'
-import { defineReferenceUi } from '@dv/ui-kit/reference-kit.tsx'
+import { defineReferenceUi } from '@dv/ui-reference-kit/reference-kit.tsx'
 
 declare module '@dv/ui-kit/types.ts' { interface ComponentStates { character: CharacterState } }
 

@@ -1,0 +1,5 @@
+--- packages/dv/ui-canvas/src/client/index.ts
+import { defineGenerationUi } from '@dv/ui-generation/generation-kit.tsx'
+--- packages/dv/ui-generation/src/client/generation-kit.tsx
+import type { NodeType } from '@dv/ui-canvas/contract'
+import { apply } from '@dv/ui-shot-render'

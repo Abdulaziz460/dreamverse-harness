@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to show the characters of `@dv/character` in the DreamVerse views. One `defineReferenceUi` declaration of `@dv/ui-kit/reference-kit.tsx` gives the noun its canvas node type `character` (label 角色 / Character, node ID `character:<id>`), its version kind, its references in use, its `dv.canvas.editor` entry (the default `ReferenceEditor`), its `@` menu kind (section 角色 / Characters, order 1, address `dv:character/<id>`), and its History row (`character.`).
+Use this package to show the characters of `@dv/character` in the DreamVerse views. One `defineReferenceUi` declaration of `@dv/ui-reference-kit/reference-kit.tsx` gives the noun its canvas node type `character` (label 角色 / Character, node ID `character:<id>`), its version kind, its references in use, its `dv.canvas.editor` entry (the default `ReferenceEditor`), its `@` menu kind (section 角色 / Characters, order 1, address `dv:character/<id>`), and its History row (`character.`).
 
 ## Table of Contents
 

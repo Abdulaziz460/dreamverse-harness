@@ -84,16 +84,6 @@ export function referenceAssets(state: WireState, references: readonly string[],
 }
 
 /**
- * Whether the video model numbers a reference asset as `Picture N`: the asset is an image. Among a shot's reference
- * assets in input order, the N-th image is `Picture N`.
- * @param asset - one reference asset.
- * @returns whether the asset is a picture.
- */
-export function isPicture(asset: Pick<ProjectAsset, 'mime'>): boolean {
-  return asset.mime.startsWith('image/')
-}
-
-/**
  * Split a prompt at its `Picture N` and `picture N` tokens (N a whole number from 1). A token in angle brackets, as in
  * `<Picture 1>`, includes the brackets, so a view that draws the image drops them too.
  * @param prompt - the shot prompt.

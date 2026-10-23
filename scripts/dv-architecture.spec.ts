@@ -37,6 +37,7 @@ describe('DreamVerse architecture fitness test', () => {
     ['R7-negative.txt', ['R7a']],
     ['R7a-client-negative.txt', ['R7a']],
     ['R7a-slot-negative.txt', ['R7a']],
+    ['R7a-kit-negative.txt', ['R7a', 'R7a']],
     ['R7b-negative.txt', ['R7b']],
     ['R8-negative.txt', ['R8c']],
     ['R8d-negative.txt', ['R8d', 'R8d']],
@@ -53,6 +54,10 @@ describe('DreamVerse architecture fitness test', () => {
 
   it('lets a domain package import the base package reference-kit and its client face', () => {
     expect(scan(fixture('R7-reference-kit-positive.txt'))).toEqual([])
+  })
+
+  it('lets a kit and a UI plugin type-import a UI-core contract, and a UI plugin value-import a kit', () => {
+    expect(scan(fixture('R7a-kit-positive.txt'))).toEqual([])
   })
 })
 
@@ -112,7 +117,7 @@ describe('rule clauses', () => {
     ['R7a UI package imports the face of another host', [source('ui-timeline', "import type { Plan } from '@dv/shot-plan/types'\n")], ['R7a']],
     ['R7a UI package merges the slots of a slot owner', [
       source('ui-shell', "declare module '@deepseek-ai/dsh-client-ui-slots' { interface SlotMap { 'dv.explore': Slot } }\n"),
-      source('ui-skills', "import type {} from '@dv/ui-shell'\n", 'client/index.ts'),
+      source('ui-skills', "import type {} from '@dv/ui-shell/contract'\n", 'client/index.ts'),
     ], []],
     ['R7a UI package merges a UI core package without slots', [source('ui-skills', "import type {} from '@dv/ui-canvas'\n", 'client/index.ts')], ['R7a']],
     ['R7a provider imports its own client package', [

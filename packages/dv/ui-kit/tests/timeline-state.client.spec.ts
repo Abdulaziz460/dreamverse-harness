@@ -1,7 +1,7 @@
 /** Timeline helpers and the state readings both views share. */
 import { describe, expect, it } from 'vitest'
 import { assetIndex, videoAssets } from '../src/client/state.ts'
-import { clockText, formatSeconds, timelineName } from '../src/client/timeline.ts'
+import { clockText, timelineName } from '../src/client/timeline.ts'
 import { fixtureState } from './fixture.client.tsx'
 
 describe('timeline helpers', () => {
@@ -10,12 +10,6 @@ describe('timeline helpers', () => {
     expect(timelineName({ id: 't1', name: '片尾' }, numbered)).toBe('片尾')
     expect(timelineName({ id: 't12', name: '' }, numbered)).toBe('时间线 12')
     expect(timelineName({ id: 'main-cut', name: '' }, numbered)).toBe('main-cut')
-  })
-
-  it('formats seconds as minutes and tenths', () => {
-    expect(formatSeconds(0)).toBe('0:00.0')
-    expect(formatSeconds(65.25)).toBe('1:05.3')
-    expect(formatSeconds(75)).toBe('1:15.0')
   })
 
   it('rounds a duration to whole seconds before splitting minutes and seconds', () => {

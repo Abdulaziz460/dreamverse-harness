@@ -1,0 +1,9 @@
+/** The Host half of the shell plugin, which a Loader row mounts beside the browser half. */
+import { describe, expect, it } from 'vitest'
+import { apply } from '../src/index.ts'
+
+describe('ui-shell host', () => {
+  it('keeps the host Loader entry inert', () => {
+    expect(apply).not.toThrow()
+  })
+})

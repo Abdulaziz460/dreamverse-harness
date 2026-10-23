@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-使用本包在 DreamVerse 视图中显示 `@dv/style` 的风格。`@dv/ui-kit/reference-kit.tsx` 的一个 `defineReferenceUi` 声明给这个名词它的画布节点类型 `style`（名称 风格 / Style，节点 ID `style:<id>`）、版本种类、在用参考、`dv.canvas.editor` 条目（默认的 `ReferenceEditor`）、`@` 菜单种类（分区 风格 / Styles，顺序 3，地址 `dv:style/<id>`）和历史行（`style.`）。
+使用本包在 DreamVerse 视图中显示 `@dv/style` 的风格。`@dv/ui-reference-kit/reference-kit.tsx` 的一个 `defineReferenceUi` 声明给这个名词它的画布节点类型 `style`（名称 风格 / Style，节点 ID `style:<id>`）、版本种类、在用参考、`dv.canvas.editor` 条目（默认的 `ReferenceEditor`）、`@` 菜单种类（分区 风格 / Styles，顺序 3，地址 `dv:style/<id>`）和历史行（`style.`）。
 
 ## 目录
 
