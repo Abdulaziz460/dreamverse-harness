@@ -9,6 +9,7 @@ import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
+import type {} from '@dv/ui-canvas/contract'
 import type {} from '@dv/ui-history/contract'
 import { DvClient } from '@dv/ui-kit/api.ts'
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
@@ -21,7 +22,7 @@ import type { InsertClipInjected } from './InsertClipAction.tsx'
 import { en, NS, zh } from './locales.ts'
 import { clipMentionKind } from './mention.ts'
 import { createTimelineSelection } from './selection.ts'
-import { timelineTakesInUse } from './takes-in-use.ts'
+import { timelineRecordsInUse } from './records-in-use.ts'
 import { TimelineBody } from './TimelineBody.tsx'
 import type { TimelineInjected } from './TimelineBody.tsx'
 import { TimelineView } from './TimelineView.tsx'
@@ -35,13 +36,7 @@ export type { TimelineCenterInjected, TimelineViewProps } from './TimelineView.t
 export const inject = ['slots', 'locale', 'sidebarRightTabs']
 
 /**
- * Client plugin body: register the type, its dictionaries, and its body under the type's id; while `dvCenter` is
- * present, register the center view `timeline`, which edits the project and writes for the chat session that the
- * workspace center passes, and the preview action `dv.timeline.insert` (插入片段), which shows the timeline view of the
- * open project with a request to insert a video; while `dvCanvas` is present, register the timeline's `TakesInUse`
- * under the same id; while `dvHistory` is present, register the History row `timeline.`, whose focus shows a record's
- * timeline and clip; while `dvMentions` is present, register the clip mention kind. Each registration leaves with its
- * service or with the plugin.
+ * Client plugin body. Each service-dependent registration leaves with its service or with the plugin.
  * @param ctx - client root context.
  */
 export function apply(ctx: ClientContext): void {
@@ -76,7 +71,7 @@ export function apply(ctx: ClientContext): void {
     )), 'ui-timeline: 插入片段 preview action')
   })
   ctx.inject(['dvCanvas'], (scope) => {
-    scope.effect(() => scope.dvCanvas.takesInUse.register(timelineTakesInUse(t)), 'ui-timeline: takes in use')
+    scope.effect(() => scope.dvCanvas.recordsInUse.register(timelineRecordsInUse(t)), 'ui-timeline: records in use')
   })
   ctx.inject(['dvHistory'], (scope) => {
     scope.effect(() => scope.dvHistory.rows.register(timelineHistoryRow), 'ui-timeline: history row')

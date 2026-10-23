@@ -1,70 +1,52 @@
 /**
- * The project canvas as a standalone component: an infinite surface of asset and take nodes, and the entries of the node
- * types registered in `dvCanvas`, each drawn with the default card. Drag
- * empty space to pan, scroll to zoom around the cursor, drag a node to move it, click a node to select it and open its
- * editor panel, which grows out of the node and shrinks back into it on close (`@dv/ui-kit/zoom.ts`). Closing the
- * editor keeps the node selected (the accent ring); a click on empty canvas with no editor open
- * clears the selection. A scroll over an overlay marked `data-dv-scroll-island`, such as the editor panel, scrolls that
- * overlay. Node positions and the viewport are stored per project through `/api/dv/layout`; a project without a stored
- * viewport opens at 100%, or fitted when its nodes do not fit the view at 100%. A node without a stored position gets the
- * first free spot at or below its automatic position, and that spot is stored, so a node that appears later never moves
- * or covers another. A render started from the take editor or a failed take's 重试 closes the editor once the new take's
- * node appears, then centers and selects that node. A finished take that the user has not opened in this browser shows
- * an accent dot; the opened takes are kept per project in `localStorage`, and a project opened for the first time in a
- * browser starts with every finished take counted as opened. The canvas draws the project's current state and
- * follows every change of it; its writes go after the current position of the project's history. Colors come from the
- * `--dv-*` theme variables that `@dv/ui-shell` defines, so the canvas follows the app's light and dark themes. An image
- * or video that no take or entry node shows has a node only while it is on the project's canvas (the `asset`
- * slice's `placed`): dropping a 素材 tile on the canvas runs `asset.place` with its node under the pointer, dropping
- * image and video files imports them with `place`, and the asset node's "从画布移除" runs `asset.unplace`. Each of these
- * is a record, so History lists it and undo takes it back.
+ * The project canvas: a pan-and-zoom surface that draws the nodes of the registered node types in the canvas chrome
+ * around each type's `dv.canvas.card` body, and opens a clicked node's editor panel, which grows out of the node and
+ * shrinks back into it (`@dv/ui-kit/zoom.ts`). Node positions and the viewport are stored per project through
+ * `/api/dv/layout`; a node without a stored position gets the first free spot at or below its automatic position, and
+ * that spot is stored, so a node that appears later never moves or covers another. The opened nodes are kept per
+ * project in `localStorage` for the unseen dot. Colors come from the `--dv-*` theme variables that `@dv/ui-shell`
+ * defines and from each type's `color`. The canvas names no node type.
  */
-import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, DragEvent as ReactDragEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import type { PropsRenderFactories } from '@deepseek-ai/dsh-client-ui-slots'
-import { DvClient } from '@dv/ui-kit/api.ts'
+import { errorMessage } from '@dv/ui-kit/api.ts'
+import type { DvClient } from '@dv/ui-kit/api.ts'
 import { useLanguage } from '@dv/ui-kit/locale.ts'
-import { formatInputRef } from '@dv/ui-kit/references.ts'
-import type { DvCanvas, Registry } from '@dv/ui-kit/registries.ts'
-import type { WireTaskLabels } from '@dv/ui-kit/tool-labels.ts'
-import type { Asset, CanvasViewport, NodePosition, OperationRequest, WireState } from '@dv/ui-kit/types.ts'
+import { parseVersionedReference } from '@dv/ui-kit/references.ts'
+import type { VersionKind } from '@dv/ui-kit/registries.ts'
+import type { Asset, CanvasViewport, NodePosition, OperationRequest, ProjectRecord, WireState } from '@dv/ui-kit/types.ts'
 import { DV_ASSET_DRAG_TYPE } from '@dv/ui-kit/workspace-events.ts'
 import { readStored, writeStored } from '@dv/ui-kit/storage.ts'
-import { useOperations, useProjectState, useTaskLabels } from '@dv/ui-kit/useProject.ts'
+import { useOperations, useProjectState } from '@dv/ui-kit/useProject.ts'
 import { useZoomPresence } from '@dv/ui-kit/zoom.ts'
-import { createDvCanvas } from './dv-canvas.ts'
-import { buildCanvasGraph, freePositions, NODE_WIDTH, ROW, slotFrames } from './graph.ts'
-import type { CanvasEdge, CanvasNode } from './graph.ts'
-import { NodeCard, nodeHeight, nodeTitle } from './NodeCard.tsx'
-import type { CanvasTranslate, DrawMedia } from './NodeCard.tsx'
-import { messageOf, NodeEditor } from './NodeEditor.tsx'
-import type { EditorArea, RenderCanvasSlot } from './NodeEditor.tsx'
-import { en, zh } from './locales.ts'
-import type { DvCanvasKey } from './locales.ts'
+import type { CanvasRequest, EditorHost, NodeAction, NodeHost, NodeView, ReferenceFacts, RerunRequest } from './contract/index.ts'
+import { buildCanvasGraph, freePositions, isFinished, NODE_WIDTH, previewOf, ROW, slotFrames } from './graph.ts'
+import type { CanvasEdge, CanvasNode, CanvasRegistrations, SlotFrame } from './graph.ts'
+import { cardHeight, NodeCard, textScaleAt, TypeLabelBody } from './NodeCard.tsx'
+import type { CanvasTranslate } from './NodeCard.tsx'
+import { NodeEditor } from './NodeEditor.tsx'
+import type { EditorArea, RenderCanvasSlot, SurfaceHosts } from './NodeEditor.tsx'
+
+/** The registered descriptors that the canvas draws with. */
+export interface CanvasDescriptors extends CanvasRegistrations {
+  actions: readonly NodeAction[]
+}
 
 /** Props of {@link CanvasView}. */
-export interface CanvasViewProps {
+export interface CanvasViewProps extends PropsRenderFactories {
   /** The project to draw. */
   projectId: string
-  /** The API client; a same-origin client when omitted. */
-  client?: DvClient
+  client: DvClient
   /** The chat session the canvas sits beside, recorded as the `session` of the canvas's writes. */
-  session?: string | null
-  /** The `dvCanvas` translate; when omitted, the dictionary of the DSH interface language that `<html lang>` names. */
-  t?: CanvasTranslate
-  /** The `dvCanvas` registries that plugin UI halves fill for this view; without them, every take is a free take. */
-  canvas?: DvCanvas
-  /** Renders the canvas's slots in its editors: the `dv.canvas.editor` entry of an entry node, and the `dv.canvas.picker`
-   *  entry of the asset pool; without it, an entry's editor shows only its header, and the asset picker offers only
-   *  versioned items. */
-  renderSlot?: RenderCanvasSlot
-  /** Renders the `dv.canvas` assets through the `dv.media` Factory of `@dv/ui-media`; without it, no asset draws. */
-  renderFactorySlot?: PropsRenderFactories['renderFactorySlot']
-  /** Opens the asset preview of `dvMedia` for an asset of a project, growing out of `opener`; without it, an asset opens
-   *  no preview. */
-  preview?: (projectId: string, asset: Asset, opener: Element | null) => void
-  /** The record whose node to open once; none when null or omitted. */
-  focus?: CanvasFocus | null
+  session: string | null
+  t: CanvasTranslate
+  /** The descriptors that plugin UI halves registered in `dvCanvas`. */
+  descriptors: CanvasDescriptors
+  renderSlot: RenderCanvasSlot
+  preview: (projectId: string, asset: Asset, opener: Element | null) => void
+  /** The record whose node to open once; null for none. */
+  focus: CanvasFocus | null
 }
 
 /** A request to open the node of a record, such as a History selection, until the canvas takes it. */
@@ -84,24 +66,6 @@ const DRAG_THRESHOLD = 4
 const SAVE_DELAY_MS = 500
 /** The zoom ref of a stacked editor, which opens and closes without the zoom transition. */
 const noZoom = (element: HTMLElement | null): void => { void element }
-/** The task labels while `GET /api/dv/tasks` loads or after it failed: every task shows its name. */
-const NO_TASK_LABELS: WireTaskLabels = {}
-
-/** Edge stroke per kind: the type color of the node the edge leaves (a reference leaves an entry or an asset). */
-const EDGE_COLOR: Record<CanvasEdge['kind'], string> = {
-  reference: 'var(--dv-kind-character)', first_frame: 'var(--dv-kind-take)', chain: 'var(--dv-kind-plan)', take: 'var(--dv-kind-take)',
-}
-/** The registries of a view mounted without `dvCanvas`: empty, so every take is a free take. */
-const NO_CANVAS = createDvCanvas()
-
-/**
- * @param registry - a registry.
- * @returns its descriptors, read again on each change.
- */
-function useRegistry<D>(registry: Registry<D>): readonly D[] {
-  const subscribe = useCallback((listener: () => void) => registry.subscribe(listener), [registry])
-  return useSyncExternalStore(subscribe, () => registry.list())
-}
 /** Canvas dot grid pitch at 100%, in canvas units. */
 const GRID = 20
 
@@ -114,22 +78,12 @@ const CANVAS_CSS = `
 @media (prefers-reduced-motion: reduce) { .dv-canvas-btn { transition: none; } }
 `
 
-/**
- * A translate over one `dvCanvas` dictionary, for hosts that mount the canvas without a locale binding. The canvas asks
- * only for keys of its own namespace, which each dictionary holds, and never for a key of the common vocabulary.
- * @param dictionary - the Chinese or English dictionary.
- * @returns the translate.
- */
-function dictionaryTranslate(dictionary: Record<DvCanvasKey, string>): CanvasTranslate {
-  return (key, params) => {
-    let text = dictionary[key as DvCanvasKey]
-    for (const [name, value] of Object.entries(params ?? {})) text = text.replaceAll(`{${name}}`, String(value))
-    return text
-  }
-}
-const translates = { zh: dictionaryTranslate(zh), en: dictionaryTranslate(en) }
-
 const clampZoom = (zoom: number): number => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom))
+
+function sizeOf(element: Element | null): { width: number; height: number } {
+  const rect = element?.getBoundingClientRect()
+  return { width: rect?.width || 800, height: rect?.height || 600 }
+}
 
 /** Zoom change per pixel of a mouse wheel's deltaY: one notch (about 100 px) zooms by about 14%. */
 const WHEEL_ZOOM_RATE = 0.0015
@@ -151,27 +105,33 @@ export function wheelZoomFactor(event: Pick<WheelEvent, 'deltaY' | 'deltaMode' |
   return Math.exp(-pixels * (event.ctrlKey ? PINCH_ZOOM_RATE : WHEEL_ZOOM_RATE))
 }
 
-/** The `localStorage` key prefix of a project's opened takes, a JSON array of take node IDs. */
+/**
+ * The `localStorage` key prefix of a project's opened nodes: JSON `{ since, ids }`, where `since` is the newest finish (else
+ * creation) time of a record when the project was first opened in this browser and `ids` are the node IDs opened since.
+ */
 const SEEN_KEY = 'dv-canvas-seen:'
 
-/**
- * @param node - a node.
- * @returns whether the node is a take whose render finished with an image or a video.
- */
-function isFinishedTake(node: CanvasNode): boolean {
-  return node.type === 'take' && !node.flags.rendering && (node.video !== null || node.thumb !== null)
+/** The nodes opened in this browser: every node whose record finished by `since`, and the opened `ids`. */
+interface Seen {
+  since: string
+  ids: ReadonlySet<string>
 }
 
 /**
  * @param projectId - the project.
- * @returns the take node IDs opened in this browser, or null when the project has none stored.
+ * @returns the opened nodes, or null when the project has none stored or the stored value is malformed.
  */
-function readSeen(projectId: string): Set<string> | null {
+function readSeen(projectId: string): Seen | null {
   const raw = readStored('local', SEEN_KEY + projectId)
   if (raw === null) return null
+  const strings = (ids: unknown[]): ReadonlySet<string> => new Set(ids.filter((id): id is string => typeof id === 'string'))
   try {
     const parsed: unknown = JSON.parse(raw)
-    return new Set(Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : [])
+    if (Array.isArray(parsed)) return { since: '', ids: strings(parsed) }
+    if (typeof parsed !== 'object' || parsed === null || !('since' in parsed) || !('ids' in parsed)) return null
+    const { since, ids } = parsed
+    if (typeof since !== 'string' || !Array.isArray(ids)) return null
+    return { since, ids: strings(ids) }
   } catch (error) {
     // Malformed JSON counts as none stored.
     void error
@@ -181,13 +141,21 @@ function readSeen(projectId: string): Set<string> | null {
 
 /**
  * @param projectId - the project.
- * @param ids - the take node IDs opened in this browser.
+ * @param seen - the opened nodes.
  */
-function writeSeen(projectId: string, ids: ReadonlySet<string>): void {
-  writeStored('local', SEEN_KEY + projectId, JSON.stringify([...ids]))
+function writeSeen(projectId: string, seen: Seen): void {
+  writeStored('local', SEEN_KEY + projectId, JSON.stringify({ since: seen.since, ids: [...seen.ids] }))
 }
 
-/** A render whose new take the canvas waits for: the take it is based on and every node drawn before the request. */
+function wasSeen(seen: Seen, node: CanvasNode): boolean {
+  return seen.ids.has(node.id) || (node.record !== null && settledAt(node.record) <= seen.since)
+}
+
+function settledAt(record: ProjectRecord): string {
+  return record.finished_at ?? record.created_at
+}
+
+/** A rerun whose new node the canvas waits for; `known` holds the nodes drawn before the request. */
 interface AwaitedRender {
   basedOn: string
   known: ReadonlySet<string>
@@ -197,7 +165,7 @@ interface AwaitedRender {
 /** An in-progress pointer gesture. */
 type Gesture =
   | { kind: 'pan'; startX: number; startY: number; origin: CanvasViewport; moved: boolean }
-  | { kind: 'node'; id: string; startX: number; startY: number; origin: NodePosition; moved: boolean }
+  | { kind: 'node'; id: string; startX: number; startY: number; origin: NodePosition; at: NodePosition; moved: boolean }
 
 /**
  * @param map - a map.
@@ -211,26 +179,47 @@ function withoutKeys<V>(map: ReadonlyMap<string, V>, keys: readonly string[]): M
 }
 
 /**
+ * What reference text such as `hero@1` or an asset ID names, read through the version kinds: for text that
+ * `parseVersionedReference` reads as `<id>@<version>`, that version of the item in the first kind that holds it, else
+ * the asset of that ID.
+ * @param state - the project state.
+ * @param kinds - the registered version kinds.
+ * @param ref - reference text.
+ * @returns the name, the asset that shows it, and the node of a versioned item.
+ */
+function referenceFacts(state: WireState, kinds: readonly VersionKind[], ref: string): ReferenceFacts {
+  const assetOf = (id: string | undefined): Asset | null => state.assets.find(each => each.id === id) ?? null
+  const versioned = parseVersionedReference(ref)
+  if (versioned === null) {
+    const asset = assetOf(ref)
+    return { name: asset?.name ?? ref, asset, node: null }
+  }
+  const { id, version } = versioned
+  for (const kind of kinds) {
+    const name = kind.name(state, id, version)
+    if (name !== null) return { name, asset: assetOf(kind.assets(state, id, version)[0]), node: kind.node(id) }
+  }
+  // A version that no kind holds is an item of a noun whose UI plugin is not loaded, or a version that does not exist.
+  return { name: id, asset: null, node: null }
+}
+
+function viewOf(node: CanvasNode, unseen: boolean, rerunning: boolean): NodeView {
+  const { nodeType: _nodeType, x: _x, y: _y, ...entry } = node
+  return { ...entry, unseen, rerunning }
+}
+
+/**
  * The canvas.
- * @param props - the project, chat session, and optional client, translate, registries, editor slot, media renderer,
- *   preview and focus.
+ * @param props - the project, chat session, client, translate, registered descriptors, slot renderers, preview and
+ *   focus.
  * @returns the element.
  */
 export function CanvasView(
-  {
-    projectId, client: given, session = null, t: givenT, canvas = NO_CANVAS, renderSlot, renderFactorySlot, preview, focus,
-  }: CanvasViewProps,
+  { projectId, client, session, t, descriptors, renderSlot, renderFactorySlot, preview, focus }: CanvasViewProps,
 ): ReactNode {
-  const client = useMemo(() => given ?? new DvClient(), [given])
   const language = useLanguage()
-  const t = givenT ?? translates[language]
   const base = useProjectState(client, projectId)
   const operations = useOperations(client)
-  const taskLabels = useTaskLabels(client)
-  const anchors = useRegistry(canvas.chainAnchors)
-  const inUse = useRegistry(canvas.takesInUse)
-  const nodeTypes = useRegistry(canvas.nodeTypes)
-  const versionKinds = useRegistry(canvas.versionKinds)
   // This view's placements whose record the project state does not show yet: asset ID → on the canvas.
   const [inFlight, setInFlight] = useState<ReadonlyMap<string, boolean>>(new Map())
   // The project's canvas, with this view's placements in flight already applied.
@@ -266,15 +255,17 @@ export function CanvasView(
   // The previous project's state stays loaded until the next project's arrives; the canvas draws only this project's.
   const graph = useMemo(() => {
     if (base.value === null || base.value.project.id !== projectId) return null
-    return {
-      state: base.value, ...buildCanvasGraph(base.value, placed, operations.value ?? [], language, anchors, inUse, nodeTypes, versionKinds),
-    }
-  }, [base.value, placed, projectId, operations.value, language, anchors, inUse, nodeTypes, versionKinds])
-  // The frame grid of each entry with slots. Memoized on the graph, because a pan or zoom re-renders the view on every
+    return { state: base.value, ...buildCanvasGraph(base.value, placed, operations.value ?? [], language, descriptors) }
+  }, [base.value, placed, projectId, operations.value, language, descriptors])
+  // The frame grid of each node with slots. Memoized on the graph, because a pan or zoom re-renders the view on every
   // pointer move.
-  const grids = useMemo(() => new Map(graph === null ? [] : graph.nodes.flatMap(node => node.type === 'entry' && node.entry.slots !== undefined
-    ? [[node.id, { frames: slotFrames(graph.nodes, node.id, node.entry.slots) }] as const]
+  const grids = useMemo(() => new Map(graph === null ? [] : graph.nodes.flatMap(node => node.slots !== undefined
+    ? [[node.id, slotFrames(graph.nodes, node.id, node.slots)] as const]
     : [])), [graph])
+  const assetById = useMemo(() => new Map<string, Asset>((graph?.state.assets ?? []).map(asset => [asset.id, asset])), [graph])
+  const heightOf = useCallback(
+    (node: CanvasNode): number => cardHeight(node, grids.get(node.id)?.some(frame => frame !== null) === true), [grids],
+  )
 
   const [positions, setPositions] = useState<Record<string, NodePosition>>({})
   const [viewport, setViewport] = useState<CanvasViewport>({ x: 40, y: 40, zoom: 1 })
@@ -285,8 +276,7 @@ export function CanvasView(
   // The editor a reference chip opened over the `editing` one; it closes first, and with the editor beneath it.
   const [stacked, setStacked] = useState<string | null>(null)
   useEffect(() => { setStacked(null) }, [editing])
-  // The take node IDs opened in this browser, for the project they belong to; null until the graph first loads.
-  const [seen, setSeen] = useState<{ project: string; ids: ReadonlySet<string> } | null>(null)
+  const [seen, setSeen] = useState<{ project: string; seen: Seen } | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const container = useRef<HTMLDivElement | null>(null)
   const gesture = useRef<Gesture | null>(null)
@@ -294,7 +284,7 @@ export function CanvasView(
   viewportRef.current = viewport
   const positionsRef = useRef(positions)
   positionsRef.current = positions
-  const moved = useRef(new Set<string>())
+  const moved = useRef(new Map<string, NodePosition>())
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const needsFit = useRef(false)
   // True while the viewport is an automatic fit; resizing the canvas refits until the user pans or zooms.
@@ -311,6 +301,8 @@ export function CanvasView(
     // A canvas without stored positions still works with the automatic layout, so a failed read counts as empty.
     void client.getLayout(projectId).catch(() => ({ positions: {}, viewport: null })).then((layout) => {
       if (!live) return
+      // The stored layout wins over a drag made before it arrived.
+      moved.current.clear()
       setPositions(layout.positions)
       if (layout.viewport !== null) setViewport(layout.viewport)
       needsFit.current = layout.viewport === null
@@ -327,11 +319,7 @@ export function CanvasView(
     if (saveTimer.current !== null) clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(() => {
       saveTimer.current = null
-      const patch: Record<string, NodePosition> = {}
-      for (const id of moved.current) {
-        const position = positionsRef.current[id]
-        if (position !== undefined) patch[id] = position
-      }
+      const patch = Object.fromEntries(moved.current)
       moved.current.clear()
       // The next save carries the viewport again; lost positions fall back to the automatic layout.
       void client.updateLayout(projectId, { positions: patch, viewport: viewportRef.current }).catch(() => null)
@@ -342,11 +330,8 @@ export function CanvasView(
 
   /** Pan and zoom so every node is visible, at 100% at most: content that fits the view keeps its true size. */
   const fit = useCallback(() => {
-    const element = container.current
-    if (graph === null || graph.nodes.length === 0 || element === null) return
-    const rect = element.getBoundingClientRect()
-    const width = rect.width || 800
-    const height = rect.height || 600
+    if (graph === null || graph.nodes.length === 0) return
+    const { width, height } = sizeOf(container.current)
     const points = graph.nodes.map(positionOf)
     const minX = Math.min(...points.map(point => point.x))
     const minY = Math.min(...points.map(point => point.y))
@@ -419,29 +404,28 @@ export function CanvasView(
 
   /** Pan so a node sits at the center of the canvas, keeping the zoom. */
   const centerOn = useCallback((node: CanvasNode) => {
-    const rect = container.current?.getBoundingClientRect()
+    const { width, height } = sizeOf(container.current)
     const position = positionsRef.current[node.id] ?? { x: node.x, y: node.y }
     autoFit.current = false
     setViewport(current => ({
       ...current,
-      x: (rect?.width || 800) / 2 - (position.x + NODE_WIDTH / 2) * current.zoom,
-      y: (rect?.height || 600) / 2 - (position.y + nodeHeight(node) / 2) * current.zoom,
+      x: width / 2 - (position.x + NODE_WIDTH / 2) * current.zoom,
+      y: height / 2 - (position.y + heightOf(node) / 2) * current.zoom,
     }))
-  }, [])
+  }, [heightOf])
 
-  // Open and center the node of the focused record once the layout and the graph are loaded.
+  // A focus request waits while no drawn node matches it, so a node type that registers later still opens its node;
+  // only opening the node takes the request.
   useEffect(() => {
-    if (focus === undefined || focus === null || !layoutReady || graph === null) return
-    // The record's own node, else the entry node whose version it wrote, else the node of its first output.
+    if (focus === null || !layoutReady || graph === null) return
     const recordId = focus.record
     const firstOutput = graph.state.components.proj.records.find(record => record.id === recordId)?.outputs[0]
-    const outputNode = firstOutput === undefined ? undefined : graph.assetNodes[firstOutput]
     const node = graph.nodes.find(candidate => candidate.id === recordId)
       ?? graph.nodes.find(candidate => candidate.record?.id === recordId)
-      ?? graph.nodes.find(candidate => candidate.type === 'entry' && candidate.entry.records?.includes(recordId) === true)
-      ?? graph.nodes.find(candidate => candidate.id === outputNode)
-    focus.take()
+      ?? graph.nodes.find(candidate => candidate.records?.includes(recordId) === true)
+      ?? graph.nodes.find(candidate => firstOutput !== undefined && candidate.assets.includes(firstOutput))
     if (node === undefined) return
+    focus.take()
     centerOn(node)
     setSelected(node.id)
     setEditing(node.id)
@@ -451,7 +435,7 @@ export function CanvasView(
   const placeNode = useCallback((id: string, position: NodePosition) => {
     setPositions(all => ({ ...all, [id]: position }))
     setTopNode(id)
-    moved.current.add(id)
+    moved.current.set(id, position)
     scheduleSave()
   }, [scheduleSave])
 
@@ -471,28 +455,27 @@ export function CanvasView(
   useEffect(() => { placePending() }, [graph, placePending])
 
   // Store a free spot for every node without a stored position. The ref is updated at once so that the reveal of a new
-  // take below centers on the stored spot; an earlier queued position, such as a dropped asset's, wins over the free spot.
+  // node below centers on the stored spot; an earlier queued position, such as a dropped asset's, wins over the free spot.
   useEffect(() => {
     if (!layoutReady || graph === null) return
-    const added = freePositions(graph.nodes, positionsRef.current, node => nodeHeight(node, true))
+    const added = freePositions(graph.nodes, positionsRef.current, node => cardHeight(node, true))
     if (Object.keys(added).length === 0) return
     positionsRef.current = { ...added, ...positionsRef.current }
     setPositions(all => ({ ...added, ...all }))
     void client.updateLayout(projectId, { positions: added }).catch(() => null)
   }, [layoutReady, graph, client, projectId])
 
-  // Reveal the take a render started: close the editor, center the new node, and select it.
   const awaitedRender = useRef<AwaitedRender | null>(null)
-  // The failed take whose 重试 started the awaited render; its button reads 渲染中… until the render is settled.
-  const [retryingFrom, setRetryingFrom] = useState<string | null>(null)
+  const [rerunning, setRerunning] = useState<{ record: string; action: string | null } | null>(null)
   const settleAwaited = (): void => {
     awaitedRender.current = null
-    setRetryingFrom(null)
+    setRerunning(null)
   }
   useEffect(() => {
     const awaited = awaitedRender.current
     if (awaited === null || graph === null) return
-    const node = graph.nodes.find(candidate => candidate.type === 'take' && candidate.record?.based_on === awaited.basedOn && !awaited.known.has(candidate.id))
+    const node = graph.nodes.find(candidate =>
+      candidate.claimed && candidate.record.based_on === awaited.basedOn && !awaited.known.has(candidate.id))
     if (node === undefined) return
     settleAwaited()
     setEditing(null)
@@ -501,22 +484,24 @@ export function CanvasView(
     awaited.resolve()
   }, [graph, centerOn])
 
-  // Load the opened takes once the graph is there, and count the take an editor opens as opened.
-  const seenIds = seen?.project === projectId ? seen.ids : null
+  // A project opened for the first time in this browser counts every record up to its newest as seen, so the finished
+  // nodes of a node type that registers later show no unseen dot either.
+  const seenNodes = seen?.project === projectId ? seen.seen : null
   useEffect(() => {
     if (graph === null) return
-    if (seenIds === null) {
-      const ids = readSeen(projectId) ?? new Set(graph.nodes.filter(isFinishedTake).map(node => node.id))
-      writeSeen(projectId, ids)
-      setSeen({ project: projectId, ids })
+    if (seenNodes === null) {
+      const since = graph.state.components.proj.records.map(settledAt).reduce((newest, at) => at > newest ? at : newest, '')
+      const loaded = readSeen(projectId) ?? { since, ids: new Set<string>() }
+      writeSeen(projectId, loaded)
+      setSeen({ project: projectId, seen: loaded })
       return
     }
     const opened = editing === null ? undefined : graph.nodes.find(node => node.id === editing)
-    if (opened === undefined || !isFinishedTake(opened) || seenIds.has(opened.id)) return
-    const ids = new Set(seenIds).add(opened.id)
-    writeSeen(projectId, ids)
-    setSeen({ project: projectId, ids })
-  }, [graph, seenIds, editing, projectId])
+    if (opened === undefined || !isFinished(opened) || wasSeen(seenNodes, opened)) return
+    const next = { since: seenNodes.since, ids: new Set(seenNodes.ids).add(opened.id) }
+    writeSeen(projectId, next)
+    setSeen({ project: projectId, seen: next })
+  }, [graph, seenNodes, editing, projectId])
 
   const capture = (event: ReactPointerEvent): void => {
     try {
@@ -534,7 +519,8 @@ export function CanvasView(
   const onNodeDown = (node: CanvasNode) => (event: ReactPointerEvent<HTMLDivElement>): void => {
     if (event.button !== 0) return
     event.stopPropagation()
-    gesture.current = { kind: 'node', id: node.id, startX: event.clientX, startY: event.clientY, origin: positionOf(node), moved: false }
+    const origin = positionOf(node)
+    gesture.current = { kind: 'node', id: node.id, startX: event.clientX, startY: event.clientY, origin, at: origin, moved: false }
     capture(event)
   }
   const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>): void => {
@@ -551,7 +537,9 @@ export function CanvasView(
       return
     }
     const zoom = viewportRef.current.zoom
-    setPositions(all => ({ ...all, [current.id]: { x: current.origin.x + dx / zoom, y: current.origin.y + dy / zoom } }))
+    const at = { x: current.origin.x + dx / zoom, y: current.origin.y + dy / zoom }
+    current.at = at
+    setPositions(all => ({ ...all, [current.id]: at }))
   }
   const onPointerUp = (): void => {
     const current = gesture.current
@@ -568,15 +556,14 @@ export function CanvasView(
       else setEditing(null)
       return
     }
-    if (current.kind === 'node') moved.current.add(current.id)
+    if (current.kind === 'node') moved.current.set(current.id, current.at)
     scheduleSave()
   }
   const zoomBy = (factor: number): void => {
     autoFit.current = false
-    const element = container.current
-    const rect = element?.getBoundingClientRect()
-    const cx = (rect?.width || 800) / 2
-    const cy = (rect?.height || 600) / 2
+    const size = sizeOf(container.current)
+    const cx = size.width / 2
+    const cy = size.height / 2
     setViewport((current) => {
       const zoom = clampZoom(current.zoom * factor)
       return { zoom, x: cx - (cx - current.x) / current.zoom * zoom, y: cy - (cy - current.y) / current.zoom * zoom }
@@ -588,49 +575,39 @@ export function CanvasView(
     try {
       await work()
     } catch (error) {
-      setNotice(t('error', { message: messageOf(error) }))
+      setNotice(t('error', { message: errorMessage(error) }))
     }
   }
+  const canvasRequest = (request: CanvasRequest): OperationRequest => ({
+    ...request, project: projectId, surface: 'canvas', ...session === null ? {} : { session },
+  })
   /**
-   * Start a render of a new take and wait for its node. The request itself returns when the render ends, so the canvas
-   * reveals the new take as soon as the project state shows its node. When the request returns first, as for a take that
-   * the canvas does not draw, the editor closes then.
-   * @param request - the render request; its `based_on` is the take it renders again.
-   * @returns settles once the new take is revealed; rejects with the error of a request that fails before that.
+   * Start a rerun of a record and wait for its new node, which the canvas reveals as soon as the project state shows it
+   * because `runOperation` resolves only when the operation ends.
+   * @param request - the request; its `based_on` is the record it runs again.
+   * @param action - the node action that started the rerun, or null for a body.
+   * @returns settles once the new node is revealed or once a later rerun replaces this one; rejects with the error of a
+   *   request that fails before that.
    */
-  const startRender = (request: OperationRequest & { based_on: string }): Promise<void> => new Promise((resolve, reject) => {
+  const rerun = (request: RerunRequest, action: string | null): Promise<void> => new Promise((resolve, reject) => {
     const known = new Set(graphRef.current?.nodes.map(node => node.id))
     const awaited: AwaitedRender = { basedOn: request.based_on, known, resolve }
+    awaitedRender.current?.resolve()
     awaitedRender.current = awaited
+    setRerunning({ record: request.based_on, action })
     setNotice(null)
-    client.runOperation(request).then(() => {
+    client.runOperation(canvasRequest(request)).then(() => {
       if (awaitedRender.current !== awaited) return
       settleAwaited()
       setEditing(null)
       resolve()
     }, (error: unknown) => {
-      const message = messageOf(error)
+      const message = errorMessage(error)
       if (awaitedRender.current !== awaited) { setNotice(t('error', { message })); return }
       settleAwaited()
       reject(new Error(message))
     })
   })
-  /**
-   * Render a failed take again: its own operation, inputs, and params, as a new take based on it. This is the request
-   * the take editor's 渲染新版本 sends when nothing was edited.
-   * @param node - the failed take's node.
-   */
-  const retryTake = (node: CanvasNode): void => {
-    const record = node.record
-    const operation = record?.operation ?? null
-    if (record === null || operation === null) return
-    setRetryingFrom(record.id)
-    startRender({
-      project: projectId, operation, inputs: record.inputs.map(input => ({ role: input.role, ref: formatInputRef(input.ref) })),
-      params: record.params, surface: 'canvas', intent: t('intent.retryTake', { title: nodeTitle(node, t) }), based_on: record.id,
-      ...session === null ? {} : { session },
-    }).catch((error: unknown) => { setNotice(t('error', { message: messageOf(error) })) })
-  }
   const accepts = (event: ReactDragEvent): boolean => event.dataTransfer.types.includes(DV_ASSET_DRAG_TYPE) || event.dataTransfer.types.includes('Files')
   // A drag the canvas accepts stops here, so the chat composer's document-level file listeners neither show their drop
   // overlay nor attach the dropped files.
@@ -647,8 +624,8 @@ export function CanvasView(
     setDragOver(true)
   }
   /**
-   * Place a dropped 素材 tile's asset on the canvas with its node under the pointer, or import dropped image and video
-   * files and place their nodes there.
+   * Place a dropped 素材 tile's asset on the canvas with its node under the pointer, or import the dropped files, of any
+   * media type, and place their nodes there.
    * @param event - the drop event.
    */
   const onDrop = (event: ReactDragEvent<HTMLDivElement>): void => {
@@ -673,7 +650,6 @@ export function CanvasView(
       return
     }
     Array.from(event.dataTransfer.files).forEach((file, index) => {
-      if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) { setNotice(t('drop.notMedia', { name: file.name })); return }
       const position = { x: point.x + index * 32, y: point.y + index * 32 }
       void run(async () => {
         // An import from the canvas also puts the asset on the canvas.
@@ -701,29 +677,30 @@ export function CanvasView(
     fontFamily: 'inherit', fontSize: 12, lineHeight: '16px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
   }
   const centered: CSSProperties = { position: 'absolute', inset: 0, margin: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, textAlign: 'center', fontSize: 14, lineHeight: '22px', color: 'var(--dv-text-2)' }
+  const actionsFor = (view: NodeView): NodeAction[] => descriptors.actions.filter(action => action.shows(view, assetById))
+    .toSorted((a, b) => a.order - b.order)
+  const viewFor = (node: CanvasNode): NodeView => viewOf(
+    node, seenNodes !== null && isFinished(node) && !wasSeen(seenNodes, node), node.record !== null && node.record.id === rerunning?.record,
+  )
+  const frameMedia = (frame: SlotFrame | null): ReactNode => {
+    const asset = frame === null ? undefined : assetById.get(frame.preview)
+    return asset === undefined ? null : renderFactorySlot('dv.media', { asset, purpose: 'thumb' })
+  }
   let content: ReactNode = null
   if (graph === null) {
     content = <p style={centered}>{base.error !== null ? t('error', { message: base.error }) : t('loading')}</p>
   } else if (graph.nodes.length === 0) {
     content = <p style={{ ...centered, pointerEvents: 'none' }}>{t('canvas.empty')}</p>
   } else {
-    const byId = new Map(graph.nodes.map(node => [node.id, node]))
-    const assets = new Map(graph.state.assets.map(asset => [asset.id, asset]))
-    const drawMedia: DrawMedia = (assetId, purpose) => {
-      const asset = assets.get(assetId ?? '')
-      return asset === undefined || renderFactorySlot === undefined ? null : renderFactorySlot('dv.media', { asset, purpose })
-    }
-    const heightOf = (node: CanvasNode): number => nodeHeight(node, grids.get(node.id)?.frames.some(frame => frame !== null) === true)
     // The selected node's edges are drawn last, so they stay on top of the others.
     const touchesSelected = (edge: CanvasEdge): boolean => selected !== null && (edge.from === selected || edge.to === selected)
-    const edges = [...graph.edges.filter(edge => !touchesSelected(edge)), ...graph.edges.filter(touchesSelected)]
+    const links = [...graph.links.filter(link => !touchesSelected(link.edge)), ...graph.links.filter(link => touchesSelected(link.edge))]
+    const textScale = textScaleAt(viewport.zoom)
+    const hosts = hostsOf(() => { setEditing(null) }, graph.state)
     content = (
       <div style={{ position: 'absolute', left: 0, top: 0, transform: `translate(${String(viewport.x)}px, ${String(viewport.y)}px) scale(${String(viewport.zoom)})`, transformOrigin: '0 0' }}>
         <svg style={{ position: 'absolute', left: 0, top: 0, width: 1, height: 1, overflow: 'visible', pointerEvents: 'none' }} aria-hidden="true">
-          {edges.map((edge) => {
-            // `buildCanvasGraph` draws an edge only between two of its nodes.
-            const from = byId.get(edge.from) as CanvasNode
-            const to = byId.get(edge.to) as CanvasNode
+          {links.map(({ edge, source: from, target: to }) => {
             const a = positionOf(from)
             const b = positionOf(to)
             const x1 = a.x + NODE_WIDTH
@@ -737,10 +714,10 @@ export function CanvasView(
                 key={`${edge.from}>${edge.to}`}
                 d={`M ${String(x1)} ${String(y1)} C ${String(x1 + bend)} ${String(y1)}, ${String(x2 - bend)} ${String(y2)}, ${String(x2)} ${String(y2)}`}
                 fill="none"
-                style={{ stroke: highlighted ? 'var(--dv-accent)' : EDGE_COLOR[edge.kind], strokeOpacity: highlighted ? 0.9 : 0.6 }}
+                style={{ stroke: highlighted ? 'var(--dv-accent)' : from.nodeType.color, strokeOpacity: highlighted ? 0.9 : 0.6 }}
                 strokeWidth={highlighted ? 2 : 1.5}
                 vectorEffect="non-scaling-stroke"
-                strokeDasharray={edge.kind === 'take' ? '6 5' : undefined}
+                strokeDasharray={edge.kind === 'lineage' ? '6 5' : undefined}
                 data-edge={`${edge.from}>${edge.to}`}
               />
             )
@@ -748,21 +725,30 @@ export function CanvasView(
         </svg>
         {[...graph.nodes.filter(node => node.id !== topNode), ...graph.nodes.filter(node => node.id === topNode)].map((node) => {
           const position = positionOf(node)
-          const grid = grids.get(node.id)
+          const view = viewFor(node)
+          const assets: Record<string, Asset> = {}
+          for (const id of [...node.assets, previewOf(node) ?? '']) {
+            const asset = assetById.get(id)
+            if (asset !== undefined) assets[id] = asset
+          }
           return (
             <NodeCard
               key={node.id}
               node={node}
+              view={view}
               x={position.x}
               y={position.y}
               selected={node.id === selected}
               zoom={viewport.zoom}
               t={t}
               onPointerDown={onNodeDown(node)}
-              {...grid === undefined ? {} : { frames: grid.frames }}
-              {...node.type === 'take' && node.flags.failed ? { onRetry: () => { retryTake(node) }, retrying: retryingFrom === node.id } : {}}
-              unseen={seenIds !== null && isFinishedTake(node) && !seenIds.has(node.id)}
-              drawMedia={drawMedia}
+              body={renderSlot('dv.canvas.card', { node: view, assets, textScale, host: hosts.card }, {
+                entryKey: node.type, fallback: <TypeLabelBody label={node.nodeType.label()} textScale={textScale} />,
+              })}
+              frames={(grids.get(node.id) ?? []).map(frameMedia)}
+              failedActions={node.claimed && node.flags.failed ? actionsFor(view) : []}
+              rerunningAction={view.rerunning ? rerunning?.action ?? null : null}
+              onAction={(action) => { action.run(view, hosts.action(action.id)) }}
             />
           )
         })}
@@ -776,30 +762,40 @@ export function CanvasView(
   const editorZoom = useZoomPresence(editing, nodeCard)
   const editingNode = graph?.nodes.find(node => node.id === editorZoom.shown) ?? null
   const stackedNode = editingNode === null ? null : graph?.nodes.find(node => node.id === stacked) ?? null
-  const removeFromCanvas = (assetId: string): void => {
-    setEditing(null)
-    setSelected(null)
-    void run(() => changePlacement(assetId, false))
+  /**
+   * The hosts of one surface, the only place that builds them: the host of its card bodies and the node host of each of
+   * its actions, whose refused writes the canvas notice shows, and the host of an editor body without the editor's
+   * picker, whose rerun the body awaits.
+   * @param close - closes the editor of the surface; on the canvas, the open editor.
+   * @param state - the drawn project state, which reference text is read against.
+   * @returns the hosts.
+   */
+  function hostsOf(close: () => void, state: WireState): SurfaceHosts {
+    const services: Omit<NodeHost, 'rerun'> = {
+      run: (request) => { void run(() => client.runOperation(canvasRequest(request))) },
+      preview: (assetId, opener) => {
+        const asset = assetById.get(assetId)
+        if (asset !== undefined) preview(projectId, asset, opener)
+      },
+      reference: ref => referenceFacts(state, descriptors.versionKinds, ref),
+      openNode: setStacked,
+      setPlaced: (assetId, on) => { void run(() => changePlacement(assetId, on)) },
+      close,
+    }
+    const shown = (action: string | null): NodeHost['rerun'] => (request) => { void run(() => rerun(request, action)) }
+    const editor: Omit<EditorHost, 'pickAssets'> = { ...services, rerun: request => rerun(request, null) }
+    return { card: { run: services.run, rerun: shown(null) }, action: id => ({ ...services, rerun: shown(id) }), editor }
   }
   /** The props that the editor of the open node and the stacked editor share. */
-  const sharedEditorProps = (state: WireState) => ({
-    state,
-    operations: operations.value ?? [],
-    taskLabels: taskLabels.value ?? NO_TASK_LABELS,
-    versionKinds,
-    client,
-    project: projectId,
-    session,
-    t,
-    ...renderSlot === undefined ? {} : { renderSlot },
-    ...renderFactorySlot === undefined ? {} : { renderFactorySlot },
-    ...preview === undefined ? {} : { preview: (asset: Asset, opener: Element | null) => { preview(projectId, asset, opener) } },
-    run,
-    onRender: startRender,
-    onRemoveFromCanvas: removeFromCanvas,
-    onOpenNode: setStacked,
-    area,
-  })
+  const sharedEditorProps = (node: CanvasNode, close: () => void, state: WireState) => {
+    const view = viewFor(node)
+    return {
+      node, view, operations: operations.value ?? [], versionKinds: descriptors.versionKinds,
+      actions: actionsFor(view), project: projectId, session, t, hosts: hostsOf(close, state), area, renderSlot, renderFactorySlot,
+      onAcceptStale: (record: string) => { void run(() => client.acceptStale(projectId, record, 'canvas', session)) },
+      onClose: close,
+    }
+  }
   return (
     <div
       ref={attachCanvas}
@@ -818,7 +814,7 @@ export function CanvasView(
     >
       <style>{CANVAS_CSS}</style>
       {content}
-      {notice !== null ? <p role="alert" style={{ position: 'absolute', top: 12, left: '50%', transform: 'translateX(-50%)', margin: 0, padding: '6px 10px', borderRadius: 'var(--dv-radius-md)', background: 'var(--dv-surface-1)', border: '1px solid var(--dv-danger)', color: 'var(--dv-danger)', fontSize: 13, lineHeight: '20px', zIndex: 6 }}>{notice}</p> : null}
+      {notice !== null ? <p role="alert" style={{ position: 'absolute', top: 12, left: '50%', transform: 'translateX(-50%)', margin: 0, padding: '6px 10px', borderRadius: 'var(--dv-radius-md)', background: 'var(--dv-surface-1)', border: '1px solid var(--dv-danger)', color: 'var(--dv-danger)', fontSize: 13, lineHeight: '20px', zIndex: 12 }}>{notice}</p> : null}
       <div role="toolbar" aria-label={t('canvas.zoom')} style={{ ...floating, position: 'absolute', left: 16, bottom: 16, display: 'flex', alignItems: 'center', gap: 2, padding: 4, borderRadius: 10 }} onPointerDown={(event) => { event.stopPropagation() }}>
         <button type="button" className="dv-canvas-btn" aria-label={t('canvas.zoomOut')} title={t('canvas.zoomOut')} style={toolButton} onClick={() => { zoomBy(1 / 1.2) }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" aria-hidden="true"><path d="M5 12h14" /></svg>
@@ -834,11 +830,8 @@ export function CanvasView(
           <>
             <div ref={editorZoom.fadeRef} aria-hidden="true" style={{ position: 'absolute', inset: 0, background: 'var(--dv-overlay)', zIndex: 9 }} />
             <NodeEditor
-              key={editingNode.id}
-              node={editingNode}
-              zoomRef={editorZoom.targetRef}
-              {...sharedEditorProps(graph.state)}
-              onClose={() => { setEditing(null) }}
+              key={editingNode.id} zoomRef={editorZoom.targetRef} state={graph.state}
+              {...sharedEditorProps(editingNode, () => { setEditing(null) }, graph.state)}
             />
           </>
         )
@@ -848,13 +841,7 @@ export function CanvasView(
           // The stacked editor covers the canvas area; a press outside its panel closes it, not the editor beneath.
           <div style={{ position: 'absolute', inset: 0, zIndex: 11 }} onPointerDown={(event) => { event.stopPropagation(); setStacked(null) }}>
             <div aria-hidden="true" style={{ position: 'absolute', inset: 0, background: 'var(--dv-overlay)' }} />
-            <NodeEditor
-              key={`stacked:${stackedNode.id}`}
-              node={stackedNode}
-              zoomRef={noZoom}
-              {...sharedEditorProps(graph.state)}
-              onClose={() => { setStacked(null) }}
-            />
+            <NodeEditor key={`stacked:${stackedNode.id}`} zoomRef={noZoom} {...sharedEditorProps(stackedNode, () => { setStacked(null) }, graph.state)} state={graph.state} />
           </div>
         )
         : null}

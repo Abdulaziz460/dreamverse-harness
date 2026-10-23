@@ -15,21 +15,15 @@ import type { Asset, WireState } from '@dv/ui-kit/types.ts'
 import { clipPeaks, useAudioEnvelope } from '@dv/ui-kit/waveform.ts'
 import type { MediaType } from '@dv/ui-media/contract'
 
+const ID = '@dv/ui-asset-pool'
+
 const fill: CSSProperties = { display: 'block', width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none' }
-/** The badge sits on video frames, so it keeps the same light fill and dark glyph in both themes. */
 const playBadge: CSSProperties = {
   position: 'absolute', right: 4, bottom: 4, width: 18, height: 18, borderRadius: 9999,
   display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255, 255, 255, 0.9)', color: '#0A0B0D',
 }
 const playable: CSSProperties = { display: 'block', width: '100%', height: '100%', objectFit: 'contain' }
 
-/**
- * The still of a video: an image output of the record that made it, such as a take's last frame; null for a video
- * without one, such as an imported video.
- * @param asset - the video asset.
- * @param state - the project state.
- * @returns the still's asset ID, or null.
- */
 function videoStill(asset: Asset, state: WireState): string | null {
   const maker = state.components.proj.records.find(record => record.id === asset.created_by)
   const images = new Set(state.assets.filter(each => each.mime.startsWith('image/')).map(each => each.id))
@@ -47,9 +41,9 @@ export interface MediaTypeEntry {
  * that made it, and a video without one, such as an imported video, has no poster.
  */
 export const MEDIA_TYPES: readonly MediaTypeEntry[] = [
-  { type: { id: 'image', icon: IconPaperclipOutlineRegular, poster: asset => asset.id }, View: ImageView },
-  { type: { id: 'video', icon: IconPlayOutlineRegular, poster: videoStill }, View: VideoView },
-  { type: { id: 'audio', icon: IconMicrophoneOutlineRegular }, View: AudioView },
+  { type: { id: 'image', owner: ID, icon: IconPaperclipOutlineRegular, poster: asset => asset.id }, View: ImageView },
+  { type: { id: 'video', owner: ID, icon: IconPlayOutlineRegular, poster: videoStill }, View: VideoView },
+  { type: { id: 'audio', owner: ID, icon: IconMicrophoneOutlineRegular }, View: AudioView },
 ]
 
 /**
@@ -156,7 +150,7 @@ function AudioCard({ asset }: { asset: PropsRuntime<'dv.media.view'>['asset'] })
         ? <span style={{ flex: 1 }} />
         : (
           <svg data-testid="dv-audio-waveform" viewBox={`0 0 ${String(BARS * (BAR + GAP))} 40`} preserveAspectRatio="none" aria-hidden style={{ flex: 1, height: '60%' }}>
-            <path d={path} fill="var(--dv-kind-audio)" />
+            <path d={path} fill="var(--dv-waveform)" />
           </svg>
         )}
       <audio

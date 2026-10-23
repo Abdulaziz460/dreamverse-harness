@@ -1,6 +1,6 @@
 /**
  * Browser half of the character component: one `defineReferenceUi` declaration gives the character noun its canvas node
- * type, version kind, references in use, `dv.canvas.editor` entry, `@` menu kind and History row.
+ * type, version kind, references in use, `dv.canvas.card` and `dv.canvas.editor` entries, `@` menu kind and History row.
  *
  * @module @dv/ui-character/client
  */
@@ -10,10 +10,7 @@ import { defineReferenceUi } from '@dv/ui-reference-kit/reference-kit.tsx'
 declare module '@dv/ui-kit/types.ts' { interface ComponentStates { character: CharacterState } }
 
 /** The character noun on the canvas, in the asset picker, in the `@` menu and in the History panel. */
-export const character = defineReferenceUi({
-  id: '@dv/ui-character', key: 'character', slice: state => state.components.character,
+export const { inject, apply } = defineReferenceUi({
+  id: '@dv/ui-character', key: 'character', slice: state => state.components.character, color: 'var(--dv-node-1)',
   label: ['角色', 'Character'], mention: { section: ['角色', 'Characters'], order: 1 },
 })
-
-/** Client plugin body: registers the five descriptors and the editor of the character noun. */
-export const apply = character.apply
