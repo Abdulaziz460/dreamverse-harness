@@ -78,7 +78,6 @@ class FakeLane {
   readonly requests: RenderRequest[] = []
   /** When set, `render` rejects with this error before streaming. */
   failure: Error | null = null
-  /** When set, the entry's `facts()` rejects with this error, as a server that cannot be reached does. */
   unreachable: Error | null = null
   /** When set, `render` waits for it before rendering, so the record stays unfinished. */
   hold: Promise<void> | null = null

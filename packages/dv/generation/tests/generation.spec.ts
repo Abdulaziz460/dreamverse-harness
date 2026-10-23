@@ -23,7 +23,6 @@ import DvProject, {
 import { afterEach, describe, expect, it } from 'vitest'
 import { defineGeneration, importOne, type GenerationCall, type RequestInput } from '../src/index.ts'
 
-/** The inputs of each `toRequest` call of the test declarations, oldest first. */
 const seen: Array<readonly RequestInput[]> = []
 
 /** The test primitive service: component `probe`, operation `probe.generate`, tasks `t2v` and `ref2v`. */
@@ -306,7 +305,6 @@ describe('defineGeneration', () => {
     await expect(ctx.dvProbeGenerate.render(fixture.call({ prompt: 'dog' }))).rejects.toHaveProperty('message',
       `Model video/t2v/test/fake is unavailable: The server at http://127.0.0.1:1 cannot be reached. ${unavailableEnd}`)
     expect(ctx.dvProject.listHistory({ project })).toHaveLength(before)
-    // A rejected validation is the same case, and the agent reads the same refusal.
     fixture.model.facts = () => Promise.resolve(FACTS)
     fixture.model.problems = () => { throw 'busy' }
     const refused = await fixture.tool('dv_probe_generate', { ...TXT, reason: 'try', prompt: 'dog' })

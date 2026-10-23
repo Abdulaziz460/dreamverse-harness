@@ -64,7 +64,6 @@ export interface GenerationApi {
   parseInputs(raw: Record<string, string | string[]>, state: ProjectState): RunRequest['inputs']
 }
 
-/** The members of a generation declaration besides its seed choice and `toRequest`. */
 interface GenerationSpecFields<P extends PrimitiveId> {
   /** The Cordis service name, such as `dvImageGenerate`. */
   service: string
@@ -117,13 +116,10 @@ export type GenerationSpec<P extends PrimitiveId> = GenerationSpecFields<P> & ({
 /** The seed range of the generation backends. */
 const SEED_LIMIT = 2 ** 31
 
-/** The sentence that ends the refusal of a call that other inputs or params can fix. */
 const REFUSAL_END = 'Nothing was generated; change the inputs or params, then call again.'
 
-/** The sentence that ends the refusal of a call whose model's `facts()` or `validateGenerationRequest` rejected. */
 const UNAVAILABLE_END = 'Nothing was generated; no change to the call helps while the model is unavailable.'
 
-/** The reasons against a call and the sentence that ends their refusal. */
 interface Refusal { reasons: string[]; end: string }
 
 /** A required string param with its description. */
@@ -153,10 +149,6 @@ const EXTRA_PARAM: OperationSpec['params'] = {
   },
 }
 
-/**
- * The request of a call and its seed: the `seed` param, else a random seed; null for a declaration without a seed.
- * @throws what the declaration's `toRequest` throws.
- */
 function requestOf<P extends PrimitiveId>(spec: GenerationSpec<P>, facts: PrimitiveTypes[P]['facts'],
   params: Record<string, unknown>, inputs: readonly RequestInput[]): { request: PrimitiveTypes[P]['request']; seed: number | null } {
   if (spec.seed === false) return { request: spec.toRequest(facts, params, inputs), seed: null }
@@ -174,12 +166,10 @@ function inputRefs(inputs: ReadonlyArray<{ role: string; ref: RecordInputRef }>)
   return [...inputs].sort((a, b) => a.role.localeCompare(b.role)).map(({ role, ref }) => ({ role, ref }))
 }
 
-/** The message of a thrown value. */
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
-/** A rejected `facts()` or `validateGenerationRequest` of a model, as the reason `Model <key> is unavailable: <message>`. */
 class Unavailable extends Error {
   constructor(entry: ModelEntry, cause: unknown) {
     super(`Model ${formatModelKey(entry)} is unavailable: ${messageOf(cause)}`, { cause })
