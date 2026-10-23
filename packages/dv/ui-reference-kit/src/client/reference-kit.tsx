@@ -13,7 +13,8 @@ import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { CSSProperties, ReactNode } from 'react'
 import { assetUrl } from '@dv/ui-kit/api.ts'
 import { pickText, useText } from '@dv/ui-kit/locale.ts'
-import type { HistoryRow, MentionKind, NodeType, TakesInUse, VersionKind } from '@dv/ui-kit/registries.ts'
+import type { HistoryRow } from '@dv/ui-history/contract'
+import type { MentionKind, NodeType, TakesInUse, VersionKind } from '@dv/ui-kit/registries.ts'
 import type { WireState } from '@dv/ui-kit/types.ts'
 
 /** One version of a reference noun item as the wire sends it. */

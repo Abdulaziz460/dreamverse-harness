@@ -1,15 +1,16 @@
 // @vitest-environment jsdom
 /**
- * The plugin's registrations, the `dvHistory` service, the tab opening on `dv:history-focus`, and their removal when the
- * plugin goes.
+ * The plugin's registrations, the `dvHistory` service, the center moves of the tab body through `dvCenter`, the tab
+ * opening on `dv:history-focus`, and their removal when the plugin goes.
  */
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { SidebarRightTabRegistry } from '@deepseek-ai/dsh-client-ui-sidebar-right/src/client/tab-registry.ts'
 import { DvClient } from '@dv/ui-kit/api.ts'
-import type { HistoryRow } from '@dv/ui-kit/registries.ts'
+import type { HistoryRow } from '../src/client/contract/index.ts'
 import { DV_HISTORY_FOCUS_EVENT } from '@dv/ui-kit/workspace-events.ts'
-import { HistoryTabBody } from '../src/client/HistoryPanel.tsx'
+import type { CenterTarget } from '@dv/ui-shell/contract'
+import { HistoryTabBody, type HistoryInjected } from '../src/client/HistoryPanel.tsx'
 import { HISTORY_ID, HISTORY_KIND } from '../src/client/definition.ts'
 import { apply, inject } from '../src/client/index.ts'
 import { apply as hostApply } from '../src/index.ts'
@@ -17,7 +18,7 @@ import { apply as hostApply } from '../src/index.ts'
 interface Recorded {
   name: string
   key: string
-  inject: () => { client: unknown; rows: unknown }
+  inject: () => HistoryInjected
   component: unknown
 }
 
@@ -73,6 +74,16 @@ describe('ui-history apply', () => {
     expect(ctx.dvHistory.rows.list()).toEqual([row])
     dispose()
     expect(ctx.dvHistory.rows.list()).toEqual([])
+  })
+
+  it('moves the center through dvCenter while the shell provides it, and does nothing without it', async () => {
+    const { ctx, registered } = await boot()
+    const target: CenterTarget = { view: 'canvas', target: { record: 'g1' } }
+    expect(() => { registered[0]?.inject().showInCenter(target) }).not.toThrow()
+    const shown: CenterTarget[] = []
+    ctx.provide('dvCenter', { show: (moved: CenterTarget) => { shown.push(moved) } })
+    registered[0]?.inject().showInCenter(target)
+    expect(shown).toEqual([target])
   })
 
   it('removes everything when the plugin is disposed', async () => {

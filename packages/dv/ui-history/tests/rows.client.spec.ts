@@ -3,7 +3,7 @@
  * relative times, and the focus a selected step gives the center through its registered row or its canvas node.
  */
 import { describe, expect, it } from 'vitest'
-import type { HistoryRow } from '@dv/ui-kit/registries.ts'
+import type { HistoryRow } from '../src/client/contract/index.ts'
 import type { HistoryEntry, ProjectRecord, WireOperation } from '@dv/ui-kit/types.ts'
 import { asset, fixtureState, record } from '../../ui-kit/tests/fixture.client.tsx'
 import {
@@ -101,10 +101,10 @@ describe('labels, thumbnails and times', () => {
       .toEqual(['修改分镜计划', 'Update plan'])
   })
 
-  it('shows an image first, a take\'s still for its video, a video frame without a still, and nothing for other files', () => {
+  it('shows an image first, a take\'s still for its video, a video frame without a still, nothing for other files and unmade inputs, and the first folded thumbnail', () => {
     const assets = new Map([
       asset('take.mp4', 'video/mp4', 'g1'), asset('still.png', 'image/png', 'g1'), asset('clip.mp4', 'video/mp4', 'gone'),
-      asset('plan.json', 'application/json', 'p'), asset('ref.png', 'image/png', null),
+      asset('plan.json', 'application/json', 'p'), asset('ref.png', 'image/png', null), asset('upload.mp4', 'video/mp4', null),
     ].map(item => [item.id, item]))
     const render = record({ id: 'g1', outputs: ['take.mp4', 'still.png'] })
     const records = new Map([[render.id, render]])
@@ -112,9 +112,17 @@ describe('labels, thumbnails and times', () => {
     const clipRow = record({ id: 'm', inputs: [{ role: 'clip', ref: { record: 'g1', output: 0 }, resolved_asset: 'take.mp4' }] })
     expect(thumbnailOf(clipRow, assets, records)).toEqual({ asset: 'still.png', kind: 'image' })
     expect(thumbnailOf(record({ id: 'v', outputs: ['clip.mp4'] }), assets, records)).toEqual({ asset: 'clip.mp4', kind: 'video' })
+    expect(thumbnailOf(record({ id: 'i', outputs: ['upload.mp4'] }), assets, records)).toEqual({ asset: 'upload.mp4', kind: 'video' })
+    const unmade = record({ id: 'w', inputs: [{ role: 'clip', ref: { record: 'g9', output: 0 }, resolved_asset: null }] })
+    expect(thumbnailOf(unmade, assets, records)).toBeNull()
     expect(thumbnailOf(record({ id: 'p', outputs: ['plan.json'] }), assets, records)).toBeNull()
     expect(thumbnailOf(record({ id: 'u', outputs: ['unknown'] }), assets, records)).toBeNull()
-    expect(thumbnailOf(record({ id: 'ap' }), assets, records, [render, record({ id: 'g2' })])).toEqual({ asset: 'still.png', kind: 'image' })
+    expect(thumbnailOf(record({ id: 'ap' }), assets, records, [record({ id: 'g2' }), render])).toEqual({ asset: 'still.png', kind: 'image' })
+  })
+
+  it('gives a record without an operation no subject from a row of its component key', () => {
+    const rows: HistoryRow[] = [{ match: 'proj.', subject: () => [' 项目', ' project'] }]
+    expect(actionLabel(record({ id: 'n', operation: null }), labels({ rows }))).toEqual(['', ''])
   })
 
   it('says how long ago a record was made', () => {
@@ -149,20 +157,20 @@ describe('focus', () => {
     const rows: HistoryRow[] = [
       {
         match: 'timeline.', subject: () => null,
-        focus: (item, records) => { seen.push(records); return { event: 'dv:timeline-focus', detail: { timelineId: 't1', clipId: item.id } } },
+        focus: (item, records) => { seen.push(records); return { view: 'timeline', target: { timeline: 't1', clip: item.id } } },
       },
       { match: 'timeline.create', subject: () => null, focus: () => null },
     ]
     expect(centerFocus({ record: move, place: 'current' }, rows, [create, move]))
-      .toEqual({ event: 'dv:timeline-focus', detail: { timelineId: 't1', clipId: 'm' } })
+      .toEqual({ view: 'timeline', target: { timeline: 't1', clip: 'm' } })
     expect(seen).toEqual([[create, move]])
     expect(centerFocus({ record: create, place: 'before' }, rows, [create])).toBeNull()
   })
 
   it('focuses the node of a record whose row has no focus, nothing for proj records, and nothing for steps after the current position', () => {
     const rows: HistoryRow[] = [{ match: 'timeline.', subject: () => null }]
-    expect(centerFocus({ record: render, place: 'before' }, rows, [])).toEqual({ event: 'dv:canvas-focus', detail: { recordId: 'g1' } })
-    expect(centerFocus({ record: move, place: 'before' }, rows, [])).toEqual({ event: 'dv:canvas-focus', detail: { recordId: 'm' } })
+    expect(centerFocus({ record: render, place: 'before' }, rows, [])).toEqual({ view: 'canvas', target: { record: 'g1' } })
+    expect(centerFocus({ record: move, place: 'before' }, rows, [])).toEqual({ view: 'canvas', target: { record: 'm' } })
     expect(centerFocus({ record: render, place: 'after' }, rows, [])).toBeNull()
     expect(centerFocus(entry({ id: 's', operation: 'proj.stale_accept' }), [], [])).toBeNull()
   })

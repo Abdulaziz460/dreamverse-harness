@@ -7,27 +7,30 @@
 import type { ReactNode } from 'react'
 import { assetUrl } from '@dv/ui-kit/api.ts'
 import type { PickText } from '@dv/ui-kit/locale.ts'
-import type { WireProjectCover, WireProjectSummary } from '@dv/ui-kit/types.ts'
+import type { SummaryQuery, WireProjectCover, WireProjectSummary } from '@dv/ui-kit/types.ts'
 import { useLoader } from '@dv/ui-kit/useProject.ts'
 import { shellClient } from './store.ts'
 import css from './shell.module.css'
 
 /**
- * Read project card summaries in one request when the component mounts and again whenever `refresh` or `timeline`
+ * Read project card summaries in one request when the component mounts and again whenever `refresh` or `narrow`
  * changes, keeping the last summaries while a read is in flight or after it failed.
  * @param project - the one project to summarize, or null for every project.
  * @param refresh - a value whose change asks for a fresh read, such as the listed project IDs or a refetched state.
- * @param timeline - with `project`, the selected timeline, whose first clip is the cover.
+ * @param narrow - with `project`, what narrows its summary, such as the open project's center fields.
  * @returns the summaries by project ID, or null until the first read succeeds.
  */
 export function useProjectSummaries(
-  project: string | null, refresh: unknown, timeline: string | null = null,
+  project: string | null, refresh: unknown, narrow: SummaryQuery = NO_NARROWING,
 ): ReadonlyMap<string, WireProjectSummary> | null {
+  const key = JSON.stringify(narrow)
   return useLoader(async (signal) => {
-    const list = await shellClient.listProjectSummaries(signal, project, timeline)
+    const list = await shellClient.listProjectSummaries(signal, project, narrow)
     return new Map(list.map(summary => [summary.project, summary]))
-  }, [project, refresh, timeline]).value
+  }, [project, refresh, key]).value
 }
+
+const NO_NARROWING: SummaryQuery = {}
 
 /**
  * A decorative cover frame beside the project title: the first frame of the take's muted video, or the take's image,

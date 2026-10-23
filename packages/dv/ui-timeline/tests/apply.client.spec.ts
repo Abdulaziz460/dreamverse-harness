@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /** The plugin's registrations, and their removal when the plugin goes. */
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
@@ -19,7 +20,7 @@ interface Recorded {
   order?: number
   label?: () => string
   locale?: string
-  inject: () => { client: unknown }
+  inject: () => { client: unknown; hooks: unknown }
   component: unknown
 }
 
@@ -56,7 +57,7 @@ describe('ui-timeline apply', () => {
     expect(hostApply).not.toThrow()
   })
 
-  it('registers the type, its dictionaries, and the body seat under the type\'s id with an API client', async () => {
+  it('registers the type, its dictionaries, and the body seat under the type\'s id with an API client, and nothing in the center without dvCenter', async () => {
     const { tabs, registered, dictionaries } = await boot()
     const definition = tabs.get(TIMELINE_KIND)
     expect(definition?.id).toBe(TIMELINE_ID)
@@ -66,13 +67,24 @@ describe('ui-timeline apply', () => {
     expect(dictionaries.get('dvTimeline')).toEqual({ zh, en })
     expect(registered.map(entry => [entry.name, entry.key ?? entry.id, entry.locale, entry.component])).toEqual([
       ['sidebar.right.pane.tab', TIMELINE_ID, 'dvTimeline', TimelineBody],
-      ['dv.center.view', 'timeline', undefined, TimelineView],
     ])
     expect(registered[0]?.inject().client).toBeInstanceOf(DvClient)
+    expect(Object.keys(en).sort()).toEqual(Object.keys(zh).sort())
+  })
+
+  it('registers the center view once dvCenter is present, with the tab body\'s API client, and it leaves with dvCenter', async () => {
+    const { ctx, registered } = await boot()
+    const dispose = ctx.provide('dvCenter', { show: () => {} })
+    await vi.waitFor(() => { expect(registered).toHaveLength(2) })
+    expect(registered.map(entry => [entry.name, entry.key ?? entry.id, entry.locale, entry.component])).toEqual([
+      ['sidebar.right.pane.tab', TIMELINE_ID, 'dvTimeline', TimelineBody],
+      ['dv.center.view', 'timeline', undefined, TimelineView],
+    ])
     // The center view comes after the canvas in the workspace's view control, under the tab type's label.
     expect([registered[1]?.order, registered[1]?.label?.()]).toEqual([1, 'type.label'])
-    expect(registered[1]?.inject()).toBe(registered[0]?.inject())
-    expect(Object.keys(en).sort()).toEqual(Object.keys(zh).sort())
+    expect(registered[1]?.inject().client).toBe(registered[0]?.inject().client)
+    dispose()
+    await vi.waitFor(() => { expect(registered.map(entry => entry.name)).toEqual(['sidebar.right.pane.tab']) })
   })
 
   it('registers the clip mention kind once dvMentions is present, and the plugin disposal removes it', async () => {

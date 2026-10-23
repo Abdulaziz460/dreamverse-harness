@@ -13,14 +13,14 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, DragEvent, KeyboardEvent, PointerEvent, ReactNode } from 'react'
 import type { Translate } from '@deepseek-ai/dsh-client-ui-slots'
+import type { Timeline } from '@dv/timeline/types'
 import { assetUrl } from '@dv/ui-kit/api.ts'
 import type { DvClient } from '@dv/ui-kit/api.ts'
-import { publishCurrentTimeline, useCurrentTimeline } from '@dv/ui-kit/current-timeline.ts'
 import { readStored, writeStored } from '@dv/ui-kit/storage.ts'
 import { timelineName } from '@dv/ui-kit/timeline.ts'
 import { assetIndex, videoAssets } from '@dv/ui-kit/state.ts'
 import type { OperationRequest, WireState } from '@dv/ui-kit/types.ts'
-import { DV_ASSET_DRAG_TYPE, DV_TIMELINE_FOCUS_EVENT, type DvWorkspaceEventMap } from '@dv/ui-kit/workspace-events.ts'
+import { DV_ASSET_DRAG_TYPE } from '@dv/ui-kit/workspace-events.ts'
 import { useFirstFrames } from './first-frame.ts'
 import { useTimelinePlayer } from './player.ts'
 import { clipPeaks, useAudioEnvelope } from './waveform.ts'
@@ -39,6 +39,17 @@ export interface TimelineEditorProps {
   state: WireState
   /** Run one write and refetch the state; resolves to whether the write succeeded. */
   run: (work: () => Promise<unknown>) => Promise<boolean>
+  /**
+   * The selected timeline of the project, or null before one is selected. The editor shows the project's first timeline
+   * while the selection names none or a timeline that the project lost.
+   */
+  selected: string | null
+  /** Select the timeline that the user picked or created, or the one shown before a create that failed. */
+  select: (timelineId: string | null) => void
+  /** The clip that the editor selects and seeks to once it shows the clip's timeline, or null. */
+  clipFocus?: { timelineId: string; clipId: string } | null
+  /** Drop {@link TimelineEditorProps.clipFocus} once the editor took it. */
+  takeClipFocus?: () => void
 }
 
 /** The fields of an operation request a gesture fills in. */
@@ -182,14 +193,15 @@ function Icon({ name }: { name: keyof typeof ICON_PATHS }): ReactNode {
 
 /**
  * An icon-only toolbar button; its label is both the accessible name and the hover tooltip.
- * @param props - the icon, the label, whether the button is disabled, and the click handler.
+ * @param props - the icon, the label, and the click handler; a null handler disables the button.
  * @returns the element.
  */
 function IconButton(
-  { icon, label, disabled, onClick }: { icon: keyof typeof ICON_PATHS; label: string; disabled: boolean; onClick: () => void },
+  { icon, label, onClick }: { icon: keyof typeof ICON_PATHS; label: string; onClick: (() => void) | null },
 ): ReactNode {
+  const disabled = onClick === null
   return (
-    <button type="button" className="dv-tl-btn" aria-label={label} title={label} disabled={disabled} onClick={onClick} style={buttonStyle(disabled, iconButton)}>
+    <button type="button" className="dv-tl-btn" aria-label={label} title={label} disabled={disabled} onClick={onClick ?? undefined} style={buttonStyle(disabled, iconButton)}>
       <Icon name={icon} />
     </button>
   )
@@ -271,17 +283,6 @@ const AudioWaveform = memo(function AudioWaveform(
   )
 })
 
-// A `dv:timeline-focus` request usually arrives while the editor is unmounted (the shell shows the timeline view in
-// response), so the module keeps the latest requested clip until an editor showing that timeline consumes it.
-let pendingClipFocus: DvWorkspaceEventMap['dv:timeline-focus'] | null = null
-const clipFocusListeners = new Set<() => void>()
-if (typeof window !== 'undefined') {
-  window.addEventListener(DV_TIMELINE_FOCUS_EVENT, (event) => {
-    pendingClipFocus = (event as CustomEvent<DvWorkspaceEventMap['dv:timeline-focus']>).detail
-    for (const listener of clipFocusListeners) listener()
-  })
-}
-
 /**
  * The clip the user selected: its timeline, its position when selected, and its clip ID, so neither an edit elsewhere
  * nor a timeline switch can move the selection onto another clip, and a placeholder clip stays selected when its render
@@ -329,13 +330,13 @@ function round(seconds: number): number {
 }
 
 /**
- * The ruler's steps for a zoom level: a tick every second while ticks stay at least 8 px apart, and a time label every
- * 5 s while labels stay at least 48 px apart, else every 10, 30, or 60 s.
- * @param px - pixels per second.
+ * The ruler's steps for a zoom level. Labels need no step above 10 s: at the narrowest zoom (5 px per second), 10 s
+ * labels sit 50 px apart, past the 48 px minimum.
+ * @param px - pixels per second, from 5 to 200.
  * @returns seconds between ticks and seconds between labels.
  */
 function rulerSteps(px: number): { tick: number; label: number } {
-  return { tick: px >= 8 ? 1 : 5, label: [5, 10, 30].find(step => step * px >= 48) ?? 60 }
+  return { tick: px >= 8 ? 1 : 5, label: 5 * px >= 48 ? 5 : 10 }
 }
 
 /**
@@ -343,13 +344,9 @@ function rulerSteps(px: number): { tick: number; label: number } {
  * @param props - the client, copy, project, state, and write runner.
  * @returns the element.
  */
-export function TimelineEditor({ client, t, project, session = null, state, run }: TimelineEditorProps): ReactNode {
+export function TimelineEditor(props: TimelineEditorProps): ReactNode {
+  const { client, t, project, session = null, state, run, selected: activeId, select, clipFocus = null, takeClipFocus } = props
   const timelines = useMemo(() => timelinesOf(state), [state])
-  // The selected timeline is shared on `window`, so the shell can keep it in the URL and restore it.
-  const activeId = useCurrentTimeline(project)
-  const setActiveId = (id: string): void => { publishCurrentTimeline(project, id) }
-  // A timeline created here is selected before the refetched state lists it.
-  const pendingTimeline = useRef<string | null>(null)
   const timeline = timelines.find(entry => entry.id === activeId) ?? timelines[0] ?? null
   const { clips, total } = useMemo(() => placeTimeline(state, timeline), [state, timeline])
   const assets = useMemo(() => assetIndex(state), [state])
@@ -361,7 +358,7 @@ export function TimelineEditor({ client, t, project, session = null, state, run 
   const [playbackRate, setPlaybackRate] = useState(readPlaybackRate)
   const player = useTimelinePlayer(timelineId, clips, total, playbackRate)
   const cycleRate = (): void => {
-    const next = PLAYBACK_RATES[(PLAYBACK_RATES.findIndex(rate => rate === playbackRate) + 1) % PLAYBACK_RATES.length] ?? 1
+    const next = PLAYBACK_RATES.find(rate => rate > playbackRate) ?? PLAYBACK_RATES[0]
     setPlaybackRate(next)
     storePlaybackRate(next)
   }
@@ -373,7 +370,7 @@ export function TimelineEditor({ client, t, project, session = null, state, run 
     setChosenClip(position === null || clip === undefined ? null : { timelineId, position, clip: clip.clip })
   }
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null)
-  const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null)
+  const [menu, setMenu] = useState<{ entry: Timeline; x: number; y: number } | null>(null)
   const menuRef = useRef<HTMLDivElement | null>(null)
   const [dropNotice, setDropNotice] = useState(false)
   const [drag, setDrag] = useState<ClipDrag | null>(null)
@@ -400,31 +397,14 @@ export function TimelineEditor({ client, t, project, session = null, state, run 
     setChosenClip(null); setPicking(false); setExported(null); setMenu(null); setRenaming(null)
   }, [timelineId])
 
-  // Publish the timeline shown when the shared value names none or a timeline this project no longer has.
   useEffect(() => {
-    if (activeId !== null && activeId === pendingTimeline.current) {
-      if (timelines.some(entry => entry.id === activeId)) pendingTimeline.current = null
-      return
-    }
-    if (timelineId !== activeId) publishCurrentTimeline(project, timelineId)
-  }, [project, activeId, timelineId, timelines])
-
-  // Select the clip that `dv:timeline-focus` asked for and seek to its start, once this editor shows its timeline.
-  const [clipFocusRequest, setClipFocusRequest] = useState(0)
-  useEffect(() => {
-    const listener = (): void => { setClipFocusRequest(count => count + 1) }
-    clipFocusListeners.add(listener)
-    return () => { clipFocusListeners.delete(listener) }
-  }, [])
-  useEffect(() => {
-    const focus = pendingClipFocus
-    if (focus === null || focus.timelineId !== timelineId) return
-    pendingClipFocus = null
-    const clip = clips.find(placed => placed.clip === focus.clipId)
+    if (clipFocus === null || clipFocus.timelineId !== timelineId) return
+    takeClipFocus?.()
+    const clip = clips.find(placed => placed.clip === clipFocus.clipId)
     if (clip === undefined) return
     setChosenClip({ timelineId, position: clip.position, clip: clip.clip })
     player.seek(clip.startSec)
-  }, [clipFocusRequest, timelineId, clips])
+  }, [clipFocus, timelineId, clips])
 
   // Keep the stored selection on the position it resolved to after an edit elsewhere.
   useEffect(() => {
@@ -452,11 +432,8 @@ export function TimelineEditor({ client, t, project, session = null, state, run 
 
   // A timeline without a stored name shows the numbered default name of its ID in the interface language.
   const numbered = (n: number): string => t('tabs.defaultTitle', { n })
-  const nameOf = (index: number): string => {
-    const entry = timelines[index]
-    return entry === undefined ? '' : timelineName(entry, numbered)
-  }
-  const shownName = timeline === null ? '' : nameOf(timelines.indexOf(timeline))
+  const nameOf = (entry: Timeline): string => timelineName(entry, numbered)
+  const shownName = timeline === null ? '' : nameOf(timeline)
   // An insert names the shown timeline; the other clip operations name the clip by its clip ID, which names its timeline.
   const runOperation = (operation: string, params: Record<string, unknown>, intent: string): Promise<boolean> => {
     const scoped = timeline === null || operation !== 'timeline.clip_insert' ? params : { timeline: timeline.id, ...params }
@@ -467,41 +444,36 @@ export function TimelineEditor({ client, t, project, session = null, state, run 
   const createTimeline = (): void => {
     const id = nextTimelineId(timelines)
     const name = timelineName({ id, name: '' }, numbered)
-    pendingTimeline.current = id
-    setActiveId(id)
+    select(id)
     void run(() => client.runOperation(request(project, session, { operation: 'timeline.create', params: { timeline: id, assets: [] }, intent: t('intent.create', { name }) })))
       .then((ok) => {
         if (ok) return
-        pendingTimeline.current = null
-        publishCurrentTimeline(project, timelineId)
+        select(timelineId)
       })
   }
-  const startRename = (id: string): void => {
+  const startRename = (entry: Timeline): void => {
     setMenu(null)
-    setRenaming({ id, name: nameOf(timelines.findIndex(entry => entry.id === id)) })
+    setRenaming({ id: entry.id, name: nameOf(entry) })
   }
-  const commitRename = (): void => {
-    if (renaming === null) return
+  const commitRename = (edit: { id: string; name: string }): void => {
     setRenaming(null)
-    const index = timelines.findIndex(entry => entry.id === renaming.id)
-    const name = renaming.name.trim()
-    if (index === -1 || name === '' || name === nameOf(index)) return
-    void run(() => client.runOperation(request(project, session, { operation: 'timeline.rename', params: { timeline: renaming.id, name }, intent: t('intent.rename', { name }) })))
+    const entry = timelines.find(item => item.id === edit.id)
+    const name = edit.name.trim()
+    if (entry === undefined || name === '' || name === nameOf(entry)) return
+    void run(() => client.runOperation(request(project, session, { operation: 'timeline.rename', params: { timeline: edit.id, name }, intent: t('intent.rename', { name }) })))
   }
-  const deleteTimeline = (id: string): void => {
+  const deleteTimeline = (entry: Timeline): void => {
     setMenu(null)
-    const name = nameOf(timelines.findIndex(entry => entry.id === id))
+    const name = nameOf(entry)
     if (!window.confirm(t('tabs.deleteConfirm', { name }))) return
-    void run(() => client.runOperation(request(project, session, { operation: 'timeline.delete', params: { timeline: id }, intent: t('intent.delete', { name }) })))
+    void run(() => client.runOperation(request(project, session, { operation: 'timeline.delete', params: { timeline: entry.id }, intent: t('intent.delete', { name }) })))
   }
   // Undo and redo move the whole project's current position one step, whichever view made the step.
   const undo = (): void => { void run(() => client.undo(project)) }
   const redo = (): void => { void run(() => client.redo(project)) }
   const canRedo = state.head !== state.tip
-  const remove = (position: number): void => {
-    const clip = clips.find(placed => placed.position === position)
-    if (clip === undefined) return
-    void runOperation('timeline.clip_remove', { clip: clip.clip }, t('intent.remove', { position })).then((ok) => { if (ok) setSelected(null) })
+  const remove = (clip: TrackClip): void => {
+    void runOperation('timeline.clip_remove', { clip: clip.clip }, t('intent.remove', { position: clip.position })).then((ok) => { if (ok) setSelected(null) })
   }
   const insert = (at: number, asset: string): void => {
     void runOperation('timeline.clip_insert', { at, asset }, t('intent.insert', { at }))
@@ -509,16 +481,15 @@ export function TimelineEditor({ client, t, project, session = null, state, run 
   // The record behind the selected clip's asset, while it is stale: the record "keep anyway" accepts.
   const selectedClip = clips.find(placed => placed.position === selected)
   const staleRecord = selectedClip?.stale === true && selectedClip.assetId !== null
-    ? state.components.proj.created_by[selectedClip.assetId] ?? null
-    : null
-  const keepStale = (): void => {
-    if (staleRecord !== null) void run(() => client.acceptStale(project, staleRecord, 'timeline', session))
+    ? state.components.proj.created_by[selectedClip.assetId]
+    : undefined
+  const keepStale = (record: string): void => {
+    void run(() => client.acceptStale(project, record, 'timeline', session))
   }
   // The clip under the playhead; a placeholder there blanks the viewer and cannot be split.
   const playheadClip = clips[clipIndexAt(clips, player.position)]
-  const splitAtPlayhead = (): void => {
-    const clip = playheadClip
-    if (clip === undefined || clip.status !== 'ready') return
+  const splitClip = playheadClip?.status === 'ready' ? playheadClip : undefined
+  const splitAtPlayhead = (clip: TrackClip): void => {
     const atSec = round(clip.inSec + player.position - clip.startSec)
     if (atSec <= clip.inSec + 0.05 || atSec >= clip.outSec - 0.05) return
     void runOperation('timeline.clip_split', { clip: clip.clip, at_sec: atSec }, t('intent.split', { position: clip.position, at: atSec }))
@@ -527,22 +498,21 @@ export function TimelineEditor({ client, t, project, session = null, state, run 
   // Export is one `timeline.export` call: it trims the clips with an in or out point and joins all clips.
   // It waits while any clip is a placeholder; the toolbar names those clips.
   const waiting = clips.filter(clip => clip.status !== 'ready').map(clip => clip.position)
-  const exportTimeline = (): void => {
-    if (timelineId === null || waiting.length > 0) return
+  const exportId = exporting || clips.length === 0 || waiting.length > 0 ? null : timelineId
+  const exportTimeline = (id: string): void => {
     setExporting(true)
     setExported(null)
     void run(async () => {
       const exported = await client.runOperation(request(project, session, {
-        operation: 'timeline.export', params: { timeline: timelineId }, intent: t('intent.export', { name: shownName }),
+        operation: 'timeline.export', params: { timeline: id }, intent: t('intent.export', { name: shownName }),
       }))
       setExported(exported.outputs[0] ?? null)
     }).finally(() => { setExporting(false) })
   }
 
+  // The ruler is the lane, so its own box gives the time under the pointer.
   const seekFromPointer = (event: PointerEvent<HTMLElement>): void => {
-    const box = lane.current?.getBoundingClientRect()
-    if (box === undefined) return
-    player.seek((event.clientX - box.left) / px)
+    player.seek((event.clientX - event.currentTarget.getBoundingClientRect().left) / px)
   }
 
   // A pointer-up ends a clip drag: a body drag reorders (or selects when it did not move); an edge drag trims.
@@ -562,7 +532,7 @@ export function TimelineEditor({ client, t, project, session = null, state, run 
       }
       return
     }
-    if (!moved || clip.status !== 'ready') return
+    if (!moved) return
     const inSec = current.kind === 'trimStart' ? round(Math.max(0, Math.min(clip.inSec + deltaSec, clip.outSec - 0.1))) : clip.rawIn
     const outSec = current.kind === 'trimEnd' ? round(Math.max(clip.inSec + 0.1, Math.min(clip.outSec + deltaSec, clip.assetSeconds))) : clip.rawOut
     // An unset end of the range is left out: the operation reads a missing in or out point as the asset's own end.
@@ -588,9 +558,9 @@ export function TimelineEditor({ client, t, project, session = null, state, run 
   })
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
-    if ((event.key === 'Delete' || event.key === 'Backspace') && selected !== null) {
+    if ((event.key === 'Delete' || event.key === 'Backspace') && selectedClip !== undefined) {
       event.preventDefault()
-      remove(selected)
+      remove(selectedClip)
     } else if (event.key === ' ' && event.target === event.currentTarget) {
       event.preventDefault()
       if (player.playing) player.pause()
@@ -602,7 +572,7 @@ export function TimelineEditor({ client, t, project, session = null, state, run 
   }
 
   const fit = (): void => {
-    const width = (scroller.current?.clientWidth ?? 0) - GUTTER - 60
+    const width = (scroller.current as HTMLDivElement).clientWidth - GUTTER - 60
     if (width > 0 && total > 0) setPx(Math.round(Math.max(5, Math.min(200, width / total))))
   }
   // Each timeline opens fitted to the track width once it has clips, and stays fitted while the panel resizes until the
@@ -618,10 +588,8 @@ export function TimelineEditor({ client, t, project, session = null, state, run 
     fit()
   }, [timelineId, total])
   useEffect(() => {
-    const element = scroller.current
-    if (element === null || typeof ResizeObserver !== 'function') return
     const observer = new ResizeObserver(() => { if (autoFit.current) fitLatest.current() })
-    observer.observe(element)
+    observer.observe(scroller.current as HTMLDivElement)
     return () => { observer.disconnect() }
   }, [])
 
@@ -629,16 +597,12 @@ export function TimelineEditor({ client, t, project, session = null, state, run 
   // from the preview's top to the editor's bottom, less the 1 px drag handle; the track area needs its toolbar, its
   // horizontal scrollbar, and its rows with their padding. Null before layout (or under jsdom, which lays out nothing).
   const resizeBounds = (): { available: number; minTrack: number } | null => {
-    const editorElement = root.current
-    const viewerElement = viewerBox.current
-    const panelElement = panel.current
-    const scrollElement = scroller.current
-    const rowsElement = rows.current
-    if (editorElement === null || viewerElement === null || panelElement === null) return null
-    if (scrollElement === null || rowsElement === null) return null
-    const available = editorElement.getBoundingClientRect().bottom - viewerElement.getBoundingClientRect().top - 1
+    const panelElement = panel.current as HTMLDivElement
+    const available = (root.current as HTMLDivElement).getBoundingClientRect().bottom
+      - (viewerBox.current as HTMLElement).getBoundingClientRect().top - 1
     if (available <= 0) return null
-    const minTrack = panelElement.offsetHeight - scrollElement.clientHeight + rowsElement.offsetHeight + TRACK_PADDING
+    const minTrack = panelElement.offsetHeight - (scroller.current as HTMLDivElement).clientHeight
+      + (rows.current as HTMLDivElement).offsetHeight + TRACK_PADDING
     return { available, minTrack }
   }
   const resizeTo = (requested: number, bounds = resizeBounds()): number => {
@@ -648,13 +612,11 @@ export function TimelineEditor({ client, t, project, session = null, state, run 
   }
   // A remembered or dragged height is clamped again whenever the editor resizes, so a shorter window keeps the preview.
   useEffect(() => {
-    const element = root.current
-    if (element === null || typeof ResizeObserver !== 'function') return
     const observer = new ResizeObserver(() => {
       const bounds = resizeBounds()
       if (bounds !== null) setTrackHeight(height => height === null ? null : clampTrackHeight(height, bounds.available, bounds.minTrack))
     })
-    observer.observe(element)
+    observer.observe(root.current as HTMLDivElement)
     return () => { observer.disconnect() }
   }, [])
   // Dragging the handle up makes the track area taller; ArrowUp and ArrowDown on the focused handle step it. Each
@@ -667,7 +629,7 @@ export function TimelineEditor({ client, t, project, session = null, state, run 
       onPointerDown={(event) => {
         event.preventDefault()
         capture(event)
-        setResizing({ startY: event.clientY, startHeight: panel.current?.offsetHeight ?? 0, bounds: resizeBounds() })
+        setResizing({ startY: event.clientY, startHeight: (panel.current as HTMLDivElement).offsetHeight, bounds: resizeBounds() })
       }}
       onPointerMove={(event) => {
         if (resizing !== null) resizeTo(resizing.startHeight - (event.clientY - resizing.startY), resizing.bounds)
@@ -685,7 +647,7 @@ export function TimelineEditor({ client, t, project, session = null, state, run 
         if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return
         event.preventDefault()
         event.stopPropagation()
-        const from = trackHeight ?? panel.current?.offsetHeight ?? 0
+        const from = trackHeight ?? (panel.current as HTMLDivElement).offsetHeight
         storeTrackHeight(resizeTo(from + (event.key === 'ArrowUp' ? RESIZE_STEP : -RESIZE_STEP)))
       }}
       style={{ flex: 'none', position: 'relative', zIndex: 6, height: 1, cursor: 'row-resize', touchAction: 'none' }}
@@ -694,8 +656,7 @@ export function TimelineEditor({ client, t, project, session = null, state, run 
 
   // The preview frame, with both video elements, goes full screen; a refused request leaves the preview inline.
   const toggleFullscreen = (): void => {
-    const element = frame.current
-    if (element === null) return
+    const element = frame.current as HTMLDivElement
     const change = document.fullscreenElement === element ? document.exitFullscreen() : element.requestFullscreen()
     void change.catch((error: unknown) => { void error })
   }
@@ -736,27 +697,27 @@ export function TimelineEditor({ client, t, project, session = null, state, run 
   // Timeline tabs: click selects, double-click renames in place, right-click opens a menu with rename and delete.
   const tabs = (
     <div role="tablist" aria-label={t('tabs.aria')} style={{ display: 'flex', gap: 4, padding: '6px 12px', borderBottom: `1px solid ${palette.line}`, background: palette.panel, alignItems: 'center', flexWrap: 'wrap' }}>
-      {timelines.map((entry, index) => renaming?.id === entry.id ? (
+      {timelines.map(entry => renaming?.id === entry.id ? (
         <input
           key={entry.id} autoFocus value={renaming.name} aria-label={t('tabs.renameAria')}
           onChange={(event) => { setRenaming({ id: entry.id, name: event.target.value }) }}
           onKeyDown={(event) => {
             event.stopPropagation()
-            if (event.key === 'Enter') commitRename()
+            if (event.key === 'Enter') commitRename(renaming)
             if (event.key === 'Escape') setRenaming(null)
           }}
-          onBlur={commitRename}
+          onBlur={() => { commitRename(renaming) }}
           style={{ ...button, width: 120, background: palette.panel, cursor: 'text' }}
         />
       ) : (
         <button
           key={entry.id} type="button" role="tab" aria-selected={entry === timeline} data-timeline={entry.id}
-          onClick={() => { setActiveId(entry.id) }}
-          onDoubleClick={() => { startRename(entry.id) }}
+          onClick={() => { select(entry.id) }}
+          onDoubleClick={() => { startRename(entry) }}
           onContextMenu={(event) => {
             event.preventDefault()
             const box = event.currentTarget.getBoundingClientRect()
-            setMenu({ id: entry.id, x: box.left, y: box.bottom })
+            setMenu({ entry, x: box.left, y: box.bottom })
           }}
           className="dv-tl-btn"
           style={{
@@ -764,14 +725,14 @@ export function TimelineEditor({ client, t, project, session = null, state, run 
             ...entry === timeline ? { background: palette.fill, color: palette.fg, fontWeight: 500 } : {},
           }}
         >
-          {nameOf(index)}
+          {nameOf(entry)}
         </button>
       ))}
       <button type="button" className="dv-tl-btn" onClick={createTimeline} style={{ ...button, ...textButton }}>{t('tabs.new')}</button>
       {menu !== null ? (
         <div ref={menuRef} role="menu" style={{ position: 'fixed', left: menu.x, top: menu.y, zIndex: 20, background: palette.panel, border: `1px solid ${palette.line}`, borderRadius: 'var(--dv-radius-xl)', padding: 6, boxShadow: 'var(--dv-shadow-2)', minWidth: 140 }}>
-          <button type="button" role="menuitem" className="dv-tl-btn" onClick={() => { startRename(menu.id) }} style={menuItem}>{t('tabs.rename')}</button>
-          <button type="button" role="menuitem" className="dv-tl-btn" onClick={() => { deleteTimeline(menu.id) }} style={{ ...menuItem, color: palette.danger }}>{t('tabs.delete')}</button>
+          <button type="button" role="menuitem" className="dv-tl-btn" onClick={() => { startRename(menu.entry) }} style={menuItem}>{t('tabs.rename')}</button>
+          <button type="button" role="menuitem" className="dv-tl-btn" onClick={() => { deleteTimeline(menu.entry) }} style={{ ...menuItem, color: palette.danger }}>{t('tabs.delete')}</button>
         </div>
       ) : null}
     </div>
@@ -807,7 +768,7 @@ export function TimelineEditor({ client, t, project, session = null, state, run 
           {timecode(player.position)}{' '}<span style={{ color: palette.muted }}>{`/ ${timecode(total)}`}</span>
         </span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <IconButton icon="skipBack" label={t('viewer.skipBack')} disabled={total <= 0} onClick={() => { player.skip(-SKIP_SECONDS) }} />
+          <IconButton icon="skipBack" label={t('viewer.skipBack')} onClick={total <= 0 ? null : () => { player.skip(-SKIP_SECONDS) }} />
           <button
             type="button" disabled={!canPlay} aria-label={player.playing ? t('tool.pause') : t('tool.play')} title={player.playing ? t('tool.pause') : t('tool.play')}
             onClick={() => { if (player.playing) player.pause(); else player.play() }}
@@ -817,7 +778,7 @@ export function TimelineEditor({ client, t, project, session = null, state, run 
               <path d={player.playing ? 'M7 5h3.5v14H7zM13.5 5H17v14h-3.5z' : 'M7 5.5v13a1 1 0 0 0 1.5.9l10.4-6.5a1 1 0 0 0 0-1.8L8.5 4.6A1 1 0 0 0 7 5.5z'} />
             </svg>
           </button>
-          <IconButton icon="skipForward" label={t('viewer.skipForward')} disabled={total <= 0} onClick={() => { player.skip(SKIP_SECONDS) }} />
+          <IconButton icon="skipForward" label={t('viewer.skipForward')} onClick={total <= 0 ? null : () => { player.skip(SKIP_SECONDS) }} />
         </div>
         <div style={{ justifySelf: 'end', display: 'flex', alignItems: 'center', gap: 4 }}>
           <button
@@ -826,26 +787,28 @@ export function TimelineEditor({ client, t, project, session = null, state, run 
           >
             {t('viewer.speedValue', { rate: playbackRate })}
           </button>
-          <IconButton icon="fullscreen" label={t('viewer.fullscreen')} disabled={false} onClick={toggleFullscreen} />
+          <IconButton icon="fullscreen" label={t('viewer.fullscreen')} onClick={toggleFullscreen} />
         </div>
       </div>
     </section>
   )
 
-  const canSplit = playheadClip?.status === 'ready'
   const toolbar = (
     <div role="toolbar" aria-label={t('tool.aria')} style={{ display: 'flex', gap: 2, alignItems: 'center', padding: '6px 12px', borderBottom: `1px solid ${palette.line}`, flexWrap: 'wrap' }}>
-      <IconButton icon="undo" label={t('tool.undo')} disabled={false} onClick={undo} />
-      <IconButton icon="redo" label={t('tool.redo')} disabled={!canRedo} onClick={redo} />
+      <IconButton icon="undo" label={t('tool.undo')} onClick={undo} />
+      <IconButton icon="redo" label={t('tool.redo')} onClick={canRedo ? redo : null} />
       <span style={{ width: 1, height: 18, background: palette.lineStrong, margin: '0 6px' }} />
-      <IconButton icon="split" label={t('tool.split')} disabled={!canSplit} onClick={splitAtPlayhead} />
-      <IconButton icon="delete" label={t('tool.delete')} disabled={selected === null} onClick={() => { if (selected !== null) remove(selected) }} />
-      {staleRecord !== null
-        ? <button type="button" className="dv-tl-btn" style={{ ...button, marginLeft: 6, color: palette.danger }} onClick={keepStale}>{t('tool.keepAnyway')}</button>
+      <IconButton icon="split" label={t('tool.split')} onClick={splitClip === undefined ? null : () => { splitAtPlayhead(splitClip) }} />
+      <IconButton icon="delete" label={t('tool.delete')} onClick={selectedClip === undefined ? null : () => { remove(selectedClip) }} />
+      {staleRecord !== undefined
+        ? <button type="button" className="dv-tl-btn" style={{ ...button, marginLeft: 6, color: palette.danger }} onClick={() => { keepStale(staleRecord) }}>{t('tool.keepAnyway')}</button>
         : null}
       <span style={{ flex: 1 }} />
       {waiting.length > 0 ? <span data-testid="dv-timeline-export-waiting" style={{ color: palette.muted, fontSize: 12, lineHeight: '16px', marginRight: 6 }}>{t('tool.exportWaiting', { positions: waiting.join(', ') })}</span> : null}
-      <button type="button" className="dv-tl-btn" style={buttonStyle(exporting || clips.length === 0 || waiting.length > 0)} disabled={exporting || clips.length === 0 || waiting.length > 0} onClick={exportTimeline}>
+      <button
+        type="button" className="dv-tl-btn" style={buttonStyle(exportId === null)} disabled={exportId === null}
+        onClick={exportId === null ? undefined : () => { exportTimeline(exportId) }}
+      >
         <Icon name="export" />{exporting ? t('tool.exporting') : t('tool.export')}
       </button>
       {exported !== null ? <a href={assetUrl(exported)} target="_blank" rel="noreferrer" data-testid="dv-timeline-exported" style={{ color: palette.accentFg, marginLeft: 6 }}>{t('tool.exported')}</a> : null}
@@ -885,11 +848,11 @@ export function TimelineEditor({ client, t, project, session = null, state, run 
           onDragOver={(event) => { if (event.dataTransfer.types.includes(DV_ASSET_DRAG_TYPE)) event.preventDefault() }}
           onDrop={(event) => {
             const asset = event.dataTransfer.getData(DV_ASSET_DRAG_TYPE)
-            const box = lane.current?.getBoundingClientRect()
             if (asset.length === 0) return
             event.preventDefault()
             event.stopPropagation()
-            insert(dropPosition(clips, box === undefined ? total : (event.clientX - box.left) / px, null), asset)
+            const box = (lane.current as HTMLDivElement).getBoundingClientRect()
+            insert(dropPosition(clips, (event.clientX - box.left) / px, null), asset)
           }}
         >
           {clips.map((clip) => {

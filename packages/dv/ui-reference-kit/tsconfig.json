@@ -18,6 +18,9 @@
       "path": "../../client/ui-slots"
     },
     {
+      "path": "../ui-history"
+    },
+    {
       "path": "../ui-kit"
     }
   ]

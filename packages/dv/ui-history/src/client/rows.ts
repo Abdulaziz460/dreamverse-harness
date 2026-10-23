@@ -6,9 +6,10 @@
  * @module @dv/ui-history/rows
  */
 import { chainOf } from '@dv/ui-kit/chain.ts'
-import type { CenterFocus, HistoryRow } from '@dv/ui-kit/registries.ts'
 import { operationLabel } from '@dv/ui-kit/tool-labels.ts'
 import type { Asset, HistoryEntry, ProjectRecord, WireOperation } from '@dv/ui-kit/types.ts'
+import type { CenterTarget } from '@dv/ui-shell/contract'
+import type { HistoryRow } from './contract/index.ts'
 
 /** One row of the panel: an operation entry and the entries of the loaded records it started. */
 export interface ActionRow {
@@ -132,23 +133,23 @@ export function relativeTime(iso: string, now: number): readonly [string, string
 }
 
 /**
- * The center focus of a selected entry. Only steps at or before the current position are what the canvas and the
- * timeline show. The registered row that matches the operation decides when it has a `focus`; else `proj.*` records
- * focus nothing, and every other record focuses its node.
+ * Where selecting an entry moves the center. Only steps at or before the current position are what the center views
+ * show. The registered row that matches the operation decides when it has a `focus`; else `proj.*` records move
+ * nothing, and every other record moves the center to its canvas node.
  * @param entry - the selected entry.
  * @param rows - the registered rows of `dvHistory.rows`.
  * @param records - the records of the current state, oldest first.
- * @returns the focus, or null.
+ * @returns the center target, or null.
  */
 export function centerFocus(
   entry: HistoryEntry,
   rows: readonly HistoryRow[],
   records: readonly ProjectRecord[],
-): CenterFocus | null {
+): CenterTarget | null {
   const { record } = entry
   if (entry.place === 'after') return null
   const row = matchingRow(record, rows)
   if (row?.focus !== undefined) return row.focus(record, records)
   if (record.component === 'proj') return null
-  return { event: 'dv:canvas-focus', detail: { recordId: record.id } }
+  return { view: 'canvas', target: { record: record.id } }
 }

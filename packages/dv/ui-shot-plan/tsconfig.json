@@ -21,6 +21,9 @@
       "path": "../shot-plan/tsconfig.client.json"
     },
     {
+      "path": "../ui-history"
+    },
+    {
       "path": "../ui-kit"
     }
   ]

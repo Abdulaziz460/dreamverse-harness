@@ -61,8 +61,8 @@ The Host half registers nothing. The browser half registers both descriptors ins
 
 - [`@dv/shot-plan`](../shot-plan/README.md): `plan.create`, `plan.update` and the `plan` slice.
 - [`@dv/ui-canvas`](../ui-canvas/README.md): how the canvas draws an entry with the default card and fills its frame grid.
-- [`@dv/ui-history`](../ui-history/README.md): how a History row gets its subject.
-- [`@dv/ui-kit`](../ui-kit/README.md): the `NodeType`, `NodeEntry`, `TakesInUse` and `HistoryRow` descriptor types.
+- [`@dv/ui-history`](../ui-history/README.md): how a History row gets its subject, and the `HistoryRow` descriptor type of `@dv/ui-history/contract`.
+- [`@dv/ui-kit`](../ui-kit/README.md): the `NodeType`, `NodeEntry` and `TakesInUse` descriptor types.
 
 -----
 

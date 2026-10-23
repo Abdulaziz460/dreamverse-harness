@@ -1810,12 +1810,12 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     slotInject: '',
     declaredBy: 'an entry in \'dv.center.view\' (@dv/ui-canvas), so it exists while that entry is mounted',
     occupants: [
-      '@dv/ui-kit Editor',
+      '@dv/ui-reference-kit Editor',
       '@dv/ui-shot-plan PlanEditor',
     ],
     replaceRisk: 'none',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'dv.canvas.editor\', () => ctx.slots.register(\n      { name: \'dv.canvas.editor\', key: \'<one key the owner dispatches>\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/dv/ui-kit/src/client/registries.ts:189',
+    source: 'packages/dv/ui-kit/src/client/registries.ts:164',
   },
   {
     key: 'dv.canvas.picker',
@@ -1851,7 +1851,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'shadows-shipped-ui',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'dv.canvas.picker\', () => ctx.slots.register(\n      { name: \'dv.canvas.picker\', key: \'<one key the owner dispatches>\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/dv/ui-kit/src/client/registries.ts:191',
+    source: 'packages/dv/ui-kit/src/client/registries.ts:166',
   },
   {
     key: 'dv.canvas.preview',
@@ -1889,14 +1889,14 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'shadows-shipped-ui',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'dv.canvas.preview\', () => ctx.slots.register(\n      { name: \'dv.canvas.preview\', key: \'<one key the owner dispatches>\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/dv/ui-kit/src/client/registries.ts:193',
+    source: 'packages/dv/ui-kit/src/client/registries.ts:168',
   },
   {
     key: 'dv.center.view',
     kind: 'list',
     scope: 'root',
-    summary: 'One view of the open project, such as the canvas; `@dv/ui-shell` shows the selected entry in the workspace center.',
-    doc: 'One view of the open project, such as the canvas; `@dv/ui-shell` shows the selected entry in the workspace center.',
+    summary: 'One view of the open project, such as the canvas; `@dv/ui-shell` shows the selected entry in the workspace center and hands it the request of the latest `dvCenter.show` for it that it has not taken (else null), the project\'s center fields, and `note`, which sets center fields of the project (null removes one).',
+    doc: 'One view of the open project, such as the canvas; `@dv/ui-shell` shows the selected entry in the workspace center\nand hands it the request of the latest `dvCenter.show` for it that it has not taken (else null), the project\'s\ncenter fields, and `note`, which sets center fields of the project (null removes one).',
     registerOptions: [
       {
         name: 'id',
@@ -1917,8 +1917,13 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
         doc: 'Display text where the owner projects one (nav rows, tabs). A thunk is re-read on every projection, so localized text follows the active locale without re-registering.',
       },
     ],
-    ownerProps: [],
-    ownerPropsReferences: [],
+    ownerProps: [
+      '/**\n * The open project\'s center fields, which every view of the project reads and sets, the URL hash keeps as plain\n * fields such as `timeline=t2`, and the summary request reads, such as the timeline whose first clip is the session\n * cover. A field is named by the plugin that sets it; `project`, `view` and `session` name the hash\'s own fields.\n */\nexport type CenterFields = Readonly<Record<string, string>>',
+      '/** A request that the center hands the shown view until the view takes it. */\nexport interface CenterRequest {\n  value: JsonFields\n  /** Mark the request as handled, so the view does not get it again, also after a remount. */\n  take: () => void\n}',
+    ],
+    ownerPropsReferences: [
+      'JsonFields',
+    ],
     standardProps: [
       'useResource: UseResource',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
@@ -1938,7 +1943,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'none',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'dv.center.view\', () => ctx.slots.register(\n      { name: \'dv.center.view\', id: \'my-entry\', order: 100, label: \'My entry\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/dv/ui-kit/src/client/registries.ts:195',
+    source: 'packages/dv/ui-shell/src/client/contract/index.ts:59',
   },
   {
     key: 'dv.explore',
@@ -1987,7 +1992,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'none',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'dv.explore\', () => ctx.slots.register(\n      { name: \'dv.explore\', id: \'my-entry\', order: 100, label: \'My entry\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/dv/ui-shell/src/index.ts:16',
+    source: 'packages/dv/ui-shell/src/client/contract/index.ts:53',
   },
   {
     key: 'main',

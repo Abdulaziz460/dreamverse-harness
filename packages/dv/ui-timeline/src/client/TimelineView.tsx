@@ -1,33 +1,33 @@
 /**
  * The timeline editor for one project, without the project bar: the center area's 时间线 view. It reads the project's
  * current state itself and refetches it after every project change and every write; the view's edits go after the
- * current position of the project's history. It also inserts the assets that `dv:timeline-insert` requests for its
- * project (插入片段 in the 素材库 panel).
+ * current position of the project's history. The view's selected timeline is the `timeline` field of the open project's
+ * center fields, and a pick sets it. A request that the center hands the view selects a timeline and a clip in it, or
+ * inserts an asset (插入片段) once the state is read.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import type { Translate } from '@deepseek-ai/dsh-client-ui-slots'
-import { DvClient } from '@dv/ui-kit/api.ts'
-import { getTimelineOf, publishCurrentTimeline } from '@dv/ui-kit/current-timeline.ts'
+import type { InjectFace, PropsRuntime, Translate } from '@deepseek-ai/dsh-client-ui-slots'
+import type {} from '@dv/ui-shell/contract'
+import type { DvClient } from '@dv/ui-kit/api.ts'
 import { pickText, useLanguage } from '@dv/ui-kit/locale.ts'
 import type { DvLanguage } from '@dv/ui-kit/locale.ts'
 import type { OperationRequest, WireState } from '@dv/ui-kit/types.ts'
 import { useProjectState } from '@dv/ui-kit/useProject.ts'
-import { DV_TIMELINE_INSERT_EVENT } from '@dv/ui-kit/workspace-events.ts'
-import type { DvWorkspaceEventMap } from '@dv/ui-kit/workspace-events.ts'
 import { TimelineEditor } from './TimelineEditor.tsx'
 import { en, zh } from './locales.ts'
 import type { DvTimelineKey } from './locales.ts'
+import { readTimelineRequest } from './selection.ts'
 import { timelinesOf } from './timelines.ts'
 
-/** What the center switcher passes; `client` and `t` default to a same-origin client and the copy of the DSH language. */
-export interface TimelineViewProps {
-  projectId: string
-  client?: DvClient
-  /** The chat session the view sits beside, recorded as the `session` of the view's edits. */
-  session?: string | null
-  t?: Translate<DvTimelineKey>
+/** What the plugin injects into the center view: the API client. */
+export interface TimelineCenterInjected {
+  client: DvClient
 }
+
+/** The center view's props: the center's owner data and the injected client; `t` defaults to the DSH language's copy. */
+export type TimelineViewProps = PropsRuntime<'dv.center.view'> & InjectFace<TimelineCenterInjected>
+  & { t?: Translate<DvTimelineKey> }
 
 /**
  * Translate from one language's dictionary, filling `{name}` placeholders.
@@ -40,31 +40,21 @@ export function copyFor(language: DvLanguage): Translate<DvTimelineKey> {
     dictionary[key].replace(/\{(\w+)\}/g, (whole, name: string) => params !== undefined && name in params ? String(params[name]) : whole)
 }
 
-const sharedClient = new DvClient()
-
-// A `dv:timeline-insert` request usually arrives while the center shows another view (the shell shows the timeline view
-// in response), so the module keeps each request until a mounted view of its project has the state to insert it into.
-let pendingInserts: readonly DvWorkspaceEventMap['dv:timeline-insert'][] = []
-const insertListeners = new Set<() => void>()
-if (typeof window !== 'undefined') {
-  window.addEventListener(DV_TIMELINE_INSERT_EVENT, (event) => {
-    pendingInserts = [...pendingInserts, (event as CustomEvent<DvWorkspaceEventMap['dv:timeline-insert']>).detail]
-    for (const listener of insertListeners) listener()
-  })
-}
-
 /**
- * The write that inserts an asset: a clip at the end of the timeline selected in the editor, else of the project's first
- * timeline; in a project without timelines, timeline `t1` holding the clip.
+ * The write that inserts an asset: a clip at the end of the selected timeline, else of the project's first timeline; in
+ * a project without timelines, timeline `t1` holding the clip.
  * @param project - the project.
  * @param session - the chat session the view sits beside; null for none.
  * @param state - the project's current state.
+ * @param selected - the selected timeline of the project, or null.
  * @param asset - the asset to insert.
  * @returns the operation request.
  */
-function insertRequest(project: string, session: string | null, state: WireState, asset: string): OperationRequest {
+function insertRequest(
+  project: string, session: string | null, state: WireState, selected: string | null, asset: string,
+): OperationRequest {
   const timelines = timelinesOf(state)
-  const timeline = timelines.find(item => item.id === getTimelineOf(project)) ?? timelines[0]
+  const timeline = timelines.find(item => item.id === selected) ?? timelines[0]
   const at = (timeline?.clips.length ?? 0) + 1
   const call = timeline === undefined
     ? { operation: 'timeline.create', params: { timeline: 't1', assets: [asset] }, intent: pickText('新建时间线', 'Create timeline') }
@@ -77,13 +67,16 @@ function insertRequest(project: string, session: string | null, state: WireState
 
 /**
  * The timeline editor of a project's current state.
- * @param props - the project, and optionally the API client, the chat session, and copy.
+ * @param props - the center's owner data, the injected client, and optional copy.
  * @returns the element.
  */
-export function TimelineView({ projectId, client = sharedClient, session = null, t: givenCopy }: TimelineViewProps): ReactNode {
+export function TimelineView(props: TimelineViewProps): ReactNode {
+  const { projectId, session, request, fields, note, client } = props
   const language = useLanguage()
-  const t = useMemo(() => givenCopy ?? copyFor(language), [givenCopy, language])
+  const t = useMemo(() => props.t ?? copyFor(language), [props.t, language])
   const state = useProjectState(client, projectId)
+  const selected = fields['timeline'] ?? null
+  const asked = useMemo(() => request === null ? null : readTimelineRequest(request.value), [request])
   const [notice, setNotice] = useState<string | null>(null)
   const reload = state.reload
   const run = useCallback(async (work: () => Promise<unknown>): Promise<boolean> => {
@@ -97,25 +90,22 @@ export function TimelineView({ projectId, client = sharedClient, session = null,
       return false
     }
   }, [reload])
-  const [insertRequests, setInsertRequests] = useState(0)
+  const select = useCallback((timelineId: string | null) => { note({ timeline: timelineId }) }, [note])
   useEffect(() => {
-    const listener = (): void => { setInsertRequests(count => count + 1) }
-    insertListeners.add(listener)
-    return () => { insertListeners.delete(listener) }
-  }, [])
-  useEffect(() => {
-    // Insert the requested assets of this project once the state is read; a project without timelines selects the
-    // created `t1`. Requests of other projects wait for a view of their own project.
-    const current = state.value
-    const assets = pendingInserts.filter(request => request.projectId === projectId).map(request => request.assetId)
-    if (current === null || assets.length === 0) return
-    pendingInserts = pendingInserts.filter(request => request.projectId !== projectId)
-    for (const asset of assets) {
-      const request = insertRequest(projectId, session, current, asset)
-      if (request.operation === 'timeline.create') publishCurrentTimeline(projectId, 't1')
-      void run(() => client.runOperation(request))
+    if (request === null || asked === null) return
+    if ('insert' in asked) {
+      if (state.value === null) return
+      request.take()
+      const write = insertRequest(projectId, session, state.value, selected, asked.insert)
+      if (write.operation === 'timeline.create') select('t1')
+      void run(() => client.runOperation(write))
+    } else {
+      if (asked.timeline !== selected) select(asked.timeline)
+      if (asked.clip === null) request.take()
     }
-  }, [insertRequests, state.value, projectId, session, client, run])
+  }, [request, asked, state.value, projectId, session, selected, client, run, select])
+  const clipFocus = asked !== null && 'timeline' in asked && asked.clip !== null ? { timelineId: asked.timeline, clipId: asked.clip } : null
+  const takeClipFocus = useCallback(() => { request?.take() }, [request])
   if (state.value === null) {
     return <p style={{ padding: 12, color: 'var(--dv-text-2)', fontSize: 13, lineHeight: '20px' }} role={state.error === null ? undefined : 'alert'}>{state.error === null ? t('loading') : t('error', { message: state.error })}</p>
   }
@@ -130,6 +120,10 @@ export function TimelineView({ projectId, client = sharedClient, session = null,
           session={session}
           state={state.value}
           run={run}
+          selected={selected}
+          select={select}
+          clipFocus={clipFocus}
+          takeClipFocus={takeClipFocus}
         />
       </div>
     </div>

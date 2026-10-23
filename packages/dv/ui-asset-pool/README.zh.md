@@ -38,7 +38,7 @@ Host 半边不注册任何东西。浏览器半边注册 `dv-asset-pool` 标签�
 | 打开面板、项目的任何变化 | 对项目的当前状态调用 `GET /api/dv/state`，每个 `/dv/events` 事件都重新拉取 |
 | 把图片或视频拖到拖放区，或点击它选择文件 | 每个图片或视频文件一次 `POST /api/dv/assets/import`，带 `surface=asset_pool` 和标签所在的对话；`asset.import` 记录是项目当前位置之后的一步。拖放区不导入其他文件，对每个这样的文件显示 「<name>」不是图片或视频，没有导入。 |
 | 拖动缩略图 | 以 `application/x-dv-asset` 携带素材 ID 的拖动；画布把素材的节点移到放下的位置，时间线在放下的位置插入片段 |
-| 打开项目时，视频预览里的 插入片段 | 带所打开项目的 `dv:timeline-insert` `{projectId, assetId}`；shell 显示时间线视图，由它的编辑器（`@dv/ui-timeline`）把片段追加到编辑器里选中的时间线（没有时用第一条时间线，再没有时新建时间线 `t1`） |
+| 打开项目时，视频预览里的 插入片段 | 带所打开项目的 `dv:timeline-insert` `{projectId, assetId}`；`@dv/ui-timeline` 经 `dvCenter.show` 显示它的时间线视图，由该视图把片段追加到编辑器里选中的时间线（没有时用第一条时间线，再没有时新建时间线 `t1`） |
 | 预览里的 让智能体使用 | `dv:compose`，文字为 使用这个素材：，素材作为 `@` 引用；输入框填入草稿，不发送任何内容 |
 
 缩略图和预览从 `GET /dv/assets/<AssetId>` 加载素材文件。

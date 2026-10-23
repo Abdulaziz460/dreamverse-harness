@@ -1,7 +1,7 @@
 /** The browser client: routes, bodies, error decoding, and log following. */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { assetUrl, DvApiError, DvClient } from '../src/client/api.ts'
-import { fixtureState, PROJECT, scriptedFetch } from './fixture.client.tsx'
+import { fixtureState, PROJECT, scriptedFetch, TASK_LABELS } from './fixture.client.tsx'
 
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers() })
 
@@ -14,6 +14,7 @@ describe('DvClient', () => {
     expect(await client.createProject('Demo 2', 'canvas')).toMatchObject({ record: { id: 'b1' } })
     expect((await client.getState('p1')).project.id).toBe('p1')
     expect((await client.listOperations()).map(operation => operation.name)).toContain('shot.render')
+    expect(await client.getTaskLabels()).toEqual(TASK_LABELS)
     const record = await client.runOperation({ project: 'p1', operation: 'timeline.clip_move', params: { clip: 'cl2', to: 1 }, surface: 'timeline' })
     expect(record.operation).toBe('timeline.clip_move')
     expect(await client.undo('p1')).toEqual({ tip: 'g3', at: 'g3' })
@@ -27,10 +28,11 @@ describe('DvClient', () => {
     await client.placeOnCanvas('p1', ['a1'], false)
     await client.linkWorkspace('p1', 'w1')
     await client.bindSession('s5', 'p1')
+    await client.acceptStale('p1', 'g2', 'canvas')
     expect(writes.map(write => write.path)).toEqual([
       '/api/dv/projects', '/api/dv/operation', '/api/dv/undo', '/api/dv/undo', '/api/dv/redo', '/api/dv/stale/accept',
       '/api/dv/projects/rename', '/api/dv/projects/delete', '/api/dv/layout', '/api/dv/operation', '/api/dv/operation', '/api/dv/workspaces',
-      '/api/dv/workspaces/bind',
+      '/api/dv/workspaces/bind', '/api/dv/stale/accept',
     ])
     expect(writes[0]?.body).toEqual({ title: 'Demo 2', surface: 'canvas' })
     expect(writes[2]?.body).toEqual({ project: 'p1' })
@@ -42,7 +44,43 @@ describe('DvClient', () => {
     expect(writes[10]?.body).toEqual({ project: 'p1', operation: 'asset.unplace', surface: 'canvas', inputs: [{ role: 'asset', ref: 'a1' }] })
     expect(writes[11]?.body).toEqual({ project: 'p1', workspace_id: 'w1' })
     expect(writes[12]?.body).toEqual({ session: 's5', project: 'p1' })
+    expect(writes[13]?.body).toEqual({ project: 'p1', record: 'g2', surface: 'canvas' })
     expect(assetUrl('a/b')).toBe('/dv/assets/a%2Fb')
+  })
+
+  it('reads the stored canvas layout, an empty one for a project that stored none, the Workspaces and the saved chat sessions', async () => {
+    const paths: string[] = []
+    const answering = (body: unknown): typeof fetch => (input) => {
+      paths.push(typeof input === 'string' ? input : '')
+      return Promise.resolve(new Response(JSON.stringify(body)))
+    }
+    const stored = { positions: { g1: { x: 1, y: 2 } }, viewport: { x: 0, y: 0, zoom: 2 } }
+    expect(await new DvClient(answering(stored)).getLayout('p1')).toEqual(stored)
+    expect(await new DvClient(answering({})).getLayout('p1')).toEqual({ positions: {}, viewport: null })
+    const saved = [{ session: 's5', updated_at: '2026-10-05T00:00:00Z', bytes: 120 }]
+    expect(await new DvClient(answering(saved)).listSessions('p1')).toEqual(saved)
+    const workspaces = { entry_path: '/dv', projects: [], bindings: { s5: 'p1' } }
+    expect(await new DvClient(answering(workspaces)).listWorkspaces()).toEqual(workspaces)
+    expect(paths).toEqual([
+      '/api/dv/layout?project=p1', '/api/dv/layout?project=p1', '/api/dv/workspaces/sessions?project=p1', '/api/dv/workspaces',
+    ])
+  })
+
+  it('imports a file as its body, with its MIME type or a generic one, and the chat session when given', async () => {
+    const calls: Array<{ path: string; body: unknown }> = []
+    const fetchImpl: typeof fetch = (input, init) => {
+      calls.push({ path: typeof input === 'string' ? input : '', body: init?.body })
+      return Promise.resolve(new Response(JSON.stringify({ asset: 'a1', record: { id: 'u1' } })))
+    }
+    const client = new DvClient(fetchImpl)
+    const image = new File(['png'], 'ref.png', { type: 'image/png' })
+    const blob = new File(['raw'], 'clip.bin')
+    expect(await client.importAsset('p1', image, 'canvas', 's5')).toEqual({ asset: 'a1', record: { id: 'u1' } })
+    await client.importAsset('p1', blob, 'asset_pool')
+    expect(calls).toEqual([
+      { path: '/api/dv/assets/import?project=p1&name=ref.png&mime=image%2Fpng&surface=canvas&session=s5', body: image },
+      { path: '/api/dv/assets/import?project=p1&name=clip.bin&mime=application%2Foctet-stream&surface=asset_pool', body: blob },
+    ])
   })
 
   it('uses the browser fetch when none is given', async () => {
@@ -85,9 +123,16 @@ describe('DvClient', () => {
     }
     expect(await new DvClient(answering(summaries)).listProjectSummaries()).toEqual(summaries)
     expect(await new DvClient(answering(summaries.slice(1))).listProjectSummaries(undefined, 'p2')).toEqual(summaries.slice(1))
-    expect(paths).toEqual(['/api/dv/projects/summary', '/api/dv/projects/summary?project=p2'])
+    const fields: Readonly<Record<string, string>> = { timeline: 't2', clip: 'cl1' }
+    await new DvClient(answering(summaries.slice(1))).listProjectSummaries(undefined, 'p2', fields)
+    await new DvClient(answering(summaries)).listProjectSummaries(undefined, null, fields)
+    expect(paths).toEqual([
+      '/api/dv/projects/summary', '/api/dv/projects/summary?project=p2', '/api/dv/projects/summary?project=p2&timeline=t2',
+      '/api/dv/projects/summary',
+    ])
     const malformedBodies = [
       { projects: summaries }, [{ ...summaries[0], edited_at: 5 }], [{ ...summaries[1], cover: { video: 1, image: null } }],
+      [{ ...summaries[0], cover: 'shot1.mp4' }], [null],
     ]
     for (const malformed of malformedBodies) {
       await expect(new DvClient(answering(malformed)).listProjectSummaries()).rejects.toThrow('malformed /api/dv/projects/summary')
@@ -100,6 +145,8 @@ describe('DvClient', () => {
     await expect(client.getState('nope')).rejects.toMatchObject({ name: 'DvApiError', status: 404, message: 'Unknown project' })
     const noBody: typeof fetch = () => Promise.resolve(new Response('not json', { status: 500 }))
     await expect(new DvClient(noBody).listProjects()).rejects.toThrow(new DvApiError(500, 'HTTP 500'))
+    const textBody: typeof fetch = () => Promise.resolve(new Response(JSON.stringify('Bad gateway'), { status: 502 }))
+    await expect(new DvClient(textBody).listProjects()).rejects.toThrow(new DvApiError(502, 'HTTP 502'))
     // A refused Project call carries its code.
     const unknown: typeof fetch = () => Promise.resolve(new Response(JSON.stringify({
       error: 'Project p1 has no record r9.', code: 'unknown_record',
@@ -150,6 +197,25 @@ describe('DvClient', () => {
     stopC()
     expect(close).toHaveBeenCalledTimes(2)
     expect(streams()).toBe(0)
+  })
+
+  it('polls through a stream that has not proven live, and stops polling once its ready event arrives', () => {
+    const listeners = new Map<string, EventListener>()
+    class FakeEventSource {
+      addEventListener(type: string, listener: EventListener): void { listeners.set(type, listener) }
+      removeEventListener(): void {}
+      close(): void {}
+    }
+    vi.stubGlobal('EventSource', FakeEventSource)
+    vi.useFakeTimers()
+    const onChange = vi.fn()
+    const stop = new DvClient().subscribe('buffered-1', onChange, 100)
+    vi.advanceTimersByTime(250)
+    expect(onChange.mock.calls).toEqual([[null], [null]])
+    listeners.get('ready')?.(new Event('ready'))
+    vi.advanceTimersByTime(500)
+    expect(onChange).toHaveBeenCalledTimes(2)
+    stop()
   })
 
   it('polls when EventSource is missing', () => {

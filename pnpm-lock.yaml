@@ -7738,6 +7738,9 @@ importers:
       '@dv/ui-reference-kit':
         specifier: workspace:*
         version: link:../ui-reference-kit
+      '@dv/ui-shell':
+        specifier: workspace:*
+        version: link:../ui-shell
       '@testing-library/react':
         specifier: ^16.1.0
         version: 16.3.2(@testing-library/dom@10.4.2)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -7870,6 +7873,9 @@ importers:
       '@dv/ui-kit':
         specifier: workspace:*
         version: link:../ui-kit
+      '@dv/ui-shell':
+        specifier: workspace:*
+        version: link:../ui-shell
       '@testing-library/react':
         specifier: ^16.1.0
         version: 16.3.2(@testing-library/dom@10.4.2)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -7993,6 +7999,9 @@ importers:
       '@deepseek-ai/dsh-client-ui-slots':
         specifier: workspace:*
         version: link:../../client/ui-slots
+      '@dv/ui-history':
+        specifier: workspace:*
+        version: link:../ui-history
       '@dv/ui-kit':
         specifier: workspace:*
         version: link:../ui-kit
@@ -8083,6 +8092,9 @@ importers:
       '@deepseek-ai/dsh-client-ui-slots':
         specifier: workspace:*
         version: link:../../client/ui-slots
+      '@dv/ui-history':
+        specifier: workspace:*
+        version: link:../ui-history
       '@dv/ui-kit':
         specifier: workspace:*
         version: link:../ui-kit
@@ -8257,9 +8269,15 @@ importers:
       '@dv/ui-composer':
         specifier: workspace:*
         version: link:../ui-composer
+      '@dv/ui-history':
+        specifier: workspace:*
+        version: link:../ui-history
       '@dv/ui-kit':
         specifier: workspace:*
         version: link:../ui-kit
+      '@dv/ui-shell':
+        specifier: workspace:*
+        version: link:../ui-shell
       '@testing-library/react':
         specifier: ^16.1.0
         version: 16.3.2(@testing-library/dom@10.4.2)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -8281,6 +8299,9 @@ importers:
       '@deepseek-ai/cordis':
         specifier: workspace:~
         version: link:../../../vendor/cordis
+      '@dv/ui-history':
+        specifier: workspace:*
+        version: link:../ui-history
       '@dv/ui-kit':
         specifier: workspace:*
         version: link:../ui-kit

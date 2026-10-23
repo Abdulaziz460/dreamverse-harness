@@ -1,7 +1,8 @@
 /** The History row of timeline records: the timeline of each clip, the focus of a selected record, and its registration. */
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import { createRegistry, type DvHistory, type HistoryRow } from '@dv/ui-kit/registries.ts'
+import type { DvHistory, HistoryRow } from '@dv/ui-history/contract'
+import { createRegistry } from '@dv/ui-kit/registries.ts'
 import type { ProjectRecord } from '@dv/ui-kit/types.ts'
 import { record } from '../../ui-kit/tests/fixture.client.tsx'
 import { clipTimelines, timelineHistoryRow } from '../src/client/history-row.ts'
@@ -33,12 +34,12 @@ describe('timelineHistoryRow', () => {
     expect(Object.fromEntries(clipTimelines([...records, ...orphans]))).toEqual({ cl1: 't1', cl2: 't1', cl3: 't2', cl4: 't1' })
   })
 
-  it('matches every timeline operation, adds no subject, and focuses the record\'s timeline and clip', () => {
+  it('matches every timeline operation, adds no subject, and shows the timeline view on the record\'s timeline and clip', () => {
     expect([timelineHistoryRow.match, timelineHistoryRow.subject(records[0] as ProjectRecord)]).toEqual(['timeline.', null])
-    expect(focusOf(3)).toEqual({ event: 'dv:timeline-focus', detail: { timelineId: 't1', clipId: 'cl4' } })
-    expect(focusOf(4)).toEqual({ event: 'dv:timeline-focus', detail: { timelineId: 't2', clipId: 'cl3' } })
-    expect(focusOf(0)).toEqual({ event: 'dv:timeline-focus', detail: { timelineId: 't1', clipId: 'cl1' } })
-    expect(focusOf(5)).toEqual({ event: 'dv:timeline-focus', detail: { timelineId: 't1', clipId: null } })
+    expect(focusOf(3)).toEqual({ view: 'timeline', target: { timeline: 't1', clip: 'cl4' } })
+    expect(focusOf(4)).toEqual({ view: 'timeline', target: { timeline: 't2', clip: 'cl3' } })
+    expect(focusOf(0)).toEqual({ view: 'timeline', target: { timeline: 't1', clip: 'cl1' } })
+    expect(focusOf(5)).toEqual({ view: 'timeline', target: { timeline: 't1', clip: null } })
     const lost = record({ id: 'x', operation: 'timeline.clip_move', params: { clip: 'gone', to: 1 } })
     expect(timelineHistoryRow.focus?.(lost, records)).toBeNull()
     const unnamed = record({ id: 'y', operation: 'timeline.export', params: {} })

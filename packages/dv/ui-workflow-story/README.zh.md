@@ -57,8 +57,8 @@ Host 半边不注册任何东西。浏览器半边在 `ctx.inject(['dvCanvas'], 
 
 - [`@dv/workflow-story`](../workflow-story/README.zh.md)：`story.approve` 和 `story` 切片。
 - [`@dv/ui-canvas`](../ui-canvas/README.zh.md)：画布如何给有锚点的链分组，如何显示计划的批准状态。
-- [`@dv/ui-history`](../ui-history/README.zh.md)：历史行如何得到主语。
-- [`@dv/ui-kit`](../ui-kit/README.zh.md)：`ChainAnchor` 和 `HistoryRow` 描述符类型。
+- [`@dv/ui-history`](../ui-history/README.zh.md)：历史行如何得到主语，以及 `@dv/ui-history/contract` 的 `HistoryRow` 描述符类型。
+- [`@dv/ui-kit`](../ui-kit/README.zh.md)：`ChainAnchor` 描述符类型。
 
 -----
 

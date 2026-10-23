@@ -218,6 +218,13 @@ export interface WireProjectSummary {
   edited_at: string | null
 }
 
+/**
+ * What narrows one project's summary in `GET /api/dv/projects/summary`: `timeline`, the timeline whose first clip is the
+ * cover when the project has it. It is a type alias so that a record of string fields, such as the shell's center
+ * fields, is assignable to it.
+ */
+export type SummaryQuery = { readonly timeline?: string }
+
 /** The last step of the history list and the current position, as undo and redo answer them. */
 export interface WireLine {
   tip: string
