@@ -13,12 +13,13 @@ import type {
   ArbitrateKey, ArbitrateOutcome, PickOutcome, ReferenceInsert,
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { detectTrigger } from '../core/detect.ts'
 import { MENU_CLOSED, menuReduce, seedGroups } from '../core/menu.ts'
 import type { MenuEvent, MenuState, TriggerHit } from '../core/contract.ts'
 import type {
-  ClientSessionContext, InputTriggerCandidate, InputTriggerCrumb, InputTriggerSource, PickAction,
-  SubmitEnvelope, TriggerChar, TriggerGuard,
+  CandidateRequest, ClientSessionContext, InputTriggerCandidate, InputTriggerCrumb, InputTriggerPick, InputTriggerSource, PickAction,
+  SubmitEnvelope, TokenSpan, TriggerChar, TriggerGuard,
 } from '../types.ts'
 
 /** Token identity a dismissal sticks to: the same trigger, query, and span bounds. */
@@ -42,14 +43,68 @@ export interface SourceRoster {
   all(): readonly InputTriggerSource[]
 }
 
+/** A pick outcome that edits the draft: a claim, a text, or a reference insert. */
+export type AppliedOutcome = Exclude<PickOutcome, 'handled' | undefined>
+
+/**
+ * The surface of one controller: how it asks its sources and where it applies their picks. A session asks the sources'
+ * session faces with its projection and applies picks as its scope's input events; a prompt occurrence asks their
+ * `prompt` faces with its context and applies picks through its own callback.
+ */
+export interface TriggerHost {
+  /** The projection that the session-only source hooks receive; null for a prompt occurrence, which calls none of them. */
+  readonly session: ClientSessionContext | null
+  candidates(source: InputTriggerSource, request: CandidateRequest): Promise<readonly InputTriggerCandidate[]>
+  onPick(source: InputTriggerSource, pick: Omit<InputTriggerPick, 'session'>): PickOutcome
+  /** @returns true when the input applied the outcome. */
+  deliver(outcome: AppliedOutcome, span: TokenSpan): boolean
+}
+
+/**
+ * The surface of a session's controller.
+ * @param actx - the session scope, the subject of the input events that apply picks.
+ * @param sessionId - the session's stable host identity.
+ * @returns the host.
+ */
+export function sessionHost(actx: ClientContext, sessionId: SessionId): TriggerHost {
+  const session = { sessionId }
+  return {
+    session,
+    candidates: (source, request) => source.candidates(session, request),
+    onPick: (source, pick) => source.onPick({ ...pick, session }),
+    deliver: (outcome, span) => {
+      if ('claim' in outcome) return actx.bail(actx, 'slash/input-begin-command', { claim: outcome.claim, span }) === true
+      if ('text' in outcome) {
+        return actx.bail(actx, 'slash/input-insert-text', {
+          text: outcome.text, span, ...outcome.continue === true ? { continue: true } : {},
+        }) === true
+      }
+      return actx.bail(actx, 'slash/input-insert-reference', { reference: outcome.insert, span }) === true
+    },
+  }
+}
+
+/**
+ * The surface of a prompt occurrence's controller, whose roster holds only sources with a `prompt` face.
+ * @param context - reads the JSON that each source's `candidates` gets as `context`.
+ * @param deliver - applies one pick to the occurrence.
+ * @returns the host.
+ */
+export function promptHost(context: () => JsonValue | null, deliver: TriggerHost['deliver']): TriggerHost {
+  return {
+    session: null,
+    candidates: (source, request) => source.prompt?.candidates({ ...request, context: context() }) ?? Promise.resolve([]),
+    onPick: (source, pick) => source.prompt?.onPick(pick),
+    deliver,
+  }
+}
+
 /** Construction hooks for one controller. */
 export interface InputTriggerControllerDeps {
-  /** The owning session scope (event dispatch + teardown registration site). */
-  actx: ClientContext
-  /** The session's stable host identity (the projection handed to sources). */
-  sessionId: SessionId
   /** Root-service roster view. */
   roster: SourceRoster
+  /** The controller's surface, chosen once. */
+  host: TriggerHost
 }
 
 /**
@@ -108,9 +163,11 @@ export class InputTriggerController {
     // roster warm here replaces the projection-transition watch — there are
     // no capability steps to react to.
     const projection = this.project()
-    for (const src of deps.roster.all()) {
-      src.warm?.(projection)
-      this.watchLexicon(src, projection)
+    if (projection !== null) {
+      for (const src of deps.roster.all()) {
+        src.warm?.(projection)
+        this.watchLexicon(src, projection)
+      }
     }
     this.refreshLexicon()
   }
@@ -323,6 +380,7 @@ export class InputTriggerController {
     if (this.disposed || hit === null || hit.position !== 'leading') return false
     const token = hit.trigger + hit.query
     const projection = this.project()
+    if (projection === null) return false
     for (const src of this.deps.roster.sources(hit.trigger)) {
       if (src.matchSpace === undefined) continue
       const outcome = src.matchSpace(projection, token)
@@ -358,8 +416,8 @@ export class InputTriggerController {
    * @returns whether an owner accepted the preview, possibly awaiting its catalog.
    */
   openReference(source: string | undefined, reference: Pick<ReferenceInsert, 'ref' | 'appearance'>): boolean {
-    if (this.disposed) return false
     const session = this.project()
+    if (this.disposed || session === null) return false
     for (const owner of this.deps.roster.all()) {
       const matches = source === undefined
         ? reference.ref.startsWith(owner.trigger) && owner.lexicon?.(session)?.includes(reference.ref.slice(1))
@@ -385,6 +443,7 @@ export class InputTriggerController {
    */
   async adjudicate(line: string, signal: AbortSignal, envelope: SubmitEnvelope): Promise<PickOutcome> {
     const projection = this.project()
+    if (projection === null) return undefined
     for (const src of this.deps.roster.all()) {
       if (signal.aborted) {
         throw signal.reason instanceof Error ? signal.reason : new Error('slash adjudication aborted')
@@ -419,6 +478,7 @@ export class InputTriggerController {
    */
   sourceAdded(source: InputTriggerSource): void {
     const projection = this.project()
+    if (projection === null) return
     source.warm?.(projection)
     this.watchLexicon(source, projection)
     this.refreshLexicon()
@@ -452,32 +512,22 @@ export class InputTriggerController {
     this.lexiconOffs.clear()
   }
 
-  /** The session projection handed to sources (agent-backed identity; constant per scope). */
-  private project(): ClientSessionContext {
-    return { sessionId: this.deps.sessionId }
+  /** The session projection that the session-only source hooks receive; null for a prompt occurrence. */
+  private project(): ClientSessionContext | null {
+    return this.deps.host.session
   }
 
-  /** Execute a claim/insert/text outcome via the scoped input events (actx as dispatch subject); true = the input applied it. */
-  private execute(outcome: PickOutcome, span: import('../types.ts').TokenSpan): boolean {
-    const { actx } = this.deps
+  /** Execute a claim/insert/text outcome through the host; true = the input applied it. */
+  private execute(outcome: PickOutcome, span: TokenSpan): boolean {
     if (outcome === undefined || outcome === 'handled') return false
-    if ('claim' in outcome) {
-      return actx.bail(actx, 'slash/input-begin-command', { claim: outcome.claim, span }) === true
-    }
-    if ('text' in outcome) {
-      return actx.bail(actx, 'slash/input-insert-text', {
-        text: outcome.text,
-        span,
-        ...outcome.continue === true ? { continue: true } : {},
-      }) === true
-    }
-    return actx.bail(actx, 'slash/input-insert-reference', { reference: outcome.insert, span }) === true
+    return this.deps.host.deliver(outcome, span)
   }
 
   /** Re-poll every lexicon-bearing source and publish the aggregated rolls (see the store doc). */
   private refreshLexicon(): void {
     const projection = this.project()
     const rolls = new Map<TriggerChar, readonly string[]>()
+    if (projection === null) return
     for (const src of this.deps.roster.all()) {
       if (src.lexicon === undefined) continue
       let names: readonly string[] | undefined
@@ -519,16 +569,9 @@ export class InputTriggerController {
     const controller = new AbortController()
     this.fetch = controller
     const generation = this.menu.getSnapshot().generation
-    const projection = this.project()
     for (const source of roster) {
-      void source
-        .candidates(projection, {
-          query: hit.query,
-          quoted: hit.quoted,
-          position: hit.position,
-          drilled: this.drilled,
-          signal: controller.signal,
-        })
+      const request = { query: hit.query, quoted: hit.quoted, position: hit.position, drilled: this.drilled, signal: controller.signal }
+      void this.deps.host.candidates(source, request)
         .then(
           (items) => {
             if (controller.signal.aborted) return
@@ -565,14 +608,7 @@ export class InputTriggerController {
     hit: TriggerHit,
     action: PickAction,
   ): void {
-    const outcome = src.onPick({
-      candidate,
-      session: this.project(),
-      position: hit.position,
-      via: 'menu',
-      action,
-      span: hit.span,
-    })
+    const outcome = this.deps.host.onPick(src, { candidate, position: hit.position, via: 'menu', action, span: hit.span })
     this.stopFetch()
     // A settling pick is the user's decision about this token: the menu stays
     // closed for it until the text changes, so a settled command that opens a
@@ -596,6 +632,7 @@ export class InputTriggerController {
   private refreshHeaders(hit: TriggerHit, roster: readonly InputTriggerSource[]): void {
     const projection = this.project()
     const crumbs = new Map<string, readonly InputTriggerCrumb[]>()
+    if (projection === null) return
     for (const src of roster) {
       if (src.header === undefined) continue
       let published: readonly InputTriggerCrumb[] | undefined

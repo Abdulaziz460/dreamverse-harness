@@ -12,8 +12,8 @@ import type { ISessions, SessionBinding } from '@deepseek-ai/dsh-api-session-con
 import { WeakMapWithValues } from '@deepseek-ai/dsh-util-values'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type { InputTriggerSource } from '../types.ts'
-import { InputTriggerController } from './controller.ts'
-import type { InputTriggerServiceContract } from './contract.ts'
+import { InputTriggerController, promptHost, sessionHost } from './controller.ts'
+import type { InputTriggerServiceContract, PromptControllerOptions } from './contract.ts'
 
 /**
  * All mutable service state in one holder: cordis service methods run behind
@@ -25,6 +25,14 @@ interface LiveState {
   readonly sources: InputTriggerSource[]
   /** Per-session controllers; entries are deleted by their scope disposer. */
   readonly controllers: WeakMapWithValues<SessionBinding, InputTriggerController>
+  readonly occurrences: Map<string, InputTriggerController>
+  /** The number of prompt occurrences opened so far; with {@link LiveState.keyPrefix} it mints their keys. */
+  opened: number
+  /**
+   * Distinct for each service instance, so that a service loaded again never mints a key that a mounted occurrence of
+   * the service it replaced still holds.
+   */
+  readonly keyPrefix: string
 }
 
 /** The `ctx.inputTriggers` trigger pipeline service (root registry + controller resolution). */
@@ -32,7 +40,8 @@ export class InputTriggerService extends Service implements InputTriggerServiceC
   static inject = ['sessions']
 
   private readonly live: LiveState = {
-    sources: [], controllers: new WeakMapWithValues(),
+    sources: [], controllers: new WeakMapWithValues(), occurrences: new Map(), opened: 0,
+    keyPrefix: Math.random().toString(36).slice(2, 10),
   }
 
   /**
@@ -41,8 +50,13 @@ export class InputTriggerService extends Service implements InputTriggerServiceC
   constructor(ctx: Context) {
     super(ctx, 'inputTriggers')
     ctx.on('locale/change', () => {
-      for (const controller of this.live.controllers.values) controller.refreshOpenMenu()
+      for (const controller of [...this.live.controllers.values, ...this.live.occurrences.values()]) controller.refreshOpenMenu()
     })
+    // The prompt controllers go with the service; a mounted occurrence keeps a closed controller until it closes.
+    ctx.effect(() => () => {
+      for (const controller of this.live.occurrences.values()) controller.dispose()
+      this.live.occurrences.clear()
+    }, 'slash: prompt controllers')
   }
 
   /**
@@ -58,7 +72,7 @@ export class InputTriggerService extends Service implements InputTriggerServiceC
       throw new Error(`slash source "${src.trigger}${src.name}" is already registered`)
     }
     live.sources.push(src)
-    for (const controller of live.controllers.values) {
+    for (const controller of [...live.controllers.values, ...live.occurrences.values()]) {
       try {
         controller.sourceAdded(src)
       } catch (error) {
@@ -72,7 +86,7 @@ export class InputTriggerService extends Service implements InputTriggerServiceC
       const at = live.sources.indexOf(src)
       if (at < 0) return
       live.sources.splice(at, 1)
-      for (const controller of live.controllers.values) controller.sourceRemoved(src)
+      for (const controller of [...live.controllers.values, ...live.occurrences.values()]) controller.sourceRemoved(src)
     }
   }
 
@@ -97,8 +111,7 @@ export class InputTriggerService extends Service implements InputTriggerServiceC
     const existing = live.controllers.get(binding)
     if (existing !== undefined) return existing
     const controller = new InputTriggerController({
-      actx: binding.ctx,
-      sessionId: id,
+      host: sessionHost(binding.ctx, id),
       roster: {
         sources: trigger => live.sources.filter(s => s.trigger === trigger).sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
         all: () => live.sources,
@@ -110,6 +123,32 @@ export class InputTriggerService extends Service implements InputTriggerServiceC
       live.controllers.delete(binding)
     }, 'slash: session controller')
     return controller
+  }
+
+  controllerFor(options: PromptControllerOptions): { readonly key: string; readonly controller: InputTriggerController; dispose(): void } {
+    const { live } = this
+    live.opened += 1
+    const key = `prompt-${live.keyPrefix}-${String(live.opened)}`
+    const offered = (): InputTriggerSource[] => live.sources.filter(s => s.prompt !== undefined && options.sources().includes(s.name))
+    const controller = new InputTriggerController({
+      host: promptHost(options.context, options.deliver),
+      roster: {
+        sources: trigger => offered().filter(s => s.trigger === trigger).sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
+        all: offered,
+      },
+    })
+    live.occurrences.set(key, controller)
+    return {
+      key, controller,
+      dispose: () => {
+        controller.dispose()
+        live.occurrences.delete(key)
+      },
+    }
+  }
+
+  occurrence(key: string): InputTriggerController | undefined {
+    return this.live.occurrences.get(key)
   }
 
   private sessions(): ISessions {

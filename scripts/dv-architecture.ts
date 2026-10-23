@@ -1,5 +1,5 @@
 /**
- * Scan DreamVerse packages for the plugin rules R1-R8 and compare the violations with the ratchet baseline
+ * Scan DreamVerse packages for the plugin rules R1-R8 and R11 and compare the violations with the ratchet baseline
  * `scripts/dv-architecture.baseline.json`. `RULE_STATEMENTS` states each rule, and every failure line repeats it.
  */
 
@@ -26,6 +26,7 @@ export const RULE_STATEMENTS: Readonly<Record<string, string>> = {
   R6: 'No deep import into another package\'s src.',
   R7: 'Dependencies point down the layers; a ./types entry reaches no host-only module.',
   R8: 'A skill never names a consumer; only the package that owns a reference kind names its tools.',
+  R11: 'Only @dv/project/grammar writes a citation @[label](dv:<kind>/<id>); UI core, which imports it, writes no citation URI dv:<kind>/<id> by hand.',
   marker: 'The only exception marker is "// dv-arch-allow R<k>: temporary exception", and it suppresses a match on its line.',
 }
 
@@ -51,8 +52,8 @@ interface Facts {
   /** Members of each `Wire<Name>` interface of `ui-kit`, read by the exemption of wire-type guards (R5). */
   wireMembers: Map<string, Set<string>>
   primitivePackages: Set<string>
-  /** Packages whose `package.json` exports a `./types` entry. */
-  typesEntries: Set<string>
+  /** The browser entries that each host package's `package.json` exports, one of {@link CLIENT_ENTRIES} each (R7 b). */
+  clientEntries: Array<{ pkg: string; entry: string }>
   /** Packages whose `src` calls `registerReferenceKind(` or `defineReference(` (R8 f). */
   kindOwners: Set<string>
   /** The owner rows of `listOwners`, in walk order. */
@@ -102,7 +103,15 @@ const TOOL = /(?<!\w)dv_([a-z]+)_\w+/gu
 const CORE_TOOL = /^dv_(?:proj|asset|models)_/u
 const DIRECTING = /\b([a-z]+)-directing\b/gu
 const MARKER = /\/\/ dv-arch-allow (R\d+): (.*)$/u
-/** Modules that a `./types` entry must never reach (R7 b). */
+/**
+ * The text parts of a template that writes a citation, `@[${label}](${uri})`, and of one that writes a citation URI,
+ * `dv:<kind>/${id}`, with NUL for each substitution (R11).
+ */
+const CITATION_TEMPLATE = /@\[[^\]]*\]\((?:dv:|\0)/u
+const URI_TEMPLATE = /^dv:[^/\0]*\/\0/u
+/** The entries of a host package that the browser program reads, each at `src/<entry>.ts` (R7 b). */
+const CLIENT_ENTRIES = ['types', 'grammar']
+/** Modules that a `./types` or `./grammar` entry must never reach (R7 b). */
 const HOST_ONLY = /^(?:node:|@deepseek-ai\/(?:cordis|dsh-tools)(?:\/|$))/u
 const KIT_LINES = 300
 /** The kind words of R5j, matched in a literal without whitespace, such as `node.take` or `dv:timeline-focus`. */
@@ -179,11 +188,15 @@ function collectFacts(sources: readonly Source[], files: readonly ScanFile[]): F
   const facts: Facts = {
     packages: new Set(files.map(file => packageOf(file.path))), owners: new Map(), claims: [], providers: new Set(),
     primitives: new Set(), allPrimitives: new Set(), tasks: new Set(), wireMembers: new Map(), primitivePackages: new Set(),
-    typesEntries: new Set(), kindOwners: new Set(),
+    clientEntries: [], kindOwners: new Set(),
     ownerRows: [],
   }
   for (const file of files) {
-    if (file.path.endsWith('/package.json') && /"\.\/types"\s*:/u.test(file.text)) facts.typesEntries.add(packageOf(file.path))
+    for (const entry of CLIENT_ENTRIES) {
+      if (file.path.endsWith('/package.json') && new RegExp(`"\\./${entry}"\\s*:`, 'u').test(file.text)) {
+        facts.clientEntries.push({ pkg: packageOf(file.path), entry })
+      }
+    }
     const skill = file.path.endsWith('/SKILL.md') ? file.path.split('/').at(-2) : /([^/]+)\.md$/u.exec(file.path)?.[1]
     if (skill !== undefined) facts.ownerRows.push({ what: 'skill', name: skill, pkg: packageOf(file.path), where: `${file.path}:1`, extra: '' })
   }
@@ -257,8 +270,9 @@ function layerOf(pkg: string, facts: Facts): Layer {
 
 /**
  * R7 (a): whether package `from` may import `specifier`. Every UI layer value-imports `@dv/ui-kit` and type-imports the
- * `./contract` entry of a UI-core package; a UI plugin also value-imports a kit (`ui-lib`) and type-imports its host
- * package's `./types`; UI core imports no kit.
+ * `./contract` entry of a UI-core package; UI core alone also value-imports the kernel's pure grammar entry
+ * `@dv/project/grammar`; a UI plugin also value-imports a kit (`ui-lib`) and type-imports its host package's `./types`;
+ * UI core imports no kit.
  * @param typeOnly - the import is `import type` or `export type`.
  */
 function importAllowed(from: string, specifier: string, typeOnly: boolean, facts: Facts): boolean {
@@ -268,6 +282,7 @@ function importAllowed(from: string, specifier: string, typeOnly: boolean, facts
   if (UI_LAYERS.includes(source)) {
     if (to === 'ui-kit') return true
     if (typeOnly && target === 'ui-core' && specifier === `@dv/${to}/contract`) return true
+    if (source === 'ui-core' && specifier === '@dv/project/grammar') return true
     if (source !== 'ui') return false
     return target === 'ui-lib' || (typeOnly && specifier === `@dv/${from.slice('ui-'.length)}/types`)
   }
@@ -416,6 +431,7 @@ function scanSource({ path, pkg, sf }: Source, facts: Facts, out: Violation[]): 
   const workflowKey = (key: string): boolean => [...facts.owners.get(key) ?? []].some(owner => layerOf(owner, facts) === 'workflow')
   const inAlias = (node: ts.Node, name: string): boolean =>
     ts.findAncestor(node, n => ts.isTypeAliasDeclaration(n) && n.name.text === name) !== undefined
+  const grammar = path === 'packages/dv/project/src/grammar.ts'
   walk(sf, (node) => {
     const body = ts.isStringLiteralLike(node) || ts.isTemplateLiteralToken(node) ? node.text : undefined
     const report = (rule: string, text: string, offset = 0): number =>
@@ -430,6 +446,11 @@ function scanSource({ path, pkg, sf }: Source, facts: Facts, out: Violation[]): 
       if (!importAllowed(pkg, specifier, typeOnly, facts)) report('R7a', specifier)
     }
     const literal = ts.isStringLiteralLike(node) ? node.text : undefined
+    // R11: the text parts of a template, with one NUL in place of each substitution.
+    const template = ts.isTemplateExpression(node) && !grammar
+      ? [node.head.text, ...node.templateSpans.map(span => `\0${span.literal.text}`)].join('') : undefined
+    if (template !== undefined && CITATION_TEMPLATE.test(template)) report('R11a', node.getText(sf))
+    if (template !== undefined && layer === 'ui-core' && URI_TEMPLATE.test(template)) report('R11b', node.getText(sf))
     const access = ts.isPropertyAccessExpression(node) ? [textOf(node.expression), node.name.text]
       : ts.isElementAccessExpression(node) && ts.isStringLiteralLike(node.argumentExpression)
         ? [textOf(node.expression), node.argumentExpression.text] : []
@@ -492,12 +513,12 @@ function scanSource({ path, pkg, sf }: Source, facts: Facts, out: Violation[]): 
 }
 
 /**
- * R7 (b): each module that the `./types` entry (`src/types.ts`) of a host package reaches through its imports and its
- * `declare module` targets, when that module imports `node:*`, cordis or dsh-tools.
+ * R7 (b): each module that a browser entry (`./types` at `src/types.ts`, `./grammar` at `src/grammar.ts`) of a host
+ * package reaches through its imports and its `declare module` targets, when that module imports `node:*`, cordis or
+ * dsh-tools.
  */
 function scanTypesEntries(sources: readonly Source[], facts: Facts): Violation[] {
   const byPath = new Map(sources.map(source => [source.path, source]))
-  // A relative path resolves among the scanned files; `@dv/<pkg>` to `src/index.ts`, `@dv/<pkg>/types` to `src/types.ts`.
   const resolve = (from: string, specifier: string): string | undefined => {
     if (specifier.startsWith('.')) {
       const path = posix.join(posix.dirname(from), specifier)
@@ -506,11 +527,11 @@ function scanTypesEntries(sources: readonly Source[], facts: Facts): Violation[]
     const [scope, pkg, ...rest] = specifier.split('/')
     if (scope !== '@dv' || pkg === undefined) return undefined
     const sub = rest.join('/')
-    return `packages/dv/${pkg}/${sub === '' ? 'src/index.ts' : sub === 'types' ? 'src/types.ts' : sub}`
+    return `packages/dv/${pkg}/${sub === '' ? 'src/index.ts' : CLIENT_ENTRIES.includes(sub) ? `src/${sub}.ts` : sub}`
   }
   const violations: Violation[] = []
-  for (const pkg of [...facts.typesEntries].filter(name => !['ui', 'ui-core'].includes(layerOf(name, facts)))) {
-    const queue = [`packages/dv/${pkg}/src/types.ts`]
+  for (const { pkg, entry } of facts.clientEntries.filter(face => !['ui', 'ui-core'].includes(layerOf(face.pkg, facts)))) {
+    const queue = [`packages/dv/${pkg}/src/${entry}.ts`]
     const seen = new Set<string>()
     for (let path = queue.pop(); path !== undefined; path = queue.pop()) {
       const source = byPath.get(path)
@@ -521,7 +542,7 @@ function scanTypesEntries(sources: readonly Source[], facts: Facts): Violation[]
           : ts.isModuleDeclaration(node) && ts.isStringLiteral(node.name) ? node.name.text : undefined
         if (target === undefined) return
         if (HOST_ONLY.test(target)) {
-          violations.push({ file: path, line: lineOf(source.sf, node), rule: 'R7b', text: `@dv/${pkg}/types reaches ${target}` })
+          violations.push({ file: path, line: lineOf(source.sf, node), rule: 'R7b', text: `@dv/${pkg}/${entry} reaches ${target}` })
         }
         const next = resolve(path, target)
         if (next !== undefined) queue.push(next)
@@ -574,7 +595,7 @@ export function listOwners(files: readonly ScanFile[]): OwnerRow[] {
 }
 
 /**
- * Run R1-R8 over a set of files.
+ * Run R1-R8 and R11 over a set of files.
  * @param files - the repository files from `readScanFiles`, or the files of a fixture.
  * @returns every violation that no valid exception marker suppresses.
  */

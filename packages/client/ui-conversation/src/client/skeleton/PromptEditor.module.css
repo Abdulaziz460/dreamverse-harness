@@ -1,0 +1,42 @@
+.prompt {
+  position: relative;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 12px;
+  background: var(--dsw-alias-bg-l1);
+}
+
+.scroll {
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.grow {
+  position: relative;
+}
+
+.input {
+  box-sizing: border-box;
+  min-height: 72px;
+  padding: 8px 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  outline: none;
+}
+
+.input p {
+  margin: 0;
+}
+
+/* The placeholder sits over the empty first line, at the input's pads. */
+.placeholder {
+  position: absolute;
+  inset: 8px 12px auto 12px;
+  color: var(--dsw-alias-label-caption);
+  pointer-events: none;
+  user-select: none;
+}
+
+.readOnly .input {
+  min-height: 0;
+}

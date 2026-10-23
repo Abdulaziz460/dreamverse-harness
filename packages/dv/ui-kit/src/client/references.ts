@@ -1,25 +1,18 @@
 /**
- * The reference assets a shot sends to the video model, the reference images among them in the order its prompt names
- * them (`Picture 1`, `Picture 2`, …), and the split of a prompt at those names, so a view can show each named image
- * instead of the bare label.
+ * The input references of the views: the reference text of a stored input reference, the request inputs of a stored
+ * record, and the assets that reference texts stand for, in the order that `shot.render` in task `ref2v` sends them: the
+ * resolved `reference` inputs in input order, where a version of a reference kind stands for all of its reference
+ * assets in the version's order.
  *
- * The order matches `shot.render` in task `ref2v`: the resolved `reference` inputs in input order, where a version of
- * a reference kind stands for all of its reference assets in the version's order. The `first_frame`
- * input of a shot that continues the previous shot (the previous take's last still) is not a reference: the model names
- * it after the reference images (`Picture N+1`, where N is the number of reference images). A shot in task `t2v`
- * renders from the prompt alone and has no references.
- *
- * Client code names no reference kind: it reads a version reference with {@link versionRefOf}, reads the version that
- * a reference text names with {@link parseVersionedReference}, and writes any stored input reference as text with
- * {@link formatInputRef}.
+ * Client code names no reference kind: it reads a version reference with {@link versionRefOf}, reads and writes
+ * reference text with the kernel's `splitInputRef` and `formatInputSyntax` of `@dv/project/grammar`, and writes any
+ * stored input reference as text with {@link formatInputRef}.
  *
  * @module @dv/ui-kit/references
  */
+import { formatInputSyntax, splitInputRef } from '@dv/project/grammar'
 import type { VersionKind } from './registries.ts'
-import type { ProjectAsset, WireInputRef, WireState } from './types.ts'
-
-/** One run of a prompt: plain text, or a `Picture N` or `<Picture N>` token that names the N-th (1-based) reference image. */
-export type PicturePart = { text: string } | { picture: number; text: string }
+import type { ProjectAsset, ProjectRecord, WireInputRef, WireState } from './types.ts'
 
 /**
  * The kind, ID and version of a stored input reference that names a version of a reference kind.
@@ -38,22 +31,25 @@ export function versionRefOf(ref: WireInputRef): { kind: string; id: string; ver
  * @returns `<asset>`, `<record>#<output>`, or `<id>@<version>` for a version of any reference kind.
  */
 export function formatInputRef(ref: WireInputRef): string {
-  if (!('version' in ref)) return 'asset' in ref ? ref.asset : `${ref.record}#${String(ref.output)}`
+  if (!('version' in ref)) return formatInputSyntax(ref)
   const named = versionRefOf(ref)
-  return named === null ? JSON.stringify(ref) : `${named.id}@${String(named.version)}`
+  return named === null ? JSON.stringify(ref) : formatInputSyntax(named)
 }
 
 /**
- * The ID and version that a reference text names as `<id>@<version>`, read with the grammar of `parseInputRef` in
- * `@dv/project`: the text after the last `@`, when that `@` is not the first character, converts with `Number` to an
- * integer.
- * @param ref - one reference text.
- * @returns the ID and the version, or null for an asset ID or a `<record>#<output>` text.
+ * The request inputs of a stored record, as an operation request takes them: a record holds one input per asset of a
+ * version, and a request names the version once.
+ * @param record - the record.
+ * @returns the inputs in stored order, each version once.
  */
-export function parseVersionedReference(ref: string): { id: string; version: number } | null {
-  const at = ref.lastIndexOf('@')
-  const version = at > 0 ? Number(ref.slice(at + 1)) : Number.NaN
-  return Number.isInteger(version) ? { id: ref.slice(0, at), version } : null
+export function requestInputsOf(record: Pick<ProjectRecord, 'inputs'>): Array<{ role: string; ref: string }> {
+  const inputs: Array<{ role: string; ref: string }> = []
+  for (const input of record.inputs) {
+    const ref = formatInputRef(input.ref)
+    const previous = inputs.at(-1)
+    if (!('version' in input.ref) || previous?.role !== input.role || previous.ref !== ref) inputs.push({ role: input.role, ref })
+  }
+  return inputs
 }
 
 /**
@@ -71,34 +67,35 @@ export function referenceAssets(state: WireState, references: readonly string[],
   const held = new Map(state.assets.map(asset => [asset.id, asset]))
   const heldAssets = (ids: readonly string[]): ProjectAsset[] => ids.flatMap(id => held.get(id) ?? [])
   return references.flatMap((ref) => {
-    const hash = ref.lastIndexOf('#')
-    const output = hash > 0 ? Number(ref.slice(hash + 1)) : Number.NaN
-    if (Number.isInteger(output) && output >= 0) {
-      const asset = records.get(ref.slice(0, hash))?.outputs[output]
+    const syntax = splitInputRef(ref)
+    if ('asset' in syntax) return heldAssets([syntax.asset])
+    if ('record' in syntax) {
+      const asset = records.get(syntax.record)?.outputs[syntax.output]
       return asset === undefined ? [] : heldAssets([asset])
     }
-    const named = parseVersionedReference(ref)
-    if (named === null) return heldAssets([ref])
-    return heldAssets(kinds.map(kind => kind.assets(state, named.id, named.version)).find(assets => assets.length > 0) ?? [])
+    return heldAssets(kinds.map(kind => kind.assets(state, syntax.id, syntax.version)).find(assets => assets.length > 0) ?? [])
   })
 }
 
 /**
- * Split a prompt at its `Picture N` and `picture N` tokens (N a whole number from 1). A token in angle brackets, as in
- * `<Picture 1>`, includes the brackets, so a view that draws the image drops them too.
- * @param prompt - the shot prompt.
- * @returns the text runs and tokens in prompt order; a token keeps its original text for alt text and screen readers.
+ * The items that reference texts name, in input order, as a view lists them: a version `<id>@<version>` by the name
+ * that the first of `kinds` holding it gives, with its first reference asset; a record output and an asset by the
+ * asset's name. A text the state cannot resolve gives no item.
+ * @param state - the project state the references are read against.
+ * @param references - the reference texts, in input order.
+ * @param kinds - the registered version kinds.
+ * @returns the items; a version without a reference asset has a null asset.
  */
-export function pictureParts(prompt: string): PicturePart[] {
-  const parts: PicturePart[] = []
-  let last = 0
-  for (const match of prompt.matchAll(/<[Pp]icture (\d+)>|\b[Pp]icture (\d+)\b/g)) {
-    const picture = Number(match[1] ?? match[2])
-    if (picture < 1) continue
-    if (match.index > last) parts.push({ text: prompt.slice(last, match.index) })
-    parts.push({ picture, text: match[0] })
-    last = match.index + match[0].length
-  }
-  if (last < prompt.length) parts.push({ text: prompt.slice(last) })
-  return parts
+export function referenceItems(
+  state: WireState, references: readonly string[], kinds: readonly VersionKind[],
+): Array<{ name: string; asset: ProjectAsset | null }> {
+  return references.flatMap((ref) => {
+    const syntax = splitInputRef(ref)
+    if (!('version' in syntax)) return referenceAssets(state, [ref], kinds).map(asset => ({ name: asset.name, asset }))
+    for (const kind of kinds) {
+      const name = kind.name(state, syntax.id, syntax.version)
+      if (name !== null) return [{ name, asset: referenceAssets(state, [ref], [kind])[0] ?? null }]
+    }
+    return []
+  })
 }

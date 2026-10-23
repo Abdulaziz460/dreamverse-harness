@@ -1,14 +1,16 @@
 /**
  * The `@` source that lists the project items of the project the shell has open: the items of the mention kinds that
  * plugin UI halves register in `dvMentions`, and assets of every media type. A pick inserts a reference chip whose text
- * is `@[<label>](dv:<kind>/<id>)`; the host plugin `@dv/chat-references` expands that address into record and asset IDs
- * for the model, and puts the assets of the `dv:asset/<id>` chips of a sent message on the canvas.
+ * is the citation `@[<label>](dv:<kind>/<id>)` that `formatCitation` of `@dv/project/grammar` writes; the host plugin
+ * `@dv/chat-references` expands that address into record and asset IDs for the model.
  *
  * @module @dv/ui-composer/mention
  */
 import { createElement, type ComponentType } from 'react'
-import type { InputTriggerCandidate, InputTriggerSource } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
+import type { InputTriggerCandidate, InputTriggerSource, PickOutcome } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
+import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { IconPaperclipOutlineRegular, type IconProps } from '@deepseek-ai/dsh-client-ui-primitives'
+import { citationTarget, citationUri, citedAsset, citedElement, formatCitation } from '@dv/project/grammar'
 import { assetUrl, DvClient } from '@dv/ui-kit/api.ts'
 import type { DvMentions, MentionKind } from '@dv/ui-kit/registries.ts'
 import { mediaTypeOf } from '@dv/ui-kit/media-type.ts'
@@ -19,16 +21,6 @@ import type { MediaType } from '@dv/ui-media/contract'
 
 /** The source name; reference chips carry it so their codec serializes them. */
 export const MENTION_SOURCE = 'dv-project'
-
-/**
- * The reference text of one project item.
- * @param label - the chip label.
- * @param uri - the `dv:` address.
- * @returns `@[label](uri)`.
- */
-export function referenceText(label: string, uri: string): string {
-  return `@[${label.replaceAll(']', '')}](${uri})`
-}
 
 function poster(url: string): ComponentType<IconProps> {
   // Sized to stay clear of the label in the 14 px icon column of the @ menu.
@@ -51,6 +43,8 @@ interface Item {
   section: string
   description?: string
   icon?: ComponentType<IconProps>
+  /** The asset that shows the item: the asset itself, or the thumb of a mention kind's item. */
+  shows?: string
 }
 
 /**
@@ -67,53 +61,93 @@ export function projectItems(state: WireState, kinds: readonly MentionKind[], ty
   const mentioned = [...kinds].sort((a, b) => a.order - b.order).flatMap((kind) => {
     const section = kind.section()
     return kind.items(state).map(({ thumb, ...item }): Item => ({
-      ...item, section, ...thumb === undefined ? {} : { icon: assetIcon(assetsById.get(thumb), types, state) },
+      ...item, section, ...thumb === undefined ? {} : { icon: assetIcon(assetsById.get(thumb), types, state), shows: thumb },
     }))
   })
   const assets = state.assets.slice(-40).reverse().map((asset): Item => ({
-    uri: `dv:asset/${encodeURIComponent(asset.id)}`, label: asset.name, section: pickText('素材', 'Assets'), icon: assetIcon(asset, types, state),
+    uri: citationUri('asset', asset.id), label: asset.name, section: pickText('素材', 'Assets'), icon: assetIcon(asset, types, state),
+    shows: asset.id,
   }))
   return [...mentioned, ...assets]
 }
 
+/** A JSON object, else null. */
+function objectOf(value: JsonValue | undefined): { readonly [key: string]: JsonValue } | null {
+  return typeof value === 'object' && value !== null && !Array.isArray(value) ? value : null
+}
+
+/** The strings of a JSON list, else null. */
+function stringsOf(value: JsonValue | undefined): readonly string[] | null {
+  return Array.isArray(value) ? value.filter(item => typeof item === 'string') : null
+}
+
+/** What a prompt occurrence's source context names, each null when the context names none. */
+interface PromptFilter {
+  /** The media types that the call's model takes. */
+  readonly media: readonly string[] | null
+  /** The kinds whose items a version kind reads, which an input of the call can satisfy. */
+  readonly kinds: readonly string[] | null
+}
+
+/** The filter that a prompt occurrence's source context names. */
+function promptFilterOf(context: JsonValue | null): PromptFilter {
+  const fields = objectOf(context)
+  return { media: stringsOf(objectOf(fields?.['filter'])?.['mediaTypes']), kinds: stringsOf(fields?.['kinds']) }
+}
+
 /**
- * The `@` source over the `/api/dv` routes.
+ * The `@` source over the `/api/dv` routes. A prompt occurrence outside a Session reaches it through its `prompt`
+ * face with the media types that its call's model takes and the kinds that a version kind reads; an item whose asset
+ * is of another media type, and an item of another kind, such as a timeline clip, is not offered there, because no input
+ * of the call can satisfy it.
  * @param mentions - the mention kinds that plugin UI halves register.
  * @param mediaTypes - reads the registered media types when the menu lists its candidates.
  * @returns the source.
  */
 export function projectMentionSource(mentions: DvMentions, mediaTypes: () => readonly MediaType[]): InputTriggerSource {
   const client = new DvClient()
+  /**
+   * The candidates of a query: a media filter keeps the items whose asset is of a media type the call's model takes, and
+   * a kinds filter keeps the assets and the items of those kinds.
+   */
+  async function candidates(query: string, signal: AbortSignal, { media, kinds }: PromptFilter): Promise<readonly InputTriggerCandidate[]> {
+    const projectId = getCurrentProject()
+    if (projectId === null) return []
+    const state = await client.getState(projectId, signal)
+    const needle = query.toLowerCase()
+    const mimes = new Map(state.assets.map(asset => [asset.id, asset.mime]))
+    const taken = (asset: string): boolean => media === null || media.includes(mediaTypeOf(mimes.get(asset) ?? ''))
+    const seen = new Map<string, number>()
+    return projectItems(state, mentions.kinds.getSnapshot(), mediaTypes())
+      .filter(item => item.shows === undefined || taken(item.shows))
+      .filter(item => kinds === null || citedAsset(item.uri) !== null || kinds.includes(citedElement(item.uri)?.kind ?? ''))
+      .filter(item => needle === '' || item.label.toLowerCase().includes(needle) || (item.description ?? '').toLowerCase().includes(needle))
+      .map((item): InputTriggerCandidate => {
+        const count = (seen.get(item.label) ?? 0) + 1
+        seen.set(item.label, count)
+        return {
+          name: count === 1 ? item.label : `${item.label} (${String(count)})`, section: item.section, value: JSON.stringify({ uri: item.uri, label: item.label }),
+          ...item.description === undefined ? {} : { description: item.description },
+          ...item.icon === undefined ? {} : { icon: item.icon },
+        }
+      })
+  }
+  function insert(candidate: InputTriggerCandidate): PickOutcome {
+    const { uri, label } = JSON.parse(candidate.value ?? '{}') as { uri?: string; label?: string }
+    const target = uri === undefined ? null : citationTarget(uri)
+    if (target === null || label === undefined) return undefined
+    const text = formatCitation(label, target.kind, target.id)
+    return { insert: { source: MENTION_SOURCE, ref: text, label, clipboardText: text } }
+  }
   return {
     trigger: '@',
     name: MENTION_SOURCE,
     showGroupTitle: false,
-    async candidates(_session, { query, signal }): Promise<readonly InputTriggerCandidate[]> {
-      // The project the shell has open; the entry page lists nothing.
-      const projectId = getCurrentProject()
-      if (projectId === null) return []
-      const state = await client.getState(projectId, signal)
-      const needle = query.toLowerCase()
-      // The menu shows a candidate name that differs from its label as a trailing alias, so the name is the label
-      // (numbered when labels repeat) and the `dv:` address travels in `value`.
-      const seen = new Map<string, number>()
-      return projectItems(state, mentions.kinds.getSnapshot(), mediaTypes())
-        .filter(item => needle === '' || item.label.toLowerCase().includes(needle) || (item.description ?? '').toLowerCase().includes(needle))
-        .map((item): InputTriggerCandidate => {
-          const count = (seen.get(item.label) ?? 0) + 1
-          seen.set(item.label, count)
-          return {
-            name: count === 1 ? item.label : `${item.label} (${String(count)})`, section: item.section, value: JSON.stringify({ uri: item.uri, label: item.label }),
-            ...item.description === undefined ? {} : { description: item.description },
-            ...item.icon === undefined ? {} : { icon: item.icon },
-          }
-        })
-    },
-    onPick({ candidate }) {
-      const { uri, label } = JSON.parse(candidate.value ?? '{}') as { uri?: string; label?: string }
-      if (uri === undefined || label === undefined) return undefined
-      const text = referenceText(label, uri)
-      return { insert: { source: MENTION_SOURCE, ref: text, label, clipboardText: text } }
+    candidates: (_session, { query, signal }) => candidates(query, signal, { media: null, kinds: null }),
+    onPick: ({ candidate }) => insert(candidate),
+    prompt: {
+      candidates: ({ query, signal, context }) => candidates(query, signal, promptFilterOf(context)),
+      onPick: ({ candidate }) => insert(candidate),
     },
     codec: {
       clipboardText: ref => ref,

@@ -14,7 +14,7 @@ import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SkillRegistry from '@deepseek-ai/dsh-skill'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import DvModels, { formatModelKey, modelKey, servesTask, type ModelEntry, type RenderModelFacts, type TaskId } from '../src/index.ts'
 
 /** The facts every fake entry reports. */
@@ -143,6 +143,30 @@ describe('dvModels', () => {
     const refs = await call(ctx, 'dv_models_list', { task: 'ref2v' })
     if (refs.isError) throw new Error(refs.error.message)
     expect(refs.value).toEqual([{ modality: 'video', task: 'ref2v', provider: 'test', model: 'alpha', description: 'alpha for ref2v' }])
+  })
+
+  it('lists the catalog as dv_models_get answers each entry, with schema null for a backend it cannot reach', async () => {
+    const ctx = await start()
+    ctx.dvModels.register({ ...entry('t2v', 'down', 'gamma'), schema: () => Promise.reject(new Error('connection refused')) })
+    expect(await ctx.dvModels.catalog()).toEqual([
+      { modality: 'video', task: 't2v', provider: 'test', model: 'alpha', description: 'alpha for t2v', schema: { inputs: {}, extra: {} } },
+      {
+        modality: 'video', task: 'ref2v', provider: 'test', model: 'alpha', description: 'alpha for ref2v',
+        schema: { inputs: { reference: { media_types: ['image'] } }, extra: {} },
+      },
+      { modality: 'video', task: 't2v', provider: 'other', model: 'beta', description: 'beta for t2v', schema: { inputs: {}, extra: {} } },
+      { modality: 'video', task: 't2v', provider: 'down', model: 'gamma', description: 'gamma for t2v', schema: null },
+    ])
+  })
+
+  it('lists an entry whose schema does not answer within catalogSchemaTimeoutMs with schema null', async () => {
+    const ctx = await start()
+    vi.useFakeTimers()
+    ctx.dvModels.register({ ...entry('t2v', 'slow', 'delta'), schema: () => new Promise(() => {}) })
+    const listed = ctx.dvModels.catalog()
+    await vi.advanceTimersByTimeAsync(5000)
+    expect((await listed).at(-1)).toEqual({ modality: 'video', task: 't2v', provider: 'slow', model: 'delta', description: 'delta for t2v', schema: null })
+    vi.useRealTimers()
   })
 
   it('answers dv_models_get with one entry\'s key, description and schema, and names an unknown key', async () => {

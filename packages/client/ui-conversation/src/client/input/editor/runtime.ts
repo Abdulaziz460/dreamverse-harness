@@ -3,7 +3,7 @@ import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type { LexicalEditor, NodeKey } from 'lexical'
 import {
   $addUpdateTag, $createParagraphNode, $createTextNode, $getRoot, $getSelection, $isRangeSelection,
-  CLEAR_HISTORY_COMMAND, createEditor, HISTORY_MERGE_TAG, PASTE_TAG,
+  CLEAR_HISTORY_COMMAND, createEditor, HISTORY_MERGE_TAG, HISTORY_PUSH_TAG, PASTE_TAG,
 } from 'lexical'
 import { registerPlainText } from '@lexical/plain-text'
 import { createEmptyHistoryState, registerHistory } from '@lexical/history'
@@ -14,15 +14,16 @@ import { ReferenceChipNode, $createReferenceChipNode } from './chip-node.tsx'
 import { refreshClaimDecoration, registerClaimDecoration } from './claim-decor.ts'
 import { registerTextRefDecoration, rescanTextRefs, TextRefNode } from './text-ref.ts'
 import type { EditorProjection } from './projection.ts'
-import { $composerLayout, $projectComposer, detectOffsetOfClipboardOffset } from './projection.ts'
-import { $replaceDetectSpanWithNodes, $replaceDetectSpanWithText } from './span-map.ts'
+import { $composerLayout, $projectComposer, clipboardOffsetOfDetectOffset, detectOffsetOfClipboardOffset } from './projection.ts'
+import { $replaceDetectSpanWithNodes, $replaceDetectSpanWithText, $selectDetectSpan } from './span-map.ts'
 import type { DetectSpan } from './span-map.ts'
 
 type Lexicon = ReadonlyMap<'/' | '@', readonly string[]>
 
 /** Model callbacks read at the same editor registration and update points. */
 interface DraftEditorRuntimeDeps {
-  readonly onUpdate: () => void
+  /** Called after each committed update with the update's tags, such as the history tag of an undo. */
+  readonly onUpdate: (tags: ReadonlySet<string>) => void
   readonly openReference: (source: string | undefined, reference: Pick<ReferenceInsert, 'ref' | 'appearance'>) => boolean
   readonly activeClaimToken: () => string | null
   readonly lexicon: () => Lexicon
@@ -70,7 +71,7 @@ export class DraftEditorRuntime {
       registerReferenceActivation(this.editor, (source, reference) =>
         this.deps.openReference(source, reference)),
       registerHistory(this.editor, createEmptyHistoryState(), HISTORY_MERGE_DELAY_MS),
-      this.editor.registerUpdateListener(() => { this.deps.onUpdate() }),
+      this.editor.registerUpdateListener(({ tags }) => { this.deps.onUpdate(tags) }),
       registerClaimDecoration(this.editor, () => this.deps.activeClaimToken()),
       registerTextRefDecoration(this.editor, () => this.deps.lexicon(), () => this.deps.activeClaimToken()),
       () => { this.lexiconOff?.() },
@@ -290,8 +291,39 @@ export class DraftEditorRuntime {
    * @param draft - clipboard text.
    * @param occurrences - reference occurrences in clipboard order.
    */
-  restoreDraft(draft: string, occurrences: readonly Occurrence[]): void {
+  restoreDraft(draft: string, occurrences: readonly Omit<Occurrence, 'occurrenceId'>[]): void {
+    this.rebuild(draft, occurrences, HISTORY_MERGE_TAG, null)
+  }
+
+  /**
+   * Replace the whole content with fresh reference nodes as one undoable step, so that one undo brings back the
+   * content it replaced.
+   * @param draft - clipboard text.
+   * @param occurrences - reference occurrences in clipboard order.
+   */
+  replaceDraft(draft: string, occurrences: readonly Omit<Occurrence, 'occurrenceId'>[]): void {
+    this.rebuild(draft, occurrences, HISTORY_PUSH_TAG, null)
+  }
+
+  /**
+   * Replace the whole content with fresh reference nodes inside the last undoable step, with the caret at the clipboard
+   * offset it had, so that one undo takes back the edit and this replacement together.
+   * @param draft - clipboard text.
+   * @param occurrences - reference occurrences in clipboard order.
+   */
+  mergeDraft(draft: string, occurrences: readonly Omit<Occurrence, 'occurrenceId'>[]): void {
+    this.rebuild(draft, occurrences, HISTORY_MERGE_TAG, this.projection.caret)
+  }
+
+  /**
+   * Rebuild the root from clipboard text and its occurrences, tagging the update for the undo history. The caret lands
+   * at the end, or at the clipboard offset of the detect offset `caret` of the content it replaces.
+   */
+  private rebuild(
+    draft: string, occurrences: readonly Omit<Occurrence, 'occurrenceId'>[], tag: string, caret: number | null,
+  ): void {
     this.editor.update(() => {
+      const kept = caret === null ? null : clipboardOffsetOfDetectOffset($composerLayout(), caret)
       const root = $getRoot()
       root.clear()
       let paragraph = $createParagraphNode()
@@ -320,8 +352,13 @@ export class DraftEditorRuntime {
         cursor = occurrence.offset + occurrence.length
       }
       appendText(draft.slice(cursor))
-      root.selectEnd()
-    }, { discrete: true, tag: HISTORY_MERGE_TAG })
+      if (kept === null) {
+        root.selectEnd()
+        return
+      }
+      const at = detectOffsetOfClipboardOffset($composerLayout(), kept)
+      $selectDetectSpan({ start: at, end: at })
+    }, { discrete: true, tag })
   }
 
   /** Cut the editor's undo history after a committed clear or restoration. */

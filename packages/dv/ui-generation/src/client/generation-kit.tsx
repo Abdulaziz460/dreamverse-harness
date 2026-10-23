@@ -1,7 +1,9 @@
 /**
- * The browser counterpart of `defineGeneration`: one `defineGenerationUi` call per generation primitive defines the UI
- * plugin that registers the primitive's claimed node type, canvas card and editor, 重试 action, chat cards, and History
- * rows. The canvas computes the takes' lineage; the kit supplies the title, the media, the copy, and the rerun UI.
+ * The browser twin of `defineGeneration`: one `defineGenerationUi` call per generation primitive defines the UI plugin
+ * that registers the primitive's claimed node type, its `dv.canvas.card` and `dv.canvas.editor.claimed` entries, the
+ * 重试 action of its failed takes, the chat card of each operation's agent tool, the History row of each operation, and
+ * the composer's parameter bar of each operation. The canvas computes the takes' lineage; the kit supplies the title, the
+ * media, the copy and the rerun UI.
  *
  * @module @dv/ui-generation/generation-kit
  */
@@ -14,10 +16,11 @@ import type { HistoryRow, Text } from '@dv/ui-history/contract'
 import { DvClient } from '@dv/ui-kit/api.ts'
 import { NODE_FRAME_HEIGHT } from '@dv/ui-kit/frame.ts'
 import { pickText } from '@dv/ui-kit/locale.ts'
-import { formatInputRef } from '@dv/ui-kit/references.ts'
+import { requestInputsOf } from '@dv/ui-kit/references.ts'
 import type { UiPlugin } from '@dv/ui-kit/registries.ts'
 import { toolNameOf } from '@dv/ui-kit/tool-labels.ts'
 import type { Asset, ProjectRecord, WireState } from '@dv/ui-kit/types.ts'
+import type { ParamBar, PromptCopy } from '@dv/ui-composer/contract'
 import type { MediaAsset } from '@dv/ui-media/contract'
 import { GenerationCard } from './GenerationCard.tsx'
 import type { GenerationCardInjected, StatusWords } from './GenerationCard.tsx'
@@ -45,16 +48,25 @@ export interface GenerationUiSpec {
   /** Default 117, the 16:9 frame at the 208 card width. */
   bodyHeight?: number
   status: StatusWords
-  /** Whether the take editor offers reference chips for a take, when its operation declares a `reference` input; default yes. */
-  references?(record: ProjectRecord): boolean
   /** The History subject of a record; default none. */
   subject?(record: ProjectRecord): Text | null
+  /**
+   * The parameter bar of the kind's take editors: the `placeholder` and `send` words, which the neutral words of the
+   * composer replace when absent, the chips of a call under a model's schema, and the `@` filter of a model. The kit
+   * registers it for each operation, owned by `id`, with `status.running` as the words while a send runs.
+   */
+  bar?: GenerationBar
   /**
    * The output that stands for a take in small views (the frame of its anchor's grid, its History thumbnail) and that the
    * players of its editor and its chat card show before they play, when it is not the first output; read from the
    * take's outputs, in output order.
    */
   preview?(outputs: readonly MediaAsset[]): string | undefined
+}
+
+/** The parameter bar that a generation kind declares; the kit adds the operation, the owner and the running words. */
+export interface GenerationBar extends Pick<ParamBar, 'chips' | 'candidates'> {
+  readonly copy?: Pick<PromptCopy, 'placeholder' | 'send'>
 }
 
 const outputsIn = (record: ProjectRecord, state: WireState): Asset[] =>
@@ -107,13 +119,15 @@ export function defineGenerationUi(spec: GenerationUiSpec): UiPlugin {
     order: 0,
     shows: (node): node is ClaimedNodeView => node.claimed && node.flags.failed && operations.has(node.record.operation),
     run({ record, title }, host) {
-      // The request is the record's own operation, inputs and params, as 渲染新版本 sends it when nothing was edited.
       host.rerun({
-        operation: record.operation, inputs: record.inputs.map(input => ({ role: input.role, ref: formatInputRef(input.ref) })),
+        operation: record.operation, inputs: requestInputsOf(record),
         params: record.params, intent: pickText(`在画布上重试 ${title}`, `Retry ${title} from the canvas`), based_on: record.id,
       })
     },
   }
+  const bars: ParamBar[] = spec.operations.map(operation => ({
+    ...spec.bar, operation, owner: spec.id, copy: { ...spec.bar?.copy, sending: spec.status.running },
+  }))
   const rows: HistoryRow[] = spec.operations.map(match => ({
     match,
     subject: record => spec.subject?.(record) ?? null,
@@ -123,9 +137,7 @@ export function defineGenerationUi(spec: GenerationUiSpec): UiPlugin {
     inject: [],
     apply: (ctx) => {
       const labels = labelSources(new DvClient())
-      const editor: TakeEditorInjected = {
-        hooks: { taskLabels: labels.hooks.taskLabels }, status: spec.status, references: record => spec.references?.(record) ?? true,
-      }
+      const editor: TakeEditorInjected = { hooks: { taskLabels: labels.hooks.taskLabels } }
       // The canvas parts of the kind share one scope with the node type first, so a refused type leaves none of them.
       ctx.inject(['dvCanvas', 'slots'], (scope) => {
         scope.effect(() => scope.dvCanvas.nodeTypes.register(nodeType), `${spec.id}: node type`)
@@ -144,6 +156,12 @@ export function defineGenerationUi(spec: GenerationUiSpec): UiPlugin {
           scope.effect(() => scope.slots.inject('tool.call.toolview', () => scope.slots.register(
             { name: 'tool.call.toolview', key: toolNameOf(operation), inject: () => card }, GenerationCard,
           )), `${spec.id}: chat card of ${operation}`)
+        }
+      })
+      // Each operation's bar gives its take editor the kind's words and chips while the composer is loaded.
+      ctx.inject(['dvComposer'], (scope) => {
+        for (const bar of bars) {
+          scope.effect(() => scope.dvComposer.paramBars.register(bar), `${spec.id}: parameter bar of ${bar.operation}`)
         }
       })
       ctx.inject(['dvHistory'], (history) => {

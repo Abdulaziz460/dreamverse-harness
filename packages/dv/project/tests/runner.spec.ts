@@ -200,6 +200,71 @@ describe('Runner', () => {
     expect((await m.runner.run(request(project, 'shot.render'))).record?.status).toBe('done')
   })
 
+  it('checks a call with the sentence that run refuses it with, and the estimate, writing nothing', async () => {
+    const m = startModules()
+    const project = await createTestProject(m)
+    m.runner.registerOperation(operation({
+      name: 'shot.render', component: 'shot', estimate: params => ({ gpu_seconds: Number(params['seed'] ?? 5) * 3 }),
+      precondition: call => call.params['prompt'] === 'refuse' ? Promise.reject(new Error('This shot has no reference image.')) : Promise.resolve(),
+    }))
+    const before = files(m, project)
+    const calls: Array<Partial<RunRequest>> = [
+      { params: { prompt: 5 } },
+      { inputs: [{ role: 'mask', ref: { asset: m.assets.add('mask') } }] },
+      { inputs: [{ role: 'reference', ref: { asset: brandString<AssetId>('no-such-asset') } }] },
+      { params: { prompt: 'refuse' } },
+    ]
+    for (const extra of calls) {
+      const refusal = await m.runner.run(request(project, 'shot.render', userOrigin(), extra)).then(() => '', (error: unknown) => (error as Error).message)
+      expect(refusal).not.toBe('')
+      expect(await m.runner.check(request(project, 'shot.render', userOrigin(), extra))).toEqual({ problems: [refusal], gpu_seconds: null })
+    }
+    expect(await m.runner.check(request(project, 'unregistered'))).toEqual({ problems: ['Operation unregistered is not registered.'], gpu_seconds: null })
+    expect(await m.runner.check(request(project, 'shot.render', userOrigin(), { params: { prompt: 'a kite', seed: 2 } })))
+      .toEqual({ problems: [], gpu_seconds: 6 })
+    m.runner.registerOperation(operation({ name: 'shot.note', component: 'shot' }))
+    expect(await m.runner.check(request(project, 'shot.note'))).toEqual({ problems: [], gpu_seconds: null })
+    expect(files(m, project)).toBe(before)
+  })
+
+  it('checks a call whose estimate throws on a param that the call refuses with the refusal, not a rejection', async () => {
+    const m = startModules()
+    const project = await createTestProject(m)
+    m.runner.registerOperation(operation({
+      name: 'shot.still', component: 'shot',
+      estimate: (params) => {
+        if (typeof params['size'] !== 'string') throw new Error('size must be WIDTHxHEIGHT.')
+        return { gpu_seconds: 1 }
+      },
+      precondition: call => typeof call.params['size'] === 'string' ? Promise.resolve() : Promise.reject(new Error('The size is not WIDTHxHEIGHT.')),
+    }))
+    expect(await m.runner.check(request(project, 'shot.still', userOrigin(), { params: { prompt: 'a kite', size: 1024 } })))
+      .toEqual({ problems: ['The size is not WIDTHxHEIGHT.'], gpu_seconds: null })
+  })
+
+  it('refuses a read whose input names a record that has not finished, even with after, and runs nothing', async () => {
+    const m = startModules()
+    const project = await createTestProject(m)
+    const held = gate()
+    m.runner.registerOperation(operation({
+      name: 'shot.render', component: 'shot',
+      execute: async (context) => {
+        await held.promise
+        return { outputs: [context.importAsset(Buffer.from('take'), { mime: 'video/mp4', name: 'take.mp4' })] }
+      },
+    }))
+    const read = vi.fn(() => Promise.resolve({ outputs: [] }))
+    m.runner.registerOperation(operation({ name: 'inspect.image', component: 'inspect', readOnly: true, execute: read }))
+    const running = m.runner.run(request(project, 'shot.render'))
+    await vi.waitFor(() => { expect(recordsOf(m, project, 'shot.render')[0]?.status).toBe('running') })
+    const producer = recordsOf(m, project, 'shot.render')[0] as ProjectRecord
+    const call = request(project, 'inspect.image', userOrigin(), { inputs: [{ role: 'reference', ref: { record: producer.id, output: 0 } }], after: [] })
+    await expect(m.runner.run(call)).rejects.toMatchObject({ code: 'input_not_ready' })
+    expect([read.mock.calls.length, (await m.runner.check(call)).problems]).toEqual([0, [expect.stringContaining(producer.id)]])
+    held.resolve()
+    await running
+  })
+
   it('fails the record when execute throws', async () => {
     const m = startModules()
     const project = await createTestProject(m)

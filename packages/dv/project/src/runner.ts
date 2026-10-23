@@ -24,7 +24,7 @@ import type { RecordLineInput, RecordStore } from './record-store.ts'
 import type { Scheduler } from './scheduler.ts'
 import { ProjectError } from './shared.ts'
 import type {
-  AssetId, OperationContext, ProjectId, ProjectRecord, ProjectState, RecordFailure, RecordId,
+  AssetId, OperationCheck, OperationContext, ProjectId, ProjectRecord, ProjectState, RecordFailure, RecordId,
   RecordInput, RecordOrigin, RecordUpdate, RunRequest, RunResult,
 } from './types.ts'
 
@@ -176,18 +176,14 @@ export class Runner {
     const spec = this.operations.get(request.operation)
     if (spec === undefined) throw new ProjectError('unknown_operation', `Operation ${request.operation} is not registered.`)
     store.getProject(request.project)
-    this.checkRequest(spec, request)
 
     if (spec.readOnly === true) return await this.runRead(spec, request)
 
     const pending = await store.lock(request.project, async () => {
-      // Inputs resolve before the append, so that a refused call writes nothing; the state at the head is the state at
-      // the new record's parent.
-      for (const record of request.after ?? []) store.getRecord(request.project, record)
+      // The call is refused before the append, so that a refused call writes nothing; the state at the head is the
+      // state at the new record's parent, and the lock keeps it current.
       const state = reducers.getState(request.project)
-      const inputs = this.resolveInputs(spec, request, state, request.after !== undefined)
-      // The operation's own rule refuses the call before anything is written; the lock keeps the state it read current.
-      await spec.precondition?.(request, state)
+      const inputs = await this.refuse(spec, request, state, request.after !== undefined)
       // The operation names the records it replaces itself; the caller may name more.
       const supersedes = [...new Set([...request.supersedes ?? [], ...spec.supersedes?.(request.params, state) ?? []])]
       const origin = originOf(request)
@@ -319,6 +315,46 @@ export class Runner {
   }
 
   /**
+   * Check one call against every refusal of {@link run} without writing anything, and estimate the GPU cost of a call
+   * that `run` would accept. The check reads the state outside the project lock, so its answer is advisory: `run`
+   * checks the call again under the lock.
+   * @param request - the call.
+   * @returns the refusal sentence, empty when `run` would accept the call on the current state, and the operation's
+   *   `estimate` of the accepted call, null for a refused call and for an operation that declares none.
+   */
+  async check(request: RunRequest): Promise<OperationCheck> {
+    const spec = this.operations.get(request.operation)
+    try {
+      if (spec === undefined) throw new ProjectError('unknown_operation', `Operation ${request.operation} is not registered.`)
+      this.deps.store.getProject(request.project)
+      const state = this.deps.reducers.getState(request.project)
+      await this.refuse(spec, request, state, request.after !== undefined && spec.readOnly !== true)
+      // An estimate reads params that `refuse` accepted, so it runs only for a call that `run` would accept.
+      return { problems: [], gpu_seconds: spec.estimate?.(request.params).gpu_seconds ?? null }
+    } catch (error) {
+      return { problems: [messageOf(error)], gpu_seconds: null }
+    }
+  }
+
+  /**
+   * The refusals of one call before any record exists, in the order that `run`, `runRead` and `check` share: params and
+   * input roles, the records named by `after`, the inputs, and the operation's `precondition`.
+   * @param spec - the operation.
+   * @param request - the call.
+   * @param state - the state the inputs resolve against.
+   * @param allowUnfinished - whether an input may name an output of a record that has not finished: true for a call
+   *   that waits for its producers (`after`); a read runs at once, so it never waits.
+   * @returns the record inputs.
+   */
+  private async refuse(spec: OperationSpec, request: RunRequest, state: ProjectState, allowUnfinished: boolean): Promise<RecordInput[]> {
+    this.checkRequest(spec, request)
+    for (const record of request.after ?? []) this.deps.store.getRecord(request.project, record)
+    const inputs = this.resolveInputs(spec, request, state, allowUnfinished)
+    await spec.precondition?.(request, state)
+    return inputs
+  }
+
+  /**
    * Check a request's params against the operation's schema and its input roles against the operation's roles.
    * @param spec - the operation.
    * @param request - the call.
@@ -343,8 +379,7 @@ export class Runner {
   private async runRead(spec: OperationSpec, request: RunRequest): Promise<RunResult> {
     const { reducers, assets } = this.deps
     const state = reducers.getState(request.project)
-    const inputs = this.resolveInputs(spec, request, state, false)
-    await spec.precondition?.(request, state)
+    const inputs = await this.refuse(spec, request, state, false)
     const scratchDir = await mkdtemp(join(tmpdir(), 'dv-operation-'))
     try {
       const result = await spec.execute({

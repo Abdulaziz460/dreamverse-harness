@@ -1,28 +1,28 @@
 /**
- * The test-only generation kind `test_take` that the kit specs mount: one `defineGenerationUi` declaration that claims
- * `shot.render` and `clip.extend`, plus the canvas registries it registers into and a recording canvas host.
+ * The test-only generation kind `test_take` that the kit specs mount, with the slot runtime and canvas helpers that
+ * those specs share.
  */
 import { vi } from 'vitest'
+import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import type { FeatureHandle } from '@deepseek-ai/dsh-client-test-runtime'
 import type { ChildrenDecl } from '@deepseek-ai/dsh-client-ui-slots'
 import type { HistoryRow } from '@dv/ui-history/contract'
 import { createRegistry } from '@dv/ui-kit/registries.ts'
 import type { WireOperation, WireState } from '@dv/ui-kit/types.ts'
-import type { ChainAnchor, ClaimedNodeView, DvCanvas, EditorHost, NodeView, ReferenceFacts } from '../../ui-canvas/src/client/contract/index.ts'
+import type { ChainAnchor, ClaimedNodeView, DvCanvas, EditorHost, NodeView } from '../../ui-canvas/src/client/contract/index.ts'
 import { createDvCanvas } from '../../ui-canvas/src/client/dv-canvas.ts'
 import { buildCanvasGraph } from '../../ui-canvas/src/client/graph.ts'
 import { apply as assetPoolApply, inject as assetPoolInject } from '../../ui-asset-pool/src/client/index.ts'
 import { apply as mediaApply, inject as mediaInject } from '../../ui-media/src/client/index.ts'
-import { fixtureState } from '../../ui-kit/tests/fixture.client.tsx'
+import { composerStack } from '../../ui-composer/tests/composer-stack.client.ts'
 import { defineGenerationUi } from '../src/client/generation-kit.tsx'
 
-/** The test kind: takes of `shot.render` and `clip.extend`, whose still output stands for a take, and no references for `t2v`. */
+/** The test generation kind, whose still output stands for a take. */
 export const testTake = defineGenerationUi({
   id: '@dv/ui-test-take', type: 'test_take', operations: ['shot.render', 'clip.extend'], label: ['测试版本', 'Test take'],
   color: 'var(--dv-node-3)',
   status: { running: ['生成中…', 'Generating…'], failed: ['没生成', 'Not generated'], done: ['已生成', 'Generated'] },
-  references: record => record.params['task'] !== 't2v',
   preview: outputs => outputs.find(output => output.mime === 'image/png')?.id,
 })
 
@@ -39,15 +39,19 @@ export const CLIP_EXTEND: WireOperation = {
  * A slot runtime whose frame declares `children`, with the canvas and History registries that the kit registers into,
  * the real media and asset pool plugins, and the test kind mounted as a plugin.
  * @param children - the slots that the test frame declares, as the canvas Factory or DSH's tool tree declares them.
+ * @param kind - the kind that the kit defines; the test kind by default.
  * @returns the runtime, the kit plugin's handle, the canvas registries and the History rows.
  */
-export async function mountKit(children: ChildrenDecl): Promise<{
+export async function mountKit(children: ChildrenDecl, kind: typeof testTake = testTake): Promise<{
   runtime: SlotTestRuntime
   kit: FeatureHandle
   canvas: DvCanvas
   rows: ReturnType<typeof createRegistry<HistoryRow>>
 }> {
   const runtime = await SlotTestRuntime.create()
+  const locale = new LocaleRuntime(runtime.ctx)
+  runtime.ctx.provide('locale', locale)
+  runtime.slots.installLocale(locale)
   const canvas = createDvCanvas()
   const rows = createRegistry<HistoryRow>(row => [row.match], row => row.match)
   runtime.ctx.provide('dvCanvas', canvas)
@@ -56,7 +60,8 @@ export async function mountKit(children: ChildrenDecl): Promise<{
   await runtime.declare(children)
   await runtime.mount({ inject: [...mediaInject], apply: mediaApply })
   await runtime.mount({ inject: [...assetPoolInject], apply: assetPoolApply })
-  const kit = await runtime.mount({ inject: [...testTake.inject], apply: testTake.apply })
+  await runtime.mount(composerStack)
+  const kit = await runtime.mount({ inject: [...kind.inject], apply: kind.apply })
   return { runtime, kit, canvas, rows }
 }
 
@@ -90,24 +95,17 @@ export function claimedOf(canvas: DvCanvas, state: WireState, operations: readon
 }
 
 /**
- * A canvas host whose methods record their calls; `reference` names `hero@1` and `villain@2` as items with nodes and
- * any other text as the asset of that ID in `state`.
+ * A canvas host whose methods record their calls.
  * @param rerun - what `rerun` returns.
- * @param state - the state whose assets `reference` reads.
  * @returns the host.
  */
-export function recordingHost(rerun: () => Promise<void> = () => Promise.resolve(), state: WireState = fixtureState()) {
-  const assetOf = (id: string) => state.assets.find(asset => asset.id === id) ?? null
-  const items: Record<string, ReferenceFacts> = {
-    'hero@1': { name: 'Hero', asset: assetOf('ref.png'), node: 'test_ref:hero' },
-    'villain@2': { name: 'Villain', asset: null, node: 'test_ref:villain' },
-  }
+export function recordingHost(rerun: () => Promise<void> = () => Promise.resolve()) {
   return {
     run: vi.fn<EditorHost['run']>(),
     rerun: vi.fn<EditorHost['rerun']>(rerun),
     pickAssets: vi.fn<EditorHost['pickAssets']>(),
     preview: vi.fn<EditorHost['preview']>(),
-    reference: vi.fn<EditorHost['reference']>(ref => items[ref] ?? { name: ref, asset: assetOf(ref), node: null }),
+    importFiles: vi.fn<EditorHost['importFiles']>(files => Promise.resolve(files.map(file => file.name))),
     openNode: vi.fn<EditorHost['openNode']>(),
     setPlaced: vi.fn<EditorHost['setPlaced']>(),
     close: vi.fn<EditorHost['close']>(),
