@@ -378,7 +378,6 @@ export function CanvasView(
     const observer = new ResizeObserver(() => { if (autoFit.current) fitRef.current() })
     observer.observe(element)
     const onWheel = (event: WheelEvent): void => {
-      // A wheel over a scroll island, such as the floating node editor, scrolls that overlay instead of the canvas.
       if (event.target instanceof Element && event.target.closest('[data-dv-scroll-island]') !== null) return
       event.preventDefault()
       const rect = element.getBoundingClientRect()
@@ -756,8 +755,7 @@ export function CanvasView(
       </div>
     )
   }
-  // The editor on screen lags `editing` while it shrinks back into its node. The card is looked up inside this canvas,
-  // because the center and the tab can both draw a node.
+  // The card lookup is scoped to this canvas because the center view and the tab body can both draw a node.
   const canvasId = useId()
   const nodeCard = (id: string): Element | null =>
     document.querySelector(`[data-dv-canvas="${canvasId}"] [data-node-id="${id.replace(/["\\]/g, '\\$&')}"]`)

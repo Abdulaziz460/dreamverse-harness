@@ -330,9 +330,8 @@ function round(seconds: number): number {
 }
 
 /**
- * The ruler's steps for a zoom level: a tick every second while ticks stay at least 8 px apart, else every 5 s, and a
- * time label every 5 s while labels stay at least 48 px apart, else every 10 s, which the narrowest zoom (5 px per
- * second) keeps 50 px apart.
+ * The ruler's steps for a zoom level. Labels need no step above 10 s: at the narrowest zoom (5 px per second), 10 s
+ * labels sit 50 px apart, past the 48 px minimum.
  * @param px - pixels per second, from 5 to 200.
  * @returns seconds between ticks and seconds between labels.
  */
@@ -359,7 +358,6 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   const [playbackRate, setPlaybackRate] = useState(readPlaybackRate)
   const player = useTimelinePlayer(timelineId, clips, total, playbackRate)
   const cycleRate = (): void => {
-    // The next faster speed, wrapping from the fastest to the slowest.
     const next = PLAYBACK_RATES.find(rate => rate > playbackRate) ?? PLAYBACK_RATES[0]
     setPlaybackRate(next)
     storePlaybackRate(next)
@@ -379,7 +377,6 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   const [picking, setPicking] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [exported, setExported] = useState<string | null>(null)
-  // React attaches the element refs at mount, so the effects and event handlers that read them read attached elements.
   const scroller = useRef<HTMLDivElement | null>(null)
   const lane = useRef<HTMLDivElement | null>(null)
   const frame = useRef<HTMLDivElement | null>(null)
@@ -400,7 +397,6 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
     setChosenClip(null); setPicking(false); setExported(null); setMenu(null); setRenaming(null)
   }, [timelineId])
 
-  // Select the clip of a center target and seek to its start, once this editor shows its timeline.
   useEffect(() => {
     if (clipFocus === null || clipFocus.timelineId !== timelineId) return
     takeClipFocus?.()
@@ -502,7 +498,6 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   // Export is one `timeline.export` call: it trims the clips with an in or out point and joins all clips.
   // It waits while any clip is a placeholder; the toolbar names those clips.
   const waiting = clips.filter(clip => clip.status !== 'ready').map(clip => clip.position)
-  // The timeline that the export button exports, or null while the button is disabled.
   const exportId = exporting || clips.length === 0 || waiting.length > 0 ? null : timelineId
   const exportTimeline = (id: string): void => {
     setExporting(true)
@@ -537,7 +532,6 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
       }
       return
     }
-    // Only a ready clip has trim handles.
     if (!moved) return
     const inSec = current.kind === 'trimStart' ? round(Math.max(0, Math.min(clip.inSec + deltaSec, clip.outSec - 0.1))) : clip.rawIn
     const outSec = current.kind === 'trimEnd' ? round(Math.max(clip.inSec + 0.1, Math.min(clip.outSec + deltaSec, clip.assetSeconds))) : clip.rawOut

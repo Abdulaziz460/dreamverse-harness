@@ -30,7 +30,6 @@ export interface ShellState {
   projectId: string | null
   /** The `id` of the `dv.center.view` entry that the center shows while a project is open, such as 'canvas'. */
   view: string
-  /** The open project's center fields. */
   fields: CenterFields
   /** The request of the latest `dvCenter.show` that its view has not taken, with the view's `id`. */
   request: { view: string; request: CenterRequest } | null
@@ -45,7 +44,6 @@ export interface ShellLocation {
   sessionId: string | undefined
 }
 
-/** The hash fields that the shell itself reads; every other field is a center field. */
 const LOCATION_FIELDS = new Set(['project', 'view', 'session'])
 
 /** No center fields; one instance so a project without fields keeps a stable value. */
@@ -173,7 +171,6 @@ export function setShell(patch: Partial<ShellState>): void {
 export function showInCenter(target: CenterTarget): void {
   const request: CenterRequest = {
     value: target.target,
-    // A view takes the request it handled; a later request stays for the view.
     take: () => { if (state.request?.request === request) setShell({ request: null }) },
   }
   setShell({ view: target.view, request: { view: target.view, request } })

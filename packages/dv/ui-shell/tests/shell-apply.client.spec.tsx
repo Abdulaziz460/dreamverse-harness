@@ -1,9 +1,6 @@
 // @vitest-environment jsdom
 /**
- * The shell plugin in a slot test runtime with stand-ins for the DSH layout, right panel and navigation services: its
- * entries replace DSH's center, navigator and brand, it registers the right-panel tab bodies and sets the panel width,
- * DSH's New Session button and first-use Workspace go through the shell, and `dv:trajectory-focus` opens 轨迹 on the
- * event's session.
+ * The shell plugin in a slot test runtime with stand-ins for the DSH layout, right panel and navigation services.
  */
 import { act, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -19,7 +16,6 @@ import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import type { WireWorkspaces } from '@dv/ui-kit/types.ts'
 import { DV_TRAJECTORY_FOCUS_EVENT } from '@dv/ui-kit/workspace-events.ts'
 
-/** The links the scripted server answers: one project with its Workspace, and the entry Workspace's directory. */
 const LINKS: WireWorkspaces = {
   entry_path: '/dv/entry',
   projects: [{ id: 'p1', title: 'Launch film', created_at: '2026-01-05T12:00:00Z', path: '/dv/p1', workspace_id: 'ws-p1' }],
@@ -93,10 +89,6 @@ async function mountShell() {
   return { runtime, shell, store, openTab, mounted, openSession, setRightbar, tabKeys: [CHAT_ID, TRAJECTORY_ID] }
 }
 
-/**
- * Dispatch a `dv:trajectory-focus` event.
- * @param detail - the event detail.
- */
 function focusTrajectory(detail: unknown): void {
   act(() => { window.dispatchEvent(new CustomEvent(DV_TRAJECTORY_FOCUS_EVENT, { detail })) })
 }
@@ -174,14 +166,12 @@ describe('the shell plugin', () => {
     act(() => { bench.mounted.set('s2' as SessionId) })
     expect(opened()).toEqual([{ params: { callId: 'c1' } }, { params: { callId: 'c2' } }])
 
-    // A later event replaces the one still waiting for its session.
     focusTrajectory({ session: 's3', toolCall: 'c3' })
     focusTrajectory({ session: 's4', toolCall: 'c4' })
     act(() => { bench.mounted.set('s3' as SessionId) })
     act(() => { bench.mounted.set('s4' as SessionId) })
     expect(opened().slice(2)).toEqual([{ params: { callId: 'c4' } }])
 
-    // Unloading the shell drops an event still waiting, and later events.
     focusTrajectory({ session: 's5', toolCall: 'c5' })
     await bench.shell.dispose()
     act(() => { bench.mounted.set('s5' as SessionId) })

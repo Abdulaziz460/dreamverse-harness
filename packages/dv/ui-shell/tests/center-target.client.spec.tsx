@@ -1,9 +1,7 @@
 // @vitest-environment jsdom
 /**
- * The center of the open project: `dvCenter.show` switches the center view and hands it a request until the view takes
- * it, a view's `note` sets the project's center fields, the URL hash carries the center fields as plain fields so a
- * reload and an old `timeline=` link hand them back, another view or project drops a request, another project starts
- * without fields, and `dvCenter` leaves with the shell plugin.
+ * The center of the open project: `dvCenter.show` requests, the center fields that views note and the URL hash carries,
+ * and the lifetime of `dvCenter` with the shell plugin.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
@@ -16,11 +14,6 @@ afterEach(() => {
   window.history.replaceState(null, '', '/')
 })
 
-/**
- * Load a fresh copy of the shell store for a page opened at a hash.
- * @param hash - the URL hash the page loads with.
- * @returns the store module.
- */
 async function loadStore(hash: string) {
   window.history.replaceState(null, '', `/${hash}`)
   vi.resetModules()
@@ -89,7 +82,6 @@ describe('the center of the open project', () => {
     store.markSessionChoice()
     store.setShell({ sessionId: 's2' })
     expect([window.location.hash, window.history.length]).toEqual(['#project=p1&session=s2', entries + 1])
-    // The choice covers the next session change only.
     store.setShell({ sessionId: 's3' })
     expect([window.location.hash, window.history.length]).toEqual(['#project=p1&session=s3', entries + 1])
   })

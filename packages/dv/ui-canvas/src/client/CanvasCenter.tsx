@@ -32,10 +32,6 @@ export function CanvasCenter({ projectId, session, request, client, canvas, rend
   )
 }
 
-/**
- * @param request - the request that the center handed the canvas.
- * @returns the record to open with the request's `take`, or null for no request or one that names no record.
- */
 function focusOf(request: CenterRequest | null): CanvasFocus | null {
   const record = request?.value['record']
   return request === null || typeof record !== 'string' ? null : { record, take: request.take }

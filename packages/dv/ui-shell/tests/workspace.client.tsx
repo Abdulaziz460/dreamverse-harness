@@ -1,8 +1,7 @@
 /**
- * The DreamVerse workspace as a user meets it: the real shell plugin with the real ui-timeline and ui-canvas plugins,
- * over stand-ins for the DSH services that the shell reaches and a scripted `/api/dv` server. Project p1 (older) and p2
- * (newer) each hold timelines t1 and t2; the center renders in p1's chat session s1, and the timeline tab body, which
- * shows the newest project, renders beside it in the same session. The page language is Chinese.
+ * The DreamVerse workspace with the real shell, ui-timeline and ui-canvas plugins over a scripted `/api/dv` server.
+ * Projects p1 and p2 each hold timelines t1 and t2; the center renders in p1's chat session s1, and the timeline tab
+ * body, which shows the newest project p2, renders beside it in the same session. The page language is Chinese.
  */
 import { act, waitFor, within } from '@testing-library/react'
 import { vi } from 'vitest'
@@ -22,7 +21,6 @@ import type { CenterTarget } from '@dv/ui-shell/contract'
 import type { WireProject, WireWorkspaces } from '@dv/ui-kit/types.ts'
 import { fixtureState, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
 
-/** The links of the scripted server. */
 const LINKS: WireWorkspaces = {
   entry_path: '/dv/entry',
   projects: [
@@ -32,7 +30,6 @@ const LINKS: WireWorkspaces = {
   bindings: {},
 }
 
-/** The project list that the tab body reads, newest first. */
 const PROJECTS: WireProject[] = [
   { id: 'p2', title: 'Music video', created_at: '2026-02-05T12:00:00Z' },
   { id: 'p1', title: 'Launch film', created_at: '2026-01-05T12:00:00Z' },
@@ -41,7 +38,6 @@ const PROJECTS: WireProject[] = [
 /** A mounted workspace and what the tests drive and read. */
 export interface Workspace {
   runtime: SlotTestRuntime
-  /** The workspace center. */
   center: SlotView<'main.conversation'>
   /** The timeline tab body. */
   tab: SlotView<'sidebar.right.pane.tab'>
@@ -49,11 +45,9 @@ export interface Workspace {
   summaries: Array<Record<string, string>>
   /** Call `dvCenter.show`, as History does for a selected record. */
   show(target: CenterTarget): void
-  /** The URL hash. */
   hash(): string
 }
 
-/** Runtimes and retained sessions to release after each test. */
 const runtimes: SlotTestRuntime[] = []
 const retained: Disposable[] = []
 

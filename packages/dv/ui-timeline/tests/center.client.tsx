@@ -128,14 +128,8 @@ export interface CenterViewOptions {
   session?: string | null
 }
 
-/**
- * The center view of project p1 in the booted plugin's stand-in center.
- * @param props - the booted plugin and the view's options.
- * @returns the element.
- */
 function CenterFrame({ booted, options }: { booted: BootedTimeline; options: CenterViewOptions }): ReactNode {
   const { fields, request } = useSyncExternalStore(listener => booted.stand.subscribe(listener), () => booted.stand.getSnapshot())
-  // The view reads none of the renderer's standing seats, so the props carry only the owner data and the injected face.
   const props = {
     ...booted.center(), projectId: 'p1', client: options.client, session: options.session ?? null, request, fields,
     note: booted.stand.note,

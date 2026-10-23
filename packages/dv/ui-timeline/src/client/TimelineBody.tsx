@@ -38,7 +38,6 @@ export function barLabels(t: TimelineBodyProps['t']): ProjectBarLabels {
   }
 }
 
-/** What {@link ProjectTimeline} draws: the body's view session, its chosen project and that project's state. */
 type ProjectTimelineProps = Pick<TimelineBodyProps, 't' | 'useSelection' | 'select'> & {
   view: ViewSession
   project: string

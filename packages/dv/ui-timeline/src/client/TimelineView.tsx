@@ -67,8 +67,7 @@ function insertRequest(
 
 /**
  * The timeline editor of a project's current state.
- * @param props - the center's project, chat session, request, center fields and note, the injected client, and
- *   optionally copy.
+ * @param props - the center's owner data, the injected client, and optional copy.
  * @returns the element.
  */
 export function TimelineView(props: TimelineViewProps): ReactNode {
@@ -93,8 +92,6 @@ export function TimelineView(props: TimelineViewProps): ReactNode {
   }, [reload])
   const select = useCallback((timelineId: string | null) => { note({ timeline: timelineId }) }, [note])
   useEffect(() => {
-    // A focus request selects its timeline, and the editor takes it once it selected the clip. An insert waits for the
-    // state; a project without timelines selects the created `t1`.
     if (request === null || asked === null) return
     if ('insert' in asked) {
       if (state.value === null) return

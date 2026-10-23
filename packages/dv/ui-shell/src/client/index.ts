@@ -40,7 +40,6 @@ const LINKS_POLL_MS = 4000
  * @param ctx - client root context.
  */
 export function apply(ctx: ClientContext): void {
-  // At apply's top level, never inside an effect: the views and the History panel call it from their own fibers.
   const center: DvCenter = { show: showInCenter }
   ctx.reflect.provide('dvCenter', center)
   applyTheme(ctx)

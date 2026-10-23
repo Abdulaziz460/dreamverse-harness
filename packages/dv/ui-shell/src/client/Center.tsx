@@ -365,8 +365,6 @@ function WorkspacePage(props: CenterProps & { projectId: string; projectSession:
   // The chat session the workspace sits beside, recorded as the `session` of the views' edits; none until the main
   // session belongs to this project.
   const session = projectSession ?? null
-  // The switcher's cover: the first clip of the timeline that the center fields name, read again whenever the current
-  // state is refetched after a project change or another timeline is picked.
   const cover = useProjectSummaries(projectId, state.value, fields)?.get(projectId)?.cover ?? null
   const note = useCallback((patch: Readonly<Record<string, string | null>>) => { noteInCenter(projectId, patch) }, [projectId])
   const mounted = useSyncExternalStore(shell.mountedSeat.subscribe, shell.mountedSeat.getSnapshot)
@@ -375,7 +373,6 @@ function WorkspacePage(props: CenterProps & { projectId: string; projectSession:
   const panelExpanded = useSyncExternalStore(shell.panelExpanded.subscribe, shell.panelExpanded.getSnapshot)
   const opened = useRef(new Set<string>())
   useEffect(() => {
-    // The center views get the width: an open project starts with the left sidebar collapsed.
     shell.collapseSidebar()
   }, [shell])
   useEffect(() => {

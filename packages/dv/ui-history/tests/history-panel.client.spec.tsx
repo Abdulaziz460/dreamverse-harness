@@ -62,7 +62,6 @@ const WIRE_OPERATIONS: WireOperation[] = [
   },
 ]
 
-/** Answers one `POST /api/dv/history` query; the signal aborts the request. */
 type HistoryServer = (query: HistoryQuery, signal: AbortSignal | null) => Promise<WireHistory>
 
 /**
@@ -145,20 +144,11 @@ async function mount(
   return { ...mounted, writes: scripted.writes, queries, row }
 }
 
-/**
- * Clip moves `r0` (the current step, newest) to `r<count - 1>`, each written by its own tool call `call-r<n>`.
- * @param count - the number of steps.
- * @returns the entries, newest first.
- */
 const steps = (count: number): HistoryEntry[] => Array.from({ length: count }, (_, at) => ({
   record: record({ id: `r${String(at)}`, operation: 'timeline.clip_move', session: 's5', tool_call: `call-r${String(at)}` }),
   place: at === 0 ? 'current' : 'before',
 }))
 
-/**
- * Ask the open History panel to select the record of a tool call, as the chat's tool card does.
- * @param toolCall - the tool call.
- */
 const focusCall = (toolCall: string): void => {
   window.dispatchEvent(new CustomEvent(DV_HISTORY_FOCUS_EVENT, { detail: { session: 's5', toolCall } }))
 }
@@ -281,7 +271,6 @@ describe('the History tab', () => {
     expect(fold.getAttribute('aria-expanded')).toBe('true')
     expect(row('g1').textContent).toContain('Render shot 1')
     expect(row('g2').textContent).toContain('Automatic')
-    // Folded rows follow the log: the timeline record, shot 1, then shot 2.
     const folded = [...view.container.querySelectorAll('[data-testid="dv-history-row"]')].map(element => element.getAttribute('data-record'))
     expect(folded).toEqual(['ap', 'tl', 'g1', 'g2'])
     fireEvent.click(fold)
@@ -322,7 +311,6 @@ describe('the History tab', () => {
     }
     const { row, shown } = await mount(later, () => {}, [timelineRow])
     await waitFor(() => { row('g1') })
-    // The current state arrives with the panel's own read; the focus of m1 reads its records.
     await waitFor(() => { expect(row('m1').textContent).toContain('Move clip') })
     fireEvent.click(row('g1'))
     expect(row('g1').getAttribute('aria-selected')).toBe('true')

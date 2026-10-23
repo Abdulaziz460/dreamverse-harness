@@ -1,6 +1,6 @@
 /**
  * The tabs that the shell draws from the entries of its two list slots, both declared in `./contract`: the entry page's
- * 探索 section (`dv.explore`) and the workspace's 画布 | 时间线 control (`dv.center.view`). Each entry is one tab, labeled
+ * 探索 section (`dv.explore`) and the workspace's view toggle (`dv.center.view`). Each entry is one tab, labeled
  * and ordered by its registration; the selected tab's body is the entry's component.
  *
  * @module @dv/ui-shell/slot-tabs

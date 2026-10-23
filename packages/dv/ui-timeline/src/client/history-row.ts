@@ -53,8 +53,9 @@ function timelineOf(record: ProjectRecord, owner: ReadonlyMap<string, string>): 
 }
 
 /**
- * The History row of every `timeline.*` operation. It adds no subject to the operation label. Its focus shows the
- * `timeline` center view on the record's timeline and the record's `clip` param, else the first clip the record assigned; a record whose
+ * The History row of every `timeline.*` operation; it adds no subject to the operation label. Its focus shows the
+ * `timeline` center view on the record's timeline and the record's `clip` param, else on the first clip that the
+ * record assigned; a record whose
  * timeline cannot be found focuses nothing.
  */
 export const timelineHistoryRow: HistoryRow = {

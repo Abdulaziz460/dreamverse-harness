@@ -1,8 +1,7 @@
 // @vitest-environment jsdom
 /**
- * The workspace center with the real timeline and canvas views under the real shell: a request that `dvCenter.show`
- * hands a view applies once, the open project owns its center fields (its selected timeline), which the URL keeps and
- * the cover request reads, and the timeline tab body keeps its own selection.
+ * The workspace center with the real timeline and canvas views under the real shell: center requests, the open
+ * project's center fields, and the URL hash.
  */
 import { act, fireEvent, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -11,17 +10,11 @@ import type { Workspace } from './workspace.client.tsx'
 
 afterEach(releaseWorkspaces)
 
-/**
- * Click a view of the workspace's view toggle.
- * @param workspace - the workspace.
- * @param name - the view's label.
- */
 function showView(workspace: Workspace, name: string): void {
   const toggle = workspace.center.view.getByRole('tablist', { name: /视图|View/ })
   fireEvent.click(within(toggle).getByRole('tab', { name }))
 }
 
-/** Let pending effects and reads settle. */
 async function settle(): Promise<void> {
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)) })
 }

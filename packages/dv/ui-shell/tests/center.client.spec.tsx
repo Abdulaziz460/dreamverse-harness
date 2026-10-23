@@ -20,21 +20,18 @@ import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import type { WireProjectLink, WireProjectSummary, WireWorkspaces } from '@dv/ui-kit/types.ts'
 import type { ShellActions } from '../src/client/actions.ts'
 
-/** The projects of the scripted server, oldest first. */
 const PROJECTS: WireProjectLink[] = [
   { id: 'p1', title: 'Launch film', created_at: '2026-01-05T12:00:00Z', path: '/dv/p1', workspace_id: 'ws-p1' },
   { id: 'p2', title: 'Music video', created_at: '2026-02-05T12:00:00Z', path: '/dv/p2', workspace_id: null },
   { id: 'p3', title: 'Drama', created_at: '2026-03-05T12:00:00Z', path: '/dv/p3', workspace_id: 'ws-p3' },
 ]
 
-/** The DSH Workspaces: the entry Workspace and the Workspaces of p1 and p2, which p2's link names only by path. */
 const WORKSPACES = [
   { workspaceId: 'ws-entry', path: '/dv/entry', sessionIds: ['s0'] },
   { workspaceId: 'ws-p1', path: '/dv/p1', sessionIds: ['s1', 's4'] },
   { workspaceId: 'ws-p2', path: '/dv/p2', sessionIds: ['s2'] },
 ]
 
-/** The chat sessions: s0 in the entry Workspace, s1 and the blank s4 in p1, s5 bound to p1, s2 in p2's Workspace. */
 const SESSIONS: SessionFixture[] = [
   { id: 's0', snapshot: { blank: true }, summary: { blank: true, updatedAt: 1 } },
   { id: 's1', summary: { displayTitle: 'Opening scene', updatedAt: 3 } },
@@ -43,16 +40,13 @@ const SESSIONS: SessionFixture[] = [
   { id: 's5', summary: { displayTitle: 'Second take', updatedAt: 5 } },
 ]
 
-/** What the scripted `/api/dv` server answers and what it received. */
 interface Server {
   links: WireWorkspaces
   summaries: WireProjectSummary[]
-  /** Whether `POST /api/dv/workspaces/bind` fails. */
   bindFails: boolean
   binds: unknown[]
 }
 
-/** The shell actions as recorded calls, the actions that fail, and the right-panel seat and fold they observe. */
 interface StandInShell {
   shell: ShellActions
   calls: string[]
@@ -123,7 +117,6 @@ function serverFetch(server: Server): typeof fetch {
   }
 }
 
-/** A composer that shows its phase and, with a session, the view the center selected for it. */
 function ComposerStandIn({ phase, sessionId, useFactorySlot }: FactoryComponentPropsOf<'conversation.content'>): ReactNode {
   const Views = useFactorySlot('views', () => null)
   const WidthControls = useFactorySlot('widthControls', () => <i data-testid="width-handles" />)
@@ -135,50 +128,34 @@ function ComposerStandIn({ phase, sessionId, useFactorySlot }: FactoryComponentP
   )
 }
 
-/** The chat body of a session, naming the session and the view it was asked for. */
 function ChatStandIn({ sessionId, view }: PropsRuntime<'conversation.session'> & { view?: string }): ReactNode {
   return <p data-testid="chat">{`${sessionId}:${view ?? 'stored'}`}</p>
 }
 
-/** A center view that prints the project, the session, the center fields and the request value the workspace handed it. */
 function CenterViewStandIn({ projectId, session, fields, request }: PropsRuntime<'dv.center.view'>): ReactNode {
   return <p data-testid="center-view">{`${projectId}|${session ?? 'none'}|${JSON.stringify(fields)}|${JSON.stringify(request?.value ?? null)}`}</p>
 }
 
-/** How a test opens the page. */
 interface MountOptions {
-  /** The URL hash the page loads with. */
   hash?: string
-  /** The session DSH shows as the main session, if any. */
   main?: string
-  /** Sessions besides {@link SESSIONS} that DSH knows. */
   sessions?: SessionFixture[]
-  /** Sessions whose Conversation has an active target. */
   activeTargets?: readonly string[]
-  /** Whether the DSH session and Workspace lists are still loading. */
   listsLoading?: boolean
-  /** Whether `dv.center.view` and `dv.explore` entries are registered. */
   entries?: boolean
-  /** The shell actions that fail. */
   failures?: readonly string[]
-  /** Server link fields that replace the defaults. */
   links?: Partial<WireWorkspaces>
-  /** Project summaries the server answers. */
   summaries?: WireProjectSummary[]
-  /** Whether timers are faked from the first render on. */
   fakeTimers?: boolean
 }
 
-/** A mounted center and what the tests drive and read. */
 interface Bench {
   runtime: SlotTestRuntime
   store: typeof import('../src/client/store.ts')
   server: Server
   stand: StandInShell
   view: SlotView<'main.conversation'>
-  /** Make a session, or none, the main session. */
   show(sessionId: string | undefined): void
-  /** Read the links from the server, as the shell's links poll does. */
   refreshLinks(): Promise<void>
 }
 
@@ -303,10 +280,6 @@ async function mountCenter(options: MountOptions = {}): Promise<Bench> {
   }
 }
 
-/**
- * Advance faked timers inside React's act.
- * @param ms - the milliseconds.
- */
 async function advance(ms: number): Promise<void> {
   await act(async () => { await vi.advanceTimersByTimeAsync(ms) })
 }
@@ -322,7 +295,6 @@ function navigateTo(hash: string): void {
   })
 }
 
-/** @returns an ISO time `days` days before now. */
 function daysAgo(days: number): string {
   return new Date(Date.now() - days * 86_400_000).toISOString()
 }
@@ -341,7 +313,6 @@ describe('the entry page', () => {
     const page = bench.view.view
     expect(page.getByRole('heading', { level: 1 }).textContent).toBe('What are we making today?')
     expect(page.getByTestId('composer').getAttribute('data-phase')).toBe('active')
-    // The center hands the composer its chat view alone, without width handles.
     expect(page.getByTestId('chat').textContent).toBe('s0:chat')
     expect(page.queryByTestId('width-handles')).toBeNull()
     expect(bench.stand.calls).toContain('restoreSidebar()')
@@ -356,8 +327,6 @@ describe('the entry page', () => {
       .filter(text => text !== 'All projects' && text !== 'Show fewer')
     await waitFor(() => { expect(cards()[1]).toBe('Music videoYesterday') })
     expect(cards()[0]).toMatch(/^DramaToday \d\d:\d\d$/u)
-    // A cover with a video shows the take's first frame, muted, and no image; an image cover shows the image; no cover
-    // leaves the frame empty.
     const drama = recent.getByRole('button', { name: /^Drama/u })
     const video = drama.querySelector('video')
     expect([video?.getAttribute('src'), video?.muted]).toEqual(['/dv/assets/take3.mp4#t=0.1', true])
@@ -443,7 +412,6 @@ describe('the entry page', () => {
 describe('the URL restore', () => {
   it('opens the URL\'s project with its session once the lists are ready, and binds the session to its Workspace\'s project', async () => {
     const bench = await mountCenter({ hash: '#project=p1&view=timeline&timeline=t2&session=s1', main: 's1' })
-    // The URL's view and center fields are in place before the restore.
     expect(bench.view.view.getByTestId('center-view').textContent).toBe('p1|none|{"timeline":"t2"}|null')
     expect(bench.stand.calls.filter(call => call.startsWith('openProject'))).toEqual([])
     await bench.refreshLinks()
@@ -453,7 +421,6 @@ describe('the URL restore', () => {
     await waitFor(() => { expect(bench.store.getShell().links?.bindings).toEqual({ s1: 'p1' }) })
     expect(window.location.hash).toBe('#project=p1&view=timeline&timeline=t2&session=s1')
 
-    // The server drops the binding again: the center does not bind the same pair twice.
     bench.server.links = { ...bench.server.links, bindings: {} }
     await bench.refreshLinks()
     expect(bench.server.binds).toHaveLength(1)
@@ -471,7 +438,6 @@ describe('the URL restore', () => {
   it('shows the entry page for a project the links do not list, with the URL\'s session, and logs a failed navigation', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const bench = await mountCenter({ hash: '#project=gone&session=s0', main: 's0', failures: ['goHome'] })
-    // The workspace of the URL's project shows its ID until the links name it.
     expect(bench.view.view.getByTitle('Switch chat or project').textContent).toContain('gone')
     await bench.refreshLinks()
     await waitFor(() => { expect(warn).toHaveBeenCalledWith('ui-shell: navigation failed', expect.any(Error)) })
@@ -500,14 +466,12 @@ describe('the URL restore', () => {
 describe('Back, Forward, and an edited hash', () => {
   it('move the page to the location the URL names once the restore ran', async () => {
     const bench = await mountCenter({ hash: '#project=p1', main: 's1' })
-    // Before the restore the URL keeps what the user typed, and the restore reads it.
     navigateTo('#project=p3')
     expect(bench.stand.calls.filter(call => call.startsWith('openProject'))).toEqual([])
     await bench.refreshLinks()
     await waitFor(() => { expect(bench.stand.calls).toContain('openProject(p3)') })
     const opened = (): string[] => bench.stand.calls.filter(call => call.startsWith('openProject') || call.startsWith('goHome'))
 
-    // The URL the shell wrote itself moves nothing.
     navigateTo(window.location.hash)
     navigateTo('#project=p1&view=timeline&session=s1')
     expect(bench.view.view.getByRole('tab', { name: 'Timeline' }).getAttribute('aria-selected')).toBe('true')
@@ -555,7 +519,6 @@ describe('the workspace', () => {
     const switcher = page.getByTitle('Switch chat or project')
     expect(switcher.textContent).toBe('Launch film/Opening scene')
     await waitFor(() => { expect(switcher.querySelector('img')?.getAttribute('src')).toBe('/dv/assets/poster.png') })
-    // An unknown view in the URL shows the first view.
     expect(page.getAllByRole('tab').map(tab => [tab.textContent, tab.getAttribute('aria-selected')]))
       .toEqual([['Canvas', 'true'], ['Timeline', 'false']])
     expect(page.getByTestId('center-view').textContent).toBe('p1|s1|{}|null')
@@ -613,7 +576,6 @@ describe('the workspace', () => {
     expect(panels()).toBe(1)
     await advance(250)
     expect(panels()).toBe(2)
-    // The seat remounts within one commit: it unbinds and binds the same session again.
     bench.stand.failures.delete('showPanels')
     act(() => {
       bench.stand.mounted.set(undefined)
@@ -640,7 +602,6 @@ describe('the workspace', () => {
     await advance(1_000)
     expect(panels()).toBe(3)
 
-    // Another session of the project fails every attempt.
     bench.stand.failures.add('showPanels')
     bench.server.links = { ...bench.server.links, bindings: { s6: 'p1' } }
     await bench.refreshLinks()
@@ -672,7 +633,6 @@ describe('the session switcher', () => {
     fireEvent.click(switcher)
     const menu = within(page.getByRole('menu'))
     expect(menu.getByText('Launch film · Chats')).toBeDefined()
-    // The project's chats, newest first: s5 bound to it, the blank main session s4, and s1 of its Workspace.
     expect(menu.getAllByRole('menuitemradio').map(row => [row.textContent, row.getAttribute('aria-checked')]))
       .toEqual([['Second take', 'false'], ['New chat', 'true'], ['Opening scene', 'false']])
     expect(menu.getAllByRole('menuitem').map(item => item.textContent))
@@ -694,7 +654,6 @@ describe('the session switcher', () => {
     const page = bench.view.view
     const switcher = page.getByTitle('Switch chat or project')
     fireEvent.click(switcher)
-    // The only project lists no other projects.
     expect(page.queryByText('Other projects')).toBeNull()
     fireEvent.mouseDown(page.getByRole('menu'))
     expect(page.queryByRole('menu')).not.toBeNull()

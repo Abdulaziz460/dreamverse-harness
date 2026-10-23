@@ -15,7 +15,6 @@ import { copyFor } from '../src/client/TimelineView.tsx'
 import { bootTimeline, centerView } from './center.client.tsx'
 import type { BootedTimeline } from './center.client.tsx'
 
-/** The plugin booted for each test; its center values and selection are fresh per test. */
 let booted: BootedTimeline
 
 beforeEach(async () => {
@@ -24,13 +23,8 @@ beforeEach(async () => {
 })
 afterEach(async () => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); await booted.fiber.dispose() })
 
-/** @returns the selected timeline of project p1 in its center fields. */
 const selected = (): string | undefined => booted.stand.getSnapshot().fields['timeline']
 
-/**
- * @param view - the rendered editor.
- * @returns the `aria-selected` of each timeline tab.
- */
 const shownTabs = (view: { getAllByRole: (role: string) => HTMLElement[] }): Array<string | null> =>
   view.getAllByRole('tab').map(tab => tab.getAttribute('aria-selected'))
 
@@ -206,7 +200,6 @@ describe('TimelineView', () => {
     expect([selected(), shownTabs(view)]).toEqual(['t2', ['false', 'true']])
     act(() => { booted.stand.note({ timeline: 't9' }) })
     expect(shownTabs(view)).toEqual(['true', 'false'])
-    // The tab body's selection of the same project is its own.
     act(() => { booted.tab().select('p1', 't2') })
     expect(shownTabs(view)).toEqual(['true', 'false'])
   })
@@ -221,18 +214,15 @@ describe('TimelineView', () => {
     await waitFor(() => { expect(pressed()).toEqual(['false', 'true']) })
     expect(view.getByTestId('dv-timeline-time').textContent).toBe('00:04.00 / 00:07.00')
     expect([selected(), booted.stand.getSnapshot().request]).toEqual(['t1', null])
-    // Another timeline picked in the editor stays when the view mounts again: the request was taken.
     fireEvent.click(view.getAllByRole('tab')[1] as HTMLElement)
     view.unmount()
     const again = render(centerView(booted, { client }))
     await again.findByRole('list', { name: '视频轨道' })
     expect(shownTabs(again)).toEqual(['false', 'true'])
-    // A request with the clip of the second timeline selects it there, and one without a clip only its timeline.
     act(() => { booted.stand.show({ timeline: 't2', clip: 'cl3' }) })
     await waitFor(() => { expect(pressed()).toEqual(['true']) })
     act(() => { booted.stand.show({ timeline: 't1', clip: null }) })
     expect([selected(), shownTabs(again), booted.stand.getSnapshot().request]).toEqual(['t1', ['true', 'false'], null])
-    // A value that is neither request form changes nothing.
     act(() => { booted.stand.show({ timeline: 7 }) })
     act(() => { booted.stand.show({ timeline: 't2', clip: 7 }) })
     expect([selected(), shownTabs(again)]).toEqual(['t1', ['true', 'false']])
@@ -306,7 +296,7 @@ describe('TimelineView', () => {
     expect(view.container.querySelectorAll('[data-clip="cl8"] [data-trim]')).toHaveLength(0)
     expect(view.getByTestId('dv-timeline-export-waiting').textContent).toBe('片段 3, 4 还没就绪，全部就绪后才能导出')
     expect((view.getByText('导出') as HTMLButtonElement).disabled).toBe(true)
-    // The viewer names the placeholder under the playhead: clip 3 plays from 7 s, clip 4 from 9 s.
+    // Clip 3 plays from 7 s and clip 4 from 9 s.
     fireEvent.pointerDown(view.getByTestId('dv-timeline-ruler'), { clientX: 7.5 * 40 })
     expect(view.getByTestId('dv-timeline-viewer-placeholder').textContent).toBe('片段 3：渲染中…')
     fireEvent.pointerDown(view.getByTestId('dv-timeline-ruler'), { clientX: 9.5 * 40 })
@@ -361,7 +351,6 @@ describe('TimelineView', () => {
   })
 })
 
-/** @returns the fixture state with a fresh copy of its timeline slice removed, as a project whose state holds no timelines. */
 function withoutTimelineSlice(): WireState {
   const base = fixtureState()
   return { ...base, components: { proj: base.components.proj, asset: base.components.asset } }
@@ -381,7 +370,6 @@ describe('timeline editor gestures', () => {
     fireEvent.pointerDown(second, { clientX: 0 })
     fireEvent.pointerUp(second, { clientX: 0 })
     expect(pressed()).toEqual(['false', 'true'])
-    // An undo elsewhere in the history takes clip cl2 off the timeline.
     state = twoTimelines()
     state.components.timeline.timelines[0]?.clips.pop()
     fireEvent.click(view.getByRole('button', { name: '撤销' }))
@@ -411,7 +399,6 @@ describe('timeline editor gestures', () => {
     expect(fireEvent.drop(viewer, { dataTransfer: assetDrag('shot2.mp4') })).toBe(false)
     expect(view.queryByRole('status')).toBeNull()
     expect(requests()).toHaveLength(1)
-    // The notice about a dropped file goes away after 4 s.
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     try {
       fireEvent.drop(viewer, { dataTransfer: { types: ['Files'], getData: () => '' } })
@@ -576,7 +563,6 @@ describe('timeline editor gestures', () => {
     expect(playing()).toBe(true)
     fireEvent.keyDown(editor, { key: ' ' })
     expect(playing()).toBe(false)
-    // Space on a control and an unbound key leave playback alone.
     fireEvent.keyDown(view.getByTestId('dv-timeline-speed'), { key: ' ' })
     fireEvent.keyDown(editor, { key: 'x' })
     expect(playing()).toBe(false)
@@ -607,7 +593,6 @@ describe('timeline editor gestures', () => {
   })
 
   it('draws the waveform of each ready clip once its audio decodes', async () => {
-    // A stand-in decoder: one second of samples at 0.5.
     class StubAudioContext {
       decodeAudioData(): Promise<unknown> {
         const samples = new Float32Array(100).fill(0.5)

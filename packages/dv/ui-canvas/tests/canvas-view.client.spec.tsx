@@ -783,10 +783,6 @@ const failG1 = (state: FixtureState): void => {
     : entry)
 }
 
-/**
- * @param canvas - the canvas surface.
- * @returns the viewport that the node layer is drawn at.
- */
 function viewportOf(canvas: HTMLElement): CanvasViewport {
   const layer = canvas.querySelector('div[style*="transform"]')
   if (!(layer instanceof HTMLElement)) throw new Error('no node layer')
@@ -871,7 +867,6 @@ describe('the viewport', () => {
     expect(viewportOf(canvas)).toEqual({ x: 60, y: 40, zoom: 1 })
     expect(canvas.style.cursor).toBe('grabbing')
     fireEvent.pointerUp(canvas, { pointerId: 1 })
-    // A pan is no click, so the selection stays.
     expect(node('g1').getAttribute('data-node-selected')).toBe('true')
     const panned = { project: 'p1', positions: {}, viewport: { x: 60, y: 40, zoom: 1 } }
     await waitFor(() => { expect(layoutWrites).toContainEqual(panned) }, { timeout: 2000 })

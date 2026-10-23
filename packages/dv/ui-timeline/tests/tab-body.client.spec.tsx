@@ -1,8 +1,7 @@
 // @vitest-environment jsdom
 /**
  * The timeline plugin's right-Sidebar tab body under the real slot runtime, drawn in a chat session as the right Sidebar
- * draws it: the project bar over the timeline editor of the newest project, the notes for no projects and a failed state
- * read, and the notice of a failed write.
+ * draws it.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, waitFor, within } from '@testing-library/react'
@@ -21,10 +20,8 @@ const SLOTS = {
   'sidebar.right.pane.tab': { kind: 'keyed', scope: 'session', inject: { hooks: { tabInfo: tabInfoFactory } } },
 } as const
 
-/** What the root frame hands its drawing. */
 type FrameProps = ComposedProps<'root', never, keyof typeof SLOTS, undefined, object>
 
-/** Runtimes and retained chat sessions that a test created, released after it. */
 const runtimes: SlotTestRuntime[] = []
 const sessions: Disposable[] = []
 
@@ -35,12 +32,7 @@ afterEach(async () => {
   vi.unstubAllGlobals()
 })
 
-/**
- * Mount the timeline plugin and draw its tab body in chat session s5 in Chinese, with the `/api/dv` routes answered by
- * `fetch`.
- * @param fetch - the page's `fetch`, which the plugin's API client calls.
- * @returns the rendered page, scoped to the tab body.
- */
+/** Mount the timeline plugin and draw its tab body in chat session s5 in Chinese, with `fetch` answering `/api/dv`. */
 async function mount(fetch: typeof globalThis.fetch) {
   vi.stubGlobal('fetch', fetch)
   const runtime = await SlotTestRuntime.create()
@@ -68,11 +60,6 @@ async function mount(fetch: typeof globalThis.fetch) {
   return within(view.getByTestId('tab'))
 }
 
-/**
- * Mount the tab body over the scripted `/api/dv` routes.
- * @param routes - the answers.
- * @returns the tab body and the recorded writes.
- */
 async function mountScripted(routes: ScriptedRoutes = {}) {
   const { fetch, writes } = scriptedFetch(routes)
   return { tab: await mount(fetch), writes }

@@ -1,6 +1,6 @@
 /**
- * The shell's surface contract: the slots that `@dv/ui-shell` declares for other UI plugins, and the center service
- * that shows a view of the open project and hands it a request. The shell names no view. Types only.
+ * Types of the slots that `@dv/ui-shell` declares for other UI plugins and of `ctx.dvCenter`, the service that shows a
+ * view of the open project and hands it a request. The shell names no view. Types only.
  *
  * @module @dv/ui-shell/contract
  */

@@ -30,7 +30,6 @@ export function useProjectSummaries(
   }, [project, refresh, key]).value
 }
 
-/** Nothing narrows the summary. */
 const NO_NARROWING: SummaryQuery = {}
 
 /**
