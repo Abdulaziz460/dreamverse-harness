@@ -29,8 +29,8 @@ afterEach(() => {
 })
 
 /**
- * The fixture with `test_ref`, plus a second version of `hero` (written by `e2` with the take still `shot1-last.png`),
- * an item `alley` without a name, an item `noir` without references, and an item `ghost` without versions.
+ * The fixture with `test_ref` plus a second version of `hero` and the items `alley` without a name, `noir` without
+ * references and `ghost` without versions.
  * @returns the state.
  */
 function refState(): WireState {

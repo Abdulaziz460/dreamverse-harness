@@ -23,7 +23,6 @@ interface Recorded {
 
 const SKILL = { name: 'storyboard', description: 'Storyboard', modelInvocable: true }
 
-/** The session list of {@link boot}: `s2` is the newest session. */
 const SESSIONS: Record<string, { id: string; updatedAt: number }> = { s0: { id: 's0', updatedAt: 1 }, s2: { id: 's2', updatedAt: 2 } }
 
 /**
