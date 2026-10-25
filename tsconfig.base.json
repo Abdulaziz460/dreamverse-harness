@@ -362,6 +362,7 @@
       "@dv/style/types": ["./packages/dv/style/src/types.ts"],
       "@dv/timeline": ["./packages/dv/timeline/src/index.ts"],
       "@dv/timeline/types": ["./packages/dv/timeline/src/types.ts"],
+      "@dv/uniserve": ["./packages/dv/uniserve/src/index.ts"],
       "@dv/ui-asset-pool": ["./packages/dv/ui-asset-pool/src/index.ts"],
       "@dv/ui-canvas": ["./packages/dv/ui-canvas/src/index.ts"],
       "@dv/ui-character": ["./packages/dv/ui-character/src/index.ts"],
