@@ -24,7 +24,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-在 `@dv/project`、`@dv/shot-plan`、`@dv/shot-render` 和 `@dv/timeline` 之后挂载本插件。它没有配置，注册组件键 `story` 及其 reducer。挂载了 `@deepseek-ai/dsh-skill` 的技能注册表 `skills` 时，插件从 [`skills/story-directing/SKILL.md`](skills/story-directing/SKILL.md) 注册 `story-directing` 技能。
+在 `@dv/project`、`@dv/shot-plan`、`@dv/shot-render` 和 `@dv/timeline` 之后挂载本插件。它没有配置，注册组件键 `story` 及其 reducer。挂载了 `@deepseek-ai/dsh-skill` 的技能注册表 `skills` 时，插件通过 `@deepseek-ai/dsh-skill-filesystem` 的一个名为 `workflow-story` 的 `FileSystemSkillProvider`，把 [`skills/`](skills/) 文件夹中的每个 `<name>/SKILL.md` 作为技能提供；该提供方不读取其他文件夹。
 
 ```yaml
 - id: dv-workflow-story
@@ -39,6 +39,8 @@ kind: "package-reference"
 两个标签为 预览分镜计划 / Preview plan 和 批准分镜计划 / Approve plan。需要渲染的镜头一行为 `shot <n> (<modality>/<task>/<provider>/<model>, <d> s, continues from the previous shot): <提示词的前 80 个字符>`；保留成片的镜头一行为 `shot <n>: keeps its take`。未知的计划或版本使调用以 `invalid_params` 失败；无法解析的参考使调用以 `dvShotRender.parseInputs` 的错误失败。
 
 `story.approve` 的 `confirm` 为 `'always'`：智能体调用需要 `user_approved: true`，其拒绝文本是标题行 `Approve plan <p> v<n> "<title>": render <k> of <m> shots and lay every shot on the plan's timeline.` 和预览行。只要 `problems` 不为空，每个调用方都在写记录之前被拒绝，错误列出所有问题，并以 "Update the plan with dv_plan_update, then call again." 结尾。
+
+要添加一个工作流，添加带 frontmatter 字段 `name` 和带引号的 `description` 的 `skills/<name>/SKILL.md`；提供方无需修改代码即可提供该文件。然后运行一次 `pnpm exec vitest run packages/bundle/dv/tests/skills.spec.ts -u`，写入它的快照 `packages/bundle/dv/tests/expected/skills/<name>.txt`。
 
 -----
 
@@ -55,7 +57,7 @@ kind: "package-reference"
 | --- | --- |
 | [`src/index.ts`](src/index.ts) | `dvStory`：`story.preview`、`story.approve`、计划遍历、预览行、问题和链 |
 | [`src/reducer.ts`](src/reducer.ts) | `story` 切片、其 reducer 及其项目摘要字段 |
-| [`skills/story-directing/SKILL.md`](skills/story-directing/SKILL.md) | `story-directing` 技能的正文 |
+| [`skills/story-directing/SKILL.md`](skills/story-directing/SKILL.md) | `story-directing` 技能：它的 frontmatter 和正文 |
 
 -----
 
@@ -104,11 +106,11 @@ kind: "package-reference"
 
 #### 模型看到什么
 
-技能目录列出 `story-directing` 及其描述和使用时机。智能体加载该技能时，读到调用顺序：`dv_plan_create` 或 `dv_plan_update`，然后 `dv_story_preview`（`problems` 不为空时用 `dv_plan_update` 修改后再次预览），给出镜头表格并以粗体提一个问题，下一轮用 `user_approved: true` 调用 `dv_story_approve`，然后调用 `dv_proj_wait`。它还告诉智能体如何延长、缩短或修改由计划生成的故事。
+技能目录列出每个工作流技能及其描述。智能体加载 `story-directing` 时，读到调用顺序：`dv_plan_create` 或 `dv_plan_update`，然后 `dv_story_preview`（`problems` 不为空时用 `dv_plan_update` 修改后再次预览），给出镜头表格并以粗体提一个问题，下一轮用 `user_approved: true` 调用 `dv_story_approve`，然后调用 `dv_proj_wait`。它还告诉智能体如何延长、缩短或修改由计划生成的故事。
 
 #### Token 影响
 
-插件挂载期间，技能目录中约 70 个 token；智能体每次加载该技能约 800 个 token。
+插件挂载期间，每个工作流技能在技能目录中占一行，最多 400 个码点（`story-directing` 约 70 个 token）；每次加载追加该技能的正文，少于 8192 个码点（`story-directing` 约 800 个 token）。`@dv/bundle` 的 [`skills.spec.ts`](../../bundle/dv/tests/skills.spec.ts) 检查这两个上限。
 
 #### KV Cache 影响
 

@@ -24,7 +24,7 @@ Use this package to preview and approve a shot plan version. Its read `story.pre
 <a id="use-this-package"></a>
 ## Use this package
 
-Mount the plugin after `@dv/project`, `@dv/shot-plan`, `@dv/shot-render` and `@dv/timeline`. It has no configuration and registers the component key `story` with its reducer. While the skill registry `skills` of `@deepseek-ai/dsh-skill` is mounted, the plugin registers the `story-directing` skill from [`skills/story-directing/SKILL.md`](skills/story-directing/SKILL.md).
+Mount the plugin after `@dv/project`, `@dv/shot-plan`, `@dv/shot-render` and `@dv/timeline`. It has no configuration and registers the component key `story` with its reducer. While the skill registry `skills` of `@deepseek-ai/dsh-skill` is mounted, the plugin serves every `<name>/SKILL.md` of its [`skills/`](skills/) folder as a skill through one `FileSystemSkillProvider` of `@deepseek-ai/dsh-skill-filesystem`, named `workflow-story`; the provider reads no other folder.
 
 ```yaml
 - id: dv-workflow-story
@@ -39,6 +39,8 @@ Mount the plugin after `@dv/project`, `@dv/shot-plan`, `@dv/shot-render` and `@d
 The labels are 预览分镜计划 / Preview plan and 批准分镜计划 / Approve plan. A rendered shot's line is `shot <n> (<modality>/<task>/<provider>/<model>, <d> s, continues from the previous shot): <first 80 characters of the prompt>`; a kept shot's line is `shot <n>: keeps its take`. An unknown plan or version fails the call with `invalid_params`; a reference that does not parse fails it with the error of `dvShotRender.parseInputs`.
 
 `story.approve` has `confirm: 'always'`: an agent call needs `user_approved: true`, and its refusal text is the head line `Approve plan <p> v<n> "<title>": render <k> of <m> shots and lay every shot on the plan's timeline.` and the preview lines. While `problems` is not empty, every caller is refused before a record, with one error that lists the problems and ends with "Update the plan with dv_plan_update, then call again."
+
+To add a workflow, add `skills/<name>/SKILL.md` with the frontmatter fields `name` and a quoted `description`; the provider serves the file with no code change. Then run `pnpm exec vitest run packages/bundle/dv/tests/skills.spec.ts -u` once to write its snapshot `packages/bundle/dv/tests/expected/skills/<name>.txt`.
 
 -----
 
@@ -55,7 +57,7 @@ The `story` reducer folds each finished `story.approve` into `approvals` (per pl
 | --- | --- |
 | [`src/index.ts`](src/index.ts) | `dvStory`: `story.preview`, `story.approve`, the plan walk, the preview lines, the problems and the chain |
 | [`src/reducer.ts`](src/reducer.ts) | The `story` slice, its reducer and its project summary field |
-| [`skills/story-directing/SKILL.md`](skills/story-directing/SKILL.md) | The body of the `story-directing` skill |
+| [`skills/story-directing/SKILL.md`](skills/story-directing/SKILL.md) | The `story-directing` skill: its frontmatter and body |
 
 -----
 
@@ -104,11 +106,11 @@ Each result is appended to the conversation after its call; the cached prefix st
 
 #### What the model sees
 
-The skill catalog lists `story-directing` with its description and when to use it. When the agent loads the skill, it reads the order of calls: `dv_plan_create` or `dv_plan_update`, then `dv_story_preview` (with `dv_plan_update` and a new preview while `problems` is not empty), a table of the shots and one question in bold, and in the next turn `dv_story_approve` with `user_approved: true`, then `dv_proj_wait`. It also tells the agent how to extend, shorten or change a story that a plan made.
+The skill catalog lists each workflow skill with its description. When the agent loads `story-directing`, it reads the order of calls: `dv_plan_create` or `dv_plan_update`, then `dv_story_preview` (with `dv_plan_update` and a new preview while `problems` is not empty), a table of the shots and one question in bold, and in the next turn `dv_story_approve` with `user_approved: true`, then `dv_proj_wait`. It also tells the agent how to extend, shorten or change a story that a plan made.
 
 #### Token effect
 
-About 70 tokens in the skill catalog while the plugin is mounted; about 800 tokens each time the agent loads the skill.
+One line in the skill catalog per workflow skill while the plugin is mounted, at most 400 code points (about 70 tokens for `story-directing`); each load adds the body of the skill, under 8192 code points (about 800 tokens for `story-directing`). [`skills.spec.ts`](../../bundle/dv/tests/skills.spec.ts) of `@dv/bundle` checks both limits.
 
 #### KV Cache effect
 
