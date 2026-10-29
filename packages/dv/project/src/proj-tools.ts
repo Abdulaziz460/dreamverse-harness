@@ -4,7 +4,10 @@
  * `dv_proj_history_list` returns the project summary of the current state: Project's fields (title, head, record count,
  * stale records, recent records) and the fields each component's reducer adds
  * through `Reducer.agentSummary`. A tool that writes records leads its summary with `record`, the newest record the call wrote, and
- * names that record in its presentation metadata (`{record}`), as the operation tools do; a read tool has no metadata.
+ * names that record in its presentation metadata (`{record}`), as the operation tools do. Every tool except
+ * `dv_proj_history_list` also stores what its result showed of the project as `dv_seen` (a `ProjectShown`) in its
+ * presentation metadata, which the model never reads: a summary tool names the summary's project, its head as the
+ * position and its recent records, and `dv_proj_wait` names the records it waited for.
  * `dv_proj_create` and `dv_proj_open` bind the chat session to its project; `dv_proj_rename` renames only that project.
  *
  * Calls the `dvProject` service's public methods and, through {@link ProjToolDeps}, the asset store, the reducers'
@@ -19,8 +22,10 @@ import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { OUTPUT_SCHEMA, callProject, outputLine, outputsOf, sessionOf, toJson, type ToolOutput } from './agent-tools.ts'
 import type DvProject from './index.ts'
 import type { OperationSpec } from './operation-types.ts'
-import { ProjectError } from './shared.ts'
-import type { AssetStore, ProjectId, ProjectRecord, ProjectState, RecordId, RecordOrigin, TurnId } from './types.ts'
+import { ProjectError, SEEN_META_KEY } from './shared.ts'
+import type {
+  AssetStore, ProjectId, ProjectRecord, ProjectShown, ProjectState, RecordId, RecordOrigin, RecordStatus, TurnId,
+} from './types.ts'
 
 /** What the `dv_proj_*` tools read besides the service's public methods. */
 export interface ProjToolDeps {
@@ -44,10 +49,11 @@ const HISTORY_LIMIT = 20
 /** A project summary the agent can read. */
 const STATE_SCHEMA = { type: 'json' } as const
 
-/** The value of `dv_proj_wait`: each named record after it finished, in the order named. */
+/** The value of `dv_proj_wait`: the project, and each named record after it finished, in the order named. */
 const WAIT_SCHEMA = {
   type: 'object', additionalProperties: false,
   properties: {
+    project: { type: 'string', required: true },
     records: {
       type: 'array', required: true,
       items: {
@@ -64,6 +70,9 @@ const WAIT_SCHEMA = {
 
 /** One record in the value of `dv_proj_wait`. */
 type WaitedRecord = { record: string; status: string; intent: string; summary: string; outputs: ToolOutput[] }
+
+/** The value of `dv_proj_wait`; the model reads only the records. */
+type WaitValue = { project: string; records: WaitedRecord[] }
 
 /**
  * The refusal a bound conversation gets when it tries to start or switch to another project: the user opened this
@@ -93,12 +102,15 @@ function originOf(deps: ProjToolDeps, exec: Pick<ToolRunContext, 'agent' | 'call
  * @param deps - the asset store and the reducers' summaries.
  * @param projectId - the project.
  * @param state - the project state.
- * @param written - the record the tool call wrote, or null for a read.
+ * @param options - `written`: the record the tool call wrote, or null for a read; `reports`: whether each recent record
+ *   carries its `report` (the tools' summaries do, the project state message does not).
  * @returns the summary. Throws `invalid_params` when two summaries use the same field name.
  */
 export function projectSummary(
-  project: DvProject, deps: ProjToolDeps, projectId: ProjectId, state: ProjectState, written: RecordId | null,
+  project: DvProject, deps: ProjToolDeps, projectId: ProjectId, state: ProjectState,
+  options: { written: RecordId | null; reports: boolean },
 ): JsonValue {
+  const { written, reports } = options
   const { proj } = state.components
   const assets = deps.assets()
   const summary: Record<string, unknown> = {
@@ -112,7 +124,7 @@ export function projectSummary(
   const recent = proj.records.slice(-RECENT_RECORDS).map(record => ({
     record: record.id, operation: record.operation, status: record.status, intent: record.intent,
     summary: recordSummary(project, record),
-    outputs: record.outputs.map(id => assets.url(id)), report: record.report, based_on: record.based_on,
+    outputs: record.outputs.map(id => assets.url(id)), ...reports ? { report: record.report } : {}, based_on: record.based_on,
     supersedes: record.supersedes,
   }))
   // Component fields sit between the record count and the stale records; no field may name two things.
@@ -130,13 +142,22 @@ function recordSummary(project: DvProject, record: ProjectRecord): string {
   return record.status === 'done' ? summaryOf(project, record) : record.error?.message ?? record.status
 }
 
-/** One line for a finished record: its operation's summary, else the operation name. */
-function summaryOf(project: DvProject, record: ProjectRecord): string {
+/**
+ * One line for a finished record: its operation's summary, else the operation name.
+ * @param project - the service.
+ * @param record - the record.
+ * @returns the line.
+ */
+export function summaryOf(project: DvProject, record: ProjectRecord): string {
   return specOf(project, record)?.summarize(record) ?? record.operation ?? record.kind
 }
 
-/** The registered operation of a record, or undefined for a record of no registered operation. */
-function specOf(project: DvProject, record: ProjectRecord): OperationSpec | undefined {
+/**
+ * @param project - the service.
+ * @param record - a record.
+ * @returns the registered operation of the record, or undefined for a record of no registered operation.
+ */
+export function specOf(project: DvProject, record: ProjectRecord): OperationSpec | undefined {
   return project.listOperations().find(candidate => candidate.name === record.operation)
 }
 
@@ -160,7 +181,7 @@ function waitedRecord(project: DvProject, assets: AssetStore, record: ProjectRec
  * @param value - the result.
  * @returns the text.
  */
-function waitText(value: { records: WaitedRecord[] }): string {
+function waitText(value: WaitValue): string {
   return value.records.flatMap(entry => [`${entry.status} ${entry.record} (${entry.intent}): ${entry.summary}`, ...entry.outputs.map(outputLine)])
     .join('\n')
 }
@@ -170,9 +191,23 @@ function waitText(value: { records: WaitedRecord[] }): string {
  * @param value - the summary.
  * @returns `{record}`, with `record: ''` when the summary names no record.
  */
-function writtenMeta(value: JsonValue): JsonValue {
+function writtenMeta(value: JsonValue): { record: string } {
   const record = typeof value === 'object' && value !== null && !Array.isArray(value) ? value['record'] : undefined
   return { record: typeof record === 'string' ? record : '' }
+}
+
+/**
+ * What a project summary showed, for its `dv_seen` metadata.
+ * @param value - a summary of {@link projectSummary}.
+ * @returns `{dv_seen}`: the summary's project, its head as the position, and each recent record in its status.
+ */
+function seenMeta(value: JsonValue): { [SEEN_META_KEY]: JsonValue } {
+  const summary = value as { project_id: string; head: string; recent: Array<{ record: string; status: RecordStatus }> }
+  const shown: ProjectShown = {
+    project: brandString<ProjectId>(summary.project_id), at: brandString<RecordId>(summary.head),
+    records: Object.fromEntries(summary.recent.map(entry => [entry.record, entry.status])),
+  }
+  return { [SEEN_META_KEY]: toJson(shown) }
 }
 
 /**
@@ -186,16 +221,19 @@ export function projTools(project: DvProject, deps: ProjToolDeps): ToolDefinitio
   const projectOf = (exec: ToolRunContext, projectId: unknown): ProjectId => callProject(projectId, project.sessionProject(sessionOf(exec)))
   // The project's current state, led by the record a write wrote.
   const summary = (projectId: ProjectId, record: RecordId | null = null): JsonValue =>
-    projectSummary(project, deps, projectId, project.getState(projectId), record)
+    projectSummary(project, deps, projectId, project.getState(projectId), { written: record, reports: true })
   // The summary after a write, led by the newest record the call wrote.
   const written = (exec: ToolRunContext, projectId: ProjectId): JsonValue => {
     const [entry] = project.listHistory({ project: projectId, tool_call: exec.callId, limit: 1 })
     return summary(projectId, entry?.record.id ?? null)
   }
-  const stateOutput = {
+  const historyOutput = {
     schema: STATE_SCHEMA, render: (_args: unknown, value: JsonValue): ContentBlock[] => [{ type: 'text', text: JSON.stringify(value, null, 1) }],
   }
-  const writeOutput = { ...stateOutput, presentationMeta: (_args: unknown, value: JsonValue): JsonValue => writtenMeta(value) }
+  const stateOutput = { ...historyOutput, presentationMeta: (_args: unknown, value: JsonValue): JsonValue => seenMeta(value) }
+  const writeOutput = {
+    ...historyOutput, presentationMeta: (_args: unknown, value: JsonValue): JsonValue => ({ ...writtenMeta(value), ...seenMeta(value) }),
+  }
   return [
     defineTool({
       name: 'dv_proj_create',
@@ -255,7 +293,7 @@ export function projTools(project: DvProject, deps: ProjToolDeps): ToolDefinitio
         limit: { type: 'integer', description: `At most this many records; default ${HISTORY_LIMIT}.` },
         operation: { type: 'string', description: 'Only records of this operation, such as proj.create.' },
       },
-      output: stateOutput,
+      output: historyOutput,
       execute: (args, exec) => {
         const projectId = projectOf(exec, args.project_id)
         const entries = project.listHistory({
@@ -320,7 +358,15 @@ export function projTools(project: DvProject, deps: ProjToolDeps): ToolDefinitio
         },
       },
       output: {
-        schema: WAIT_SCHEMA, render: (_args: unknown, value: { records: WaitedRecord[] }): ContentBlock[] => [{ type: 'text', text: waitText(value) }],
+        schema: WAIT_SCHEMA,
+        render: (_args: unknown, value: WaitValue): ContentBlock[] => [{ type: 'text', text: waitText(value) }],
+        presentationMeta: (_args: unknown, value: WaitValue): JsonValue => {
+          const shown: ProjectShown = {
+            project: brandString<ProjectId>(value.project),
+            records: Object.fromEntries(value.records.map(entry => [entry.record, entry.status as RecordStatus])),
+          }
+          return { [SEEN_META_KEY]: toJson(shown) }
+        },
       },
       execute: async (args, exec) => {
         const projectId = projectOf(exec, args.project_id)
@@ -328,7 +374,7 @@ export function projTools(project: DvProject, deps: ProjToolDeps): ToolDefinitio
         if (records.length === 0) throw new Error('Name at least one record ID to wait for.')
         await project.wait(projectId, records)
         const assets = deps.assets()
-        return { records: records.map(id => waitedRecord(project, assets, project.getRecord(projectId, id))) }
+        return { project: projectId, records: records.map(id => waitedRecord(project, assets, project.getRecord(projectId, id))) }
       },
     }),
   ]

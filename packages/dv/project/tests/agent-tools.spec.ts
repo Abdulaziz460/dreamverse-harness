@@ -60,6 +60,7 @@ async function start(root = tempRoot(), attachments = true): Promise<Fixture> {
   // A session stands in as `{id}`; the agent loop's `turnBoundary` projection reports the session's latest turn.
   const projections = {
     stateOf: (session: { id: string }, key: string) => key === 'turnBoundary' ? { lastTurn: turns.get(session.id) ?? 0 } : undefined,
+    register: () => () => {},
   }
   context.provide('sessionProjections', projections as never)
   await context.plugin(SystemPrompt, {}).await()
@@ -158,7 +159,10 @@ describe('agent tools', () => {
     })
     expect(grabbed.images).toHaveLength(1)
     expect(result.content.filter(block => block.type === 'image')).toHaveLength(1)
-    expect(result.meta).toMatchObject({ record: grabbed.record, tool: 'asset.grab_still', status: 'done' })
+    expect(result.meta).toMatchObject({
+      record: grabbed.record, tool: 'asset.grab_still', status: 'done',
+      dv_seen: { project: projectId, at: grabbed.record, records: { [grabbed.record]: 'done' } },
+    })
     // An empty reason falls back to the operation name; based_on and supersedes reach the record.
     const again = value(await fixture.call('dv_asset_grab_still', { reason: '', prompt: 'kite 2', based_on: grabbed.record, supersedes: [grabbed.record] }))
     expect(fixture.project.getRecord(projectId, brandString<RecordId>(again.record)))
@@ -265,26 +269,28 @@ describe('agent tools', () => {
     expect(fixture.project.listOperations()).toEqual([])
   })
 
-  it('gives the agent the dv:project prompt section: Project\'s rules, and the summary of the bound project\'s current state', async () => {
+  it('gives the agent the dv:project prompt section: Project\'s rules, the same text for an unbound and a bound conversation', async () => {
     const fixture = await start()
+    fixture.project.registerOperation(operation({ name: 'asset.grab_still', component: 'asset' }))
     const sectionOf = async (session: string): Promise<string | undefined> => {
       const assembly = await fixture.context.systemPrompt.assemble({ agent: { id: session } as never })
       return assembly.sections.find(section => section.name === 'dv:project')?.text
     }
     const unbound = await sectionOf('s1')
     expect(unbound).toContain('DreamVerse project rules:')
+    expect(unbound).toContain('- A conversation without a project starts the work with dv_proj_create. Once the DreamVerse project '
+      + 'state message, dv_proj_create or dv_proj_open names this conversation\'s project, do all work in it and never call '
+      + 'dv_proj_create or dv_proj_open again. Changes of the project that your own tool results did not show reach you as '
+      + 'DreamVerse project updates; dv_proj_state reads the whole project at any time.')
     expect(unbound).toContain('ask in the conversation with the question in bold')
     expect(unbound).toContain('is a step of the project history at once; the user does not accept changes.')
     expect(unbound).toContain('dv_proj_redo goes forward one step. These moves add no step.')
     expect(unbound).toContain('A new change after a move discards the steps after the current one for good')
     expect(unbound).not.toMatch(/branch/)
-    expect(unbound).toMatch(/No project is bound to this conversation yet: start the work with dv_proj_create\.$/)
-    const projectId = await boundProject(fixture)
-    const bound = await sectionOf('s1')
-    expect(bound).toContain(`This conversation belongs to project ${projectId}`)
-    expect(bound).toContain('Project summary of the current state, as dv_proj_state returns it:')
-    expect(bound).toContain(`"project_id": "${projectId}"`)
-    expect(bound).not.toContain('selection')
+    await boundProject(fixture)
+    expect(await sectionOf('s1')).toBe(unbound)
+    await fixture.call('dv_asset_grab_still', { reason: 'still', prompt: 'a' })
+    expect(await sectionOf('s1')).toBe(unbound)
   })
 
   it('names the registered reference kinds in the naming rule of the dv:project prompt section', async () => {
@@ -417,7 +423,7 @@ describe('session bindings and the asset store', () => {
 
   it('formats a result as text plus image blocks, with its params unless the operation omits them', () => {
     const base: OperationToolValue = {
-      record: 'r1', status: 'done', summary: 'did it', outputs: [{ role: 'video', asset_id: 'a1', mime: 'video/mp4', url: '/a1' }], scheduled: ['r2'],
+      project: 'p1', record: 'r1', status: 'done', summary: 'did it', outputs: [{ role: 'video', asset_id: 'a1', mime: 'video/mp4', url: '/a1' }], scheduled: ['r2'],
       params: { seed: 1 },
     }
     expect(formatToolResult(base, {})).toEqual([{ type: 'text', text: 'done r1: did it\n- video: a1 (video/mp4) /a1\nscheduled: r2\nparams: {"seed":1}' }])

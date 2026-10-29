@@ -3,7 +3,9 @@
  * `dv_<operation name with _>`. A tool call is one `run` as the agent: the `reason` argument is the record's intent,
  * `inputs` names assets, versions of the registered reference kinds, or outputs of earlier records by role, and the
  * result names the record, its outputs with their URLs, and the records the call scheduled. Image outputs also reach
- * the model as image blocks through the attachment service.
+ * the model as image blocks through the attachment service. The result's presentation metadata also stores, as
+ * `dv_seen` (a `ProjectShown`), the record in the status the result returned, each scheduled record as `pending`, and
+ * the newest of them as the position, so the project updates do not repeat them; a read stores none.
  *
  * Confirmation: an operation whose `confirm` is `always` gets the tool-only argument `user_approved`; a call that
  * lacks it is refused, before anything is written, with the operation's `confirmSummary` and the instruction to ask
@@ -28,10 +30,10 @@ import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { splitInputRef } from './grammar.ts'
 import type { OperationSpec, OperationToolCall } from './operation-types.ts'
 import type { Sessions } from './sessions.ts'
-import { ProjectError } from './shared.ts'
+import { ProjectError, SEEN_META_KEY } from './shared.ts'
 import type {
   AssetId, AssetStore, HistoryEntry, HistoryQuery, OperationOutput, ProjectId, ProjectRecord, ProjectState, RecordId,
-  RecordInputRef, RecordOrigin, RunRequest, RunResult, SessionId, TurnId,
+  ProjectShown, RecordInputRef, RecordOrigin, RecordStatus, RunRequest, RunResult, SessionId, TurnId,
 } from './types.ts'
 
 /** What the agent tools read and call. */
@@ -88,6 +90,7 @@ const RESULT_SCHEMA = {
   type: 'object',
   additionalProperties: false,
   properties: {
+    project: { type: 'string', required: true, description: 'The project of this call; not shown to the model.' },
     record: { type: 'string', required: true, description: 'The record of this call; empty for a read, which writes no record.' },
     status: { type: 'string', required: true, description: 'done, or pending (scheduled behind records that have not finished).' },
     summary: { type: 'string', required: true },
@@ -106,6 +109,7 @@ const RESULT_SCHEMA = {
 
 /** The result value of an operation tool call; a type literal so a validated `JsonValue` can be asserted to it. */
 export type OperationToolValue = {
+  project: string
   record: string
   status: string
   summary: string
@@ -356,7 +360,15 @@ export class AgentTools {
       output: {
         schema: RESULT_SCHEMA,
         render: (_args, value) => formatToolResult(value, spec),
-        presentationMeta: (_args, value) => ({ record: value.record, tool: spec.name, status: value.status, outputs: value.outputs }),
+        presentationMeta: (_args, value) => {
+          const card = { record: value.record, tool: spec.name, status: value.status, outputs: value.outputs }
+          if (value.record === '') return card
+          const shown: ProjectShown = {
+            project: brandString<ProjectId>(value.project), at: brandString<RecordId>(value.scheduled.at(-1) ?? value.record),
+            records: { [value.record]: value.status as RecordStatus, ...Object.fromEntries(value.scheduled.map(id => [id, 'pending'])) },
+          }
+          return { ...card, [SEEN_META_KEY]: toJson(shown) }
+        },
       },
       execute: (args, exec) => this.call(spec, args, exec),
     })
@@ -397,7 +409,7 @@ export class AgentTools {
     // A read writes no record: its answer is the report.
     if (record === null) {
       return {
-        record: '', status: 'done', summary: `${toolNameOf(spec)} answered`, outputs: [], scheduled: [], params: toJson(request.params),
+        project, record: '', status: 'done', summary: `${toolNameOf(spec)} answered`, outputs: [], scheduled: [], params: toJson(request.params),
         ...result.report === null ? {} : { report: toJson(result.report) },
       }
     }
@@ -406,7 +418,7 @@ export class AgentTools {
     const scheduled = this.deps.listHistory({ project, actor: 'system', kind: 'operation' })
       .map(entry => entry.record).filter(other => !before.has(other.id) && other.session === session)
       .map(other => other.id).reverse()
-    return await this.valueOf(spec, record, scheduled)
+    return await this.valueOf(spec, project, record, scheduled)
   }
 
   /**
@@ -460,10 +472,13 @@ export class AgentTools {
   }
 
   /** The result value of a record. */
-  private async valueOf(spec: OperationSpec, record: ProjectRecord, scheduled: RecordId[]): Promise<OperationToolValue> {
+  private async valueOf(
+    spec: OperationSpec, project: ProjectId, record: ProjectRecord, scheduled: RecordId[],
+  ): Promise<OperationToolValue> {
     const assets = this.deps.assets()
     const images = record.status === 'done' ? await this.imagesOf(record.outputs) : []
     return {
+      project,
       record: record.id,
       status: record.status,
       summary: record.status === 'done' ? spec.summarize(record) : `${toolNameOf(spec)} ${record.status}`,

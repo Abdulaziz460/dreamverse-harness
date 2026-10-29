@@ -407,6 +407,21 @@ export interface ProjectLine {
   at: RecordId
 }
 
+/**
+ * What one logged project message or DreamVerse tool result showed a chat session's agent of one project. Written to
+ * the DSH session log inside the source of a project message, and as `dv_seen` inside the persisted metadata of a tool
+ * result (`tool/result.meta`), which the model never reads. A project update lists what the session's entries have not
+ * shown.
+ */
+export type ProjectShown =
+  /** A project update message or a tool result: each record listed, in the status listed, and the position if shown. */
+  | { project: ProjectId; records: Partial<Record<RecordId, RecordStatus>>; at?: RecordId | undefined; base?: undefined }
+  /**
+   * The project state message: records `[0, base)` in write order count as shown in a final status, except the
+   * unfinished ones, which `records` lists in their status.
+   */
+  | { project: ProjectId; records: Partial<Record<RecordId, RecordStatus>>; at: RecordId; base: number }
+
 /** What a subscriber learns about a project change. */
 export type ProjectEvent =
   | { kind: 'record'; record: ProjectRecord }

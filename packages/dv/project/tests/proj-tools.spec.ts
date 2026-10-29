@@ -263,26 +263,25 @@ describe('dv_proj_* tools', () => {
     expect(fixture.project.listHistory({ project: projectId, operation: 'proj.stale_accept' })[0]?.record.intent).toBe(`accept ${consumer.record}`)
   })
 
-  it('names the record a write tool wrote in its summary and presentation metadata, and gives read tools no metadata', async () => {
+  it('names the record a write tool wrote in its metadata, and what every summary tool showed of the project', async () => {
     const fixture = await start()
     fixture.project.registerOperation(still())
-    const created = json(await fixture.call('dv_proj_create', { title: 'meta' }))
-    const projectId = brandString<ProjectId>(String(created['project_id']))
-    const metaOf = (name: string, result: unknown): unknown =>
-      fixture.context.tools.get(name)?.output?.presentationMeta?.({}, result as never)
-    const newest = (operation: string): string | undefined => fixture.project.listHistory({ project: projectId, operation })[0]?.record.id
-    expect(metaOf('dv_proj_create', created)).toEqual({ record: newest('proj.create') })
-    value(await fixture.call('dv_asset_grab_still', { reason: 'first', prompt: 'one' }))
-    const accepted = json(await fixture.call('dv_proj_stale_accept', { record: newest('asset.grab_still') }))
-    expect(metaOf('dv_proj_stale_accept', accepted)).toEqual({ record: newest('proj.stale_accept') })
-    // Undo and redo move the current position and write no record, so they are read tools.
-    const undone = json(await fixture.call('dv_proj_undo', {}))
-    expect(undone['record']).toBeUndefined()
-    const state = json(await fixture.call('dv_proj_state', {}))
-    expect(state['record']).toBeUndefined()
-    for (const name of ['dv_proj_open', 'dv_proj_rename', 'dv_proj_state', 'dv_proj_history_list', 'dv_proj_wait', 'dv_proj_undo', 'dv_proj_redo']) {
-      expect(fixture.context.tools.get(name)?.output?.presentationMeta, name).toBeUndefined()
-    }
+    const created = await fixture.call('dv_proj_create', { title: 'meta' })
+    const projectId = brandString<ProjectId>(String(json(created)['project_id']))
+    const newest = (operation: string): string => fixture.project.listHistory({ project: projectId, operation })[0]?.record.id ?? ''
+    expect(created.meta).toEqual({ record: newest('proj.create'), dv_seen: { project: projectId, at: newest('proj.create'), records: { [newest('proj.create')]: 'done' } } })
+    const grabbed = value(await fixture.call('dv_asset_grab_still', { reason: 'first', prompt: 'one' }))
+    const accepted = await fixture.call('dv_proj_stale_accept', { record: newest('asset.grab_still') })
+    const seenAt = (at: string, ...records: string[]): unknown => ({ project: projectId, at, records: Object.fromEntries(records.map(id => [id, 'done'])) })
+    expect(accepted.meta).toEqual({
+      record: newest('proj.stale_accept'), dv_seen: seenAt(newest('proj.stale_accept'), newest('proj.create'), grabbed.record, newest('proj.stale_accept')),
+    })
+    // Undo and redo move the current position and write no record, so their metadata names no record.
+    const undone = await fixture.call('dv_proj_undo', {})
+    expect(json(undone)['record']).toBeUndefined()
+    expect(undone.meta).toEqual({ dv_seen: seenAt(grabbed.record, newest('proj.create'), grabbed.record) })
+    expect((await fixture.call('dv_proj_state', {})).meta).toEqual({ dv_seen: seenAt(grabbed.record, newest('proj.create'), grabbed.record) })
+    expect((await fixture.call('dv_proj_history_list', {})).meta).toBeUndefined()
   })
 
   it('shows a pending record by its status in the project summary', async () => {
@@ -334,9 +333,11 @@ describe('dv_proj_* tools', () => {
       `- still: ${asset('kite')} (image/png) https://assets.example/${asset('kite')}`,
       `failed ${broken} (a broken still): The ink ran out.`,
     ].join('\n') }])
-    expect(json(result)).toEqual({ records: [
+    expect(json(result)).toEqual({ project: projectId, records: [
       expect.objectContaining({ record: slow, status: 'done' }), expect.objectContaining({ record: early.record, status: 'done' }),
       { record: broken, status: 'failed', intent: 'a broken still', summary: 'The ink ran out.', outputs: [] },
     ] })
+    // The metadata names each record the result showed, in the status it showed.
+    expect(result.meta).toEqual({ dv_seen: { project: projectId, records: { [slow]: 'done', [early.record]: 'done', [broken]: 'failed' } } })
   })
 })
