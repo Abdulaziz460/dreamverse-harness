@@ -77,7 +77,7 @@ kind: "package-reference"
 
 #### 模型看到什么
 
-一次调用返回一个文本块：`<status> <record>: <summary>`（只读操作不写记录，为 `<status>: <summary>`）、每个输出一行带素材 ID、媒体类型和 URL、调度的记录、参数和报告；挂载了附件服务时，每个图片输出再跟一个图片块。失败或取消的记录返回带其消息的工具错误，被停止的记录返回 "dv_<name> was stopped before it finished."。需要用户同意却没带参数的调用返回工具错误："dv_<name> needs the user's agreement."，然后是 "What it will do:" 加 `confirmSummary` 的文字，以及指示：把这些给用户看，在对话中用粗体提问，得到用户回答后带 `user_approved: true` 再次调用。
+一次调用返回一个文本块：`<status> <record>: <summary>`（只读操作不写记录，为 `<status>: <summary>`）、每个输出一行带素材 ID、媒体类型和 URL、调度的记录、参数和报告；设置了 `OperationSpec.omitParamsFromResult` 的操作（例如分镜计划组件的 `plan.create` 和 `plan.update`）不含参数，因为参数重复模型自己的工具调用。挂载了附件服务时，每个图片输出再跟一个图片块。失败或取消的记录返回带其消息的工具错误，被停止的记录返回 "dv_<name> was stopped before it finished."。需要用户同意却没带参数的调用返回工具错误："dv_<name> needs the user's agreement."，然后是 "What it will do:" 加 `confirmSummary` 的文字，以及指示：把这些给用户看，在对话中用粗体提问，得到用户回答后带 `user_approved: true` 再次调用。
 
 #### Token 影响
 
@@ -91,11 +91,11 @@ kind: "package-reference"
 
 #### 模型看到什么
 
-九个工具：`dv_proj_create`、`dv_proj_open`、`dv_proj_rename`、`dv_proj_state`、`dv_proj_history_list`、`dv_proj_undo`、`dv_proj_redo`、`dv_proj_stale_accept` 和 `dv_proj_wait`。`dv_proj_history_list` 按从新到旧返回步骤（默认 20 条），每条带 `place`（`current`、`before` 或 `after`）、操作、状态、发起者、意图和输出；其他工具以缩进 JSON 返回当前状态的项目摘要：`record`（只在写记录的工具之后出现：该调用写下的最新记录）、`project_id`、`title`、`head`、`records`（数量），然后按组件键的字母顺序是各组件的 `agentSummary` 字段（角色 `characters`、场景 `locations`、分镜 `plans`、风格 `styles`、时间线 `timelines`），最后是 `stale` 和 `recent`（最多十二条记录，带摘要和输出 URL）。`dv_proj_undo` 不带 `to` 时往回移一步，带 `to`（`dv_proj_history_list` 里的记录 ID）时移到那一步，可在当前一步之前或之后；`dv_proj_redo` 往前移一步。这些移动不加一步；之后的修改会丢弃当前一步之后的步骤。`dv_proj_rename` 接受 `title`，只重命名本对话的项目；它去掉标题首尾空白，拒绝空标题，标题已被其他项目使用时加后缀 ` 2`、` 3`、…，不写记录。
+九个工具：`dv_proj_create`、`dv_proj_open`、`dv_proj_rename`、`dv_proj_state`、`dv_proj_history_list`、`dv_proj_undo`、`dv_proj_redo`、`dv_proj_stale_accept` 和 `dv_proj_wait`。`dv_proj_history_list` 按从新到旧返回步骤（默认 20 条），每条带 `place`（`current`、`before` 或 `after`）、操作、状态、发起者、意图和输出。`dv_proj_wait` 接受 `records`，即要等待的记录 ID（某个结果在 `scheduled` 下列出的记录，或状态为 pending 的记录），等到每条记录完成或失败，然后按给出的顺序为每条记录返回一行 `<status> <record> (<intent>): <summary>`，每行后面跟着每个输出一行 `- <role>: <asset> (<mime>) <url>`；失败记录的摘要是它的错误，空列表或未知记录 ID 在任何等待之前被拒绝。其他工具以缩进 JSON 返回当前状态的项目摘要：`record`（只在写记录的工具之后出现：该调用写下的最新记录）、`project_id`、`title`、`head`、`records`（数量），然后按组件键的字母顺序是各组件的 `agentSummary` 字段（角色 `characters`、场景 `locations`、分镜 `plans`、风格 `styles`、时间线 `timelines`），最后是 `stale` 和 `recent`（最多十二条记录，带摘要和输出 URL）。`dv_proj_undo` 不带 `to` 时往回移一步，带 `to`（`dv_proj_history_list` 里的记录 ID）时移到那一步，可在当前一步之前或之后；`dv_proj_redo` 往前移一步。这些移动不加一步；之后的修改会丢弃当前一步之后的步骤。`dv_proj_rename` 接受 `title`，只重命名本对话的项目；它去掉标题首尾空白，拒绝空标题，标题已被其他项目使用时加后缀 ` 2`、` 3`、…，不写记录。
 
 #### Token 影响
 
-插件挂载期间，九个定义固定约 800 个 token。项目摘要起始约 150 个 token，并随项目增长：每条最近记录、每个角色、场景、风格、分镜计划和片段都加上自己的字段。
+插件挂载期间，九个定义固定约 800 个 token。项目摘要起始约 150 个 token，并随项目增长：每条最近记录、每个角色、场景、风格、分镜计划和片段都加上自己的字段。无论项目多大，`dv_proj_wait` 的结果每条记录约 30 个 token，每个输出再加约 40 个。
 
 #### KV Cache 影响
 
