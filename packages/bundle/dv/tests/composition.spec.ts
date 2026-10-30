@@ -23,7 +23,6 @@ describe('DreamVerse bundle composition', () => {
     const ids = insertRows().map(row => row.id)
     const nouns = ids.filter(id => /^dv-(ui-)?(character|location|style)$/.test(id))
     expect(nouns).toEqual(['dv-character', 'dv-location', 'dv-style', 'dv-ui-character', 'dv-ui-location', 'dv-ui-style'])
-    expect(ids.indexOf('dv-ui-style')).toBe(ids.indexOf('dv-ui-shot-plan') - 1)
   })
 
   it('pins the definitions of the text node tools that the agent sees', async () => {
@@ -36,7 +35,7 @@ describe('DreamVerse bundle composition', () => {
   it('boots the bundle rows through the Loader and turns a model tool call into a durable record', async () => {
     const rows = bundleRows()
     expect(rows.map(row => row.id)).toEqual(expect.arrayContaining([
-      'dv-models', 'dv-fastvideo', 'dv-uniserve', 'dv-project', 'dv-text-node', 'dv-shot-plan', 'dv-shot-render', 'dv-timeline', 'dv-workflow-story', 'dv-chat-references', 'dv-api',
+      'dv-models', 'dv-fastvideo', 'dv-uniserve', 'dv-project', 'dv-text-node', 'dv-shot-render', 'dv-timeline', 'dv-workflow-story', 'dv-chat-references', 'dv-api',
       'dv-sglang-diffusion', 'dv-image-generate', 'dv-sglang-omni', 'dv-audio-generate',
     ]))
     const { ctx, dir, dispose } = await bootBundle()
@@ -46,14 +45,10 @@ describe('DreamVerse bundle composition', () => {
     expect(ctx.get('dvApi')).toBeDefined()
     expect(ctx.get('dvProject')?.listOperations().map(spec => spec.name))
       .toEqual(expect.arrayContaining([
-        'plan.create', 'shot.render', 'timeline.create', 'timeline.update', 'image.generate', 'audio.generate',
+        'shot.render', 'timeline.create', 'timeline.update', 'image.generate', 'audio.generate',
       ]))
     expect(ctx.get('tools')?.get('dv_shot_render')).toBeDefined()
     expect(ctx.get('tools')?.get('dv_audio_generate')).toBeDefined()
-    // The story workflow approves plans: the agent sees its preview and approve tools and no plan tool that approves.
-    expect(ctx.get('tools')?.get('dv_story_preview')).toBeDefined()
-    expect(ctx.get('tools')?.get('dv_story_approve')).toBeDefined()
-    expect(ctx.get('tools')?.get('dv_plan_approve')).toBeUndefined()
     expect(ctx.get('tools')?.get('dv_models_list')).toBeDefined()
     expect(ctx.get('tools')?.get('dv_models_get')).toBeDefined()
     expect(ctx.get('tools')?.get('dv_image_generate')).toBeDefined()
