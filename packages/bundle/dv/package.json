@@ -32,6 +32,7 @@
     "@dv/shot-plan": "workspace:*",
     "@dv/shot-render": "workspace:*",
     "@dv/style": "workspace:*",
+    "@dv/text-node": "workspace:*",
     "@dv/timeline": "workspace:*",
     "@dv/uniserve": "workspace:*",
     "@dv/ui-asset-pool": "workspace:*",
@@ -49,6 +50,7 @@
     "@dv/ui-shot-plan": "workspace:*",
     "@dv/ui-shot-render": "workspace:*",
     "@dv/ui-style": "workspace:*",
+    "@dv/ui-text-node": "workspace:*",
     "@dv/ui-timeline": "workspace:*",
     "@dv/ui-workflow-story": "workspace:*",
     "@dv/workflow-story": "workspace:*"
