@@ -7,7 +7,7 @@
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-locale/client'
 import { CARD_SURFACE } from '@dv/ui-kit/frame.ts'
-import type { NodeAction, NodeView } from './contract/index.ts'
+import type { NodeAction, NodeSize, NodeView, Size } from './contract/index.ts'
 import { NODE_WIDTH } from './graph.ts'
 import type { CanvasNode } from './graph.ts'
 import type {} from './locales.ts'
@@ -18,15 +18,22 @@ export type CanvasTranslate = TranslateNS<'dvCanvas'>
 /** Height of the caption above the frame at base text size. */
 export const CAPTION_HEIGHT = 20
 
-type SizedNode = Pick<CanvasNode, 'bodyHeight'>
+/**
+ * The frame size of a node: the default size of its `sizing`, else the 208-unit width at its `bodyHeight`.
+ * @param node - the node.
+ * @returns the size in canvas units.
+ */
+export function frameSizeOf(node: NodeSize): Size {
+  return node.sizing === undefined ? { width: NODE_WIDTH, height: node.bodyHeight } : node.sizing.defaultSize
+}
 
 /**
  * The node height at base text size, caption + frame, computed from the node without measuring it.
  * @param node - the node.
  * @returns the height in canvas units.
  */
-export function cardHeight(node: SizedNode): number {
-  return CAPTION_HEIGHT + node.bodyHeight
+export function cardHeight(node: NodeSize): number {
+  return CAPTION_HEIGHT + frameSizeOf(node).height
 }
 
 /**
@@ -35,8 +42,8 @@ export function cardHeight(node: SizedNode): number {
  * @param textScale - the text enlargement ({@link textScaleAt}).
  * @returns the offset in canvas units.
  */
-export function edgeAnchorY(node: SizedNode, textScale: number): number {
-  return Math.round(CAPTION_HEIGHT * textScale) + node.bodyHeight / 2
+export function edgeAnchorY(node: NodeSize, textScale: number): number {
+  return Math.round(CAPTION_HEIGHT * textScale) + frameSizeOf(node).height / 2
 }
 
 /** The zoom at and above which node text keeps its base size; below it text scales up to stay readable. */
@@ -89,6 +96,7 @@ export function NodeCard(props: NodeCardProps): ReactNode {
   const size = (base: number): number => Math.round(base * scale)
   const text = (base: 12 | 13): CSSProperties => ({ fontSize: size(base), lineHeight: `${String(size({ 12: 16, 13: 20 }[base]))}px` })
   const failed = node.claimed && flags.failed
+  const frame = frameSizeOf(node)
   // A selected frame wears the accent ring; a stale frame a danger outline; a failed frame the soft outline; any other
   // frame the plain outline.
   let ring = '0 0 0 1px var(--dv-line-strong)'
@@ -96,7 +104,7 @@ export function NodeCard(props: NodeCardProps): ReactNode {
   else if (flags.stale) ring = '0 0 0 1px var(--dv-danger)'
   else if (failed) ring = '0 0 0 1px var(--dv-line)'
   const style: CSSProperties = {
-    position: 'absolute', left: x, top: y, width: NODE_WIDTH, boxSizing: 'border-box', color: 'var(--dv-text)', cursor: 'grab', userSelect: 'none',
+    position: 'absolute', left: x, top: y, width: frame.width, boxSizing: 'border-box', color: 'var(--dv-text)', cursor: 'grab', userSelect: 'none',
     opacity: flags.superseded ? 0.55 : 1, touchAction: 'none',
   }
   const status = node.claimed ? node.nodeType.claimed?.status : undefined
@@ -134,7 +142,7 @@ export function NodeCard(props: NodeCardProps): ReactNode {
   } else {
     content = (
       <>
-        <div style={{ position: 'relative', height: node.bodyHeight }}>
+        <div style={{ position: 'relative', height: frame.height }}>
           {props.body}
           {marker !== null
             ? <span style={{ ...text(13), position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--dv-overlay)', color: flags.failed ? 'var(--dv-danger)' : 'var(--dv-text)', fontWeight: 500 }}>{marker}</span>
@@ -165,7 +173,7 @@ export function NodeCard(props: NodeCardProps): ReactNode {
       title={failed ? node.record.error?.message : undefined}
     >
       {caption}
-      <div data-node-frame="" style={{ position: 'relative', height: node.bodyHeight, overflow: 'hidden', borderRadius: 'var(--dv-radius-lg)', boxShadow: ring }}>
+      <div data-node-frame="" style={{ position: 'relative', height: frame.height, overflow: 'hidden', borderRadius: 'var(--dv-radius-lg)', boxShadow: ring }}>
         {content}
       </div>
     </div>
