@@ -332,23 +332,23 @@ describe('canvas stories', () => {
     expect(page.errors).toEqual([])
   })
 
-  it('clicking a node opens the floating editor; ✕ and Escape close it', async () => {
+  it('double-clicking a node opens the floating editor; ✕ and Escape close it', async () => {
     const project = await seedProject('canvas-editor')
     const page = await openPage()
     await gotoProject(page, project.id)
     const editor = page.locator('[data-testid="dv-canvas-node-editor"]')
-    await page.locator('[data-node-type="take"]').first().click()
+    await page.locator('[data-node-type="take"]').first().dblclick()
     await expect.poll(() => editor.count()).toBe(1)
     // The take editor names the model and task of the take's record.
     expect(await editor.locator('[data-testid="dv-canvas-render-mode"]').textContent()).toBe('fasth3 · 参考图生成')
     await editor.getByRole('button', { name: '关闭' }).click()
     await expect.poll(() => editor.count()).toBe(0)
-    await page.locator('[data-node-type="take"]').first().click()
+    await page.locator('[data-node-type="take"]').first().dblclick()
     await page.locator('#dv-canvas-editor-prompt').click()
     await page.keyboard.press('Escape')
     await expect.poll(() => editor.count()).toBe(0)
     // Escape also closes the editor when focus left it, for example after clicking the editor's video.
-    await page.locator('[data-node-type="take"]').first().click()
+    await page.locator('[data-node-type="take"]').first().dblclick()
     await expect.poll(() => editor.count()).toBe(1)
     await page.evaluate(() => { (document.activeElement as HTMLElement | null)?.blur() })
     await page.keyboard.press('Escape')
@@ -360,7 +360,7 @@ describe('canvas stories', () => {
     const page = await openPage()
     await gotoProject(page, project.id)
     await fitCanvas(page)
-    await page.locator('[data-node-type="character"]').first().click()
+    await page.locator('[data-node-type="character"]').first().dblclick()
     const editor = page.locator('[data-testid="dv-canvas-node-editor"]')
     await expect.poll(() => editor.count()).toBe(1)
     const frame = await page.locator('[data-testid="dv-canvas-view"]').boundingBox()
@@ -376,7 +376,7 @@ describe('canvas stories', () => {
     const page = await openPage()
     await gotoProject(page, first.id)
     const editor = page.locator('[data-testid="dv-canvas-node-editor"]')
-    await page.locator('[data-node-type="take"]').first().click()
+    await page.locator('[data-node-type="take"]').first().dblclick()
     await expect.poll(() => editor.count()).toBe(1)
     await viewToggle(page, '时间线').click()
     await page.locator('[data-testid="dv-timeline-editor"]').waitFor()
@@ -384,7 +384,7 @@ describe('canvas stories', () => {
     await viewToggle(page, '画布').click()
     await page.locator('[data-node-id]').first().waitFor()
     expect(await editor.count()).toBe(0)
-    await page.locator('[data-node-type="take"]').first().click()
+    await page.locator('[data-node-type="take"]').first().dblclick()
     await expect.poll(() => editor.count()).toBe(1)
     await openProjectByTitle(page, 'canvas-leave-b')
     await expect.poll(() => page.locator('[data-dv-workspace] header').first().textContent()).toContain('canvas-leave-b')
@@ -396,7 +396,7 @@ describe('canvas stories', () => {
     const project = await seedProject('canvas-play', 2)
     const page = await openPage()
     await gotoProject(page, project.id)
-    await page.locator('[data-node-type="take"]').first().click()
+    await page.locator('[data-node-type="take"]').first().dblclick()
     const video = page.locator('[data-testid="dv-canvas-node-editor"] video')
     await video.waitFor()
     await expect.poll(
@@ -413,7 +413,7 @@ describe('canvas stories', () => {
     const takes = page.locator('[data-node-type="take"]')
     await expect.poll(() => takes.count()).toBe(2)
     const original = await takes.first().getAttribute('data-node-id') ?? ''
-    await takes.first().click()
+    await takes.first().dblclick()
     await page.locator('#dv-canvas-editor-prompt').fill('canvas-take shot 1, take two')
     const requests = harness.backend.requests.length
     await page.getByRole('button', { name: '渲染新版本' }).click()
@@ -432,7 +432,7 @@ describe('canvas stories', () => {
     const page = await openPage()
     await gotoProject(page, project.id)
     const takes = page.locator('[data-node-type="take"]')
-    await takes.first().click()
+    await takes.first().dblclick()
     await page.locator('#dv-canvas-editor-prompt').fill('canvas-take-names shot 1, take two')
     await page.getByRole('button', { name: '渲染新版本' }).click()
     await expect.poll(() => takes.count(), { timeout: 30_000 }).toBe(3)
@@ -445,7 +445,7 @@ describe('canvas stories', () => {
     const project = await seedProject('canvas-ask', 2)
     const page = await openPage()
     await gotoProject(page, project.id)
-    await page.locator('[data-node-type="take"]').first().click()
+    await page.locator('[data-node-type="take"]').first().dblclick()
     await page.getByRole('button', { name: '问 agent' }).click()
     await expect.poll(() => page.locator('[data-testid="dv-canvas-node-editor"]').count()).toBe(0)
     await expect.poll(() => page.locator('[data-dv-chat] [contenteditable="true"]').first().innerText(), { timeout: 10_000 }).toContain('镜头 1')
@@ -678,8 +678,6 @@ describe('canvas stories', () => {
         const node = page.locator(`[data-testid="dv-canvas-view"] [data-node-type="${type}"]`).first()
         const id = await node.getAttribute('data-node-id') ?? ''
         await node.click({ position: { x: 12, y: 8 } })
-        await page.keyboard.press('Escape')
-        await expect.poll(() => page.locator('[data-testid="dv-canvas-node-editor"]').count()).toBe(0)
         const before = await boxOf(node)
         await drag(node, 60, 40)
         const after = await boxOf(node)
@@ -760,7 +758,7 @@ describe('canvas stories', () => {
     // 从画布移除 takes the node off the canvas list; the image stays in 素材库.
     const editor = page.locator('[data-testid="dv-canvas-node-editor"]')
     await waitFor(async () => {
-      await node.click({ timeout: 10_000 })
+      await node.dblclick({ timeout: 10_000 })
       return await editor.isVisible()
     }, 'the asset editor', 30_000)
     await editor.getByRole('button', { name: '从画布移除', exact: true }).click()
@@ -867,11 +865,12 @@ function expectSameBox(actual: Box | undefined, expected: Box): void {
  * @param opener - the element that opens the pop-up.
  * @param popup - the element that grows and shrinks.
  * @param close - closes the pop-up.
+ * @param gesture - the gesture on the opener that opens the pop-up; a canvas node opens its editor on a double click.
  */
-async function expectZoomFrom(page: Page, opener: Locator, popup: Locator, close: () => Promise<void>): Promise<void> {
+async function expectZoomFrom(page: Page, opener: Locator, popup: Locator, close: () => Promise<void>, gesture: 'click' | 'dblclick' = 'click'): Promise<void> {
   const origin = await boxOf(opener)
   const before = (await recordedZooms(page)).length
-  await opener.click()
+  await opener[gesture]()
   await popup.waitFor()
   // The open transition lasts 300 ms; the pop-up then rests at its final box.
   await page.waitForTimeout(600)
@@ -894,7 +893,7 @@ describe('node states and pop-ups', () => {
     await recordZooms(page)
     const take = page.locator('[data-node-type="take"]').first()
     const editor = page.locator('[data-testid="dv-canvas-node-editor"]')
-    await expectZoomFrom(page, take, editor, async () => { await editor.getByRole('button', { name: '关闭' }).click() })
+    await expectZoomFrom(page, take, editor, async () => { await editor.getByRole('button', { name: '关闭' }).click() }, 'dblclick')
     // The ring tells the creator which node the closed editor belonged to; empty canvas clears it.
     expect(await take.getAttribute('data-node-selected')).toBe('true')
     const frame = await boxOf(page.locator('[data-testid="dv-canvas-view"]'))
@@ -909,7 +908,7 @@ describe('node states and pop-ups', () => {
     const takes = page.locator('[data-node-type="take"]')
     await expect.poll(() => takes.count()).toBe(2)
     const original = takes.first()
-    await original.click()
+    await original.dblclick()
     const requests = harness.backend.requests.length
     // The render stays running until the story releases it, as a real render does for a minute.
     harness.backend.hold()
@@ -930,7 +929,7 @@ describe('node states and pop-ups', () => {
       const node = page.locator(`[data-node-id="${freshId}"]`)
       await expect.poll(() => node.getAttribute('data-node-unseen'), { timeout: 30_000 }).toBe('true')
       expect(await original.getAttribute('data-node-unseen')).toBeNull()
-      await node.click()
+      await node.dblclick()
       await expect.poll(() => node.getAttribute('data-node-unseen')).toBeNull()
     } finally {
       harness.backend.releaseAll()
@@ -1490,7 +1489,7 @@ describe('going back and keep anyway', () => {
     await gotoProject(page, project.id)
     const staleTakes = page.locator('[data-node-type="take"][data-node-stale="true"]')
     await expect.poll(() => staleTakes.count()).toBe(2)
-    await staleTakes.first().click()
+    await staleTakes.first().dblclick()
     const editor = page.locator('[data-testid="dv-canvas-node-editor"]')
     await editor.getByRole('button', { name: '仍然保留', exact: true }).click()
     await expect.poll(() => staleTakes.count()).toBe(1)
@@ -1530,7 +1529,7 @@ describe('English interface', () => {
     })
     expect(await chinese()).toEqual([])
     for (const kind of ['take', 'character']) {
-      await page.locator(`[data-node-type="${kind}"]`).first().click()
+      await page.locator(`[data-node-type="${kind}"]`).first().dblclick()
       await page.locator('[data-testid="dv-canvas-node-editor"]').waitFor()
       expect(await chinese()).toEqual([])
       await page.locator('[data-testid="dv-canvas-node-editor"]').getByRole('button', { name: 'Close' }).click()

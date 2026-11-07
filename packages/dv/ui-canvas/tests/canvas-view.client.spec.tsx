@@ -23,6 +23,7 @@ afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
+  vi.useRealTimers()
   forgetCanvasStorage()
 })
 
@@ -160,6 +161,34 @@ describe('the canvas over the real kinds', () => {
     await settle()
     expect(server.layoutWrites.filter(write => 'pa' in write.positions).map(write => write.positions['pa'])).toEqual([{ x: left, y: 900, width: 208, height: 117 }])
     expect([node('pa').style.top, node('pa').querySelector<HTMLElement>('[data-node-frame]')?.style.height]).toEqual(['900px', '117px'])
+    await runtime.dispose()
+  })
+
+  it('a click selects a node without opening its editor; a second click on it soon after opens it; two presses on a handle do not', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    const { runtime, view, node, canvasOf } = await mountCanvas()
+    await waitFor(() => { node('g1') })
+    const press = (target: Element, pointerId: number): void => {
+      fireEvent.pointerDown(target, { button: 0, clientX: 5, clientY: 5, pointerId })
+      fireEvent.pointerUp(canvasOf(), { pointerId })
+    }
+    press(node('g1'), 1)
+    expect([node('g1').getAttribute('data-node-selected'), view.queryByTestId('dv-canvas-node-editor')]).toEqual(['true', null])
+    expect(node('g1').querySelectorAll('[data-node-handle]')).toHaveLength(4)
+    // A second click after the double-click pause is another single click.
+    vi.setSystemTime(Date.now() + 401)
+    press(node('g1'), 2)
+    expect(view.queryByTestId('dv-canvas-node-editor')).toBeNull()
+    vi.setSystemTime(Date.now() + 200)
+    press(node('g1'), 3)
+    expect(view.getByTestId('dv-canvas-node-editor').getAttribute('aria-label')).toBe(node('g1').getAttribute('aria-label'))
+    fireEvent.keyDown(window, { key: 'Escape' })
+    await waitFor(() => { expect(view.queryByTestId('dv-canvas-node-editor')).toBeNull() })
+    const handle = node('g1').querySelector('[data-node-handle="se"]')
+    if (handle === null) throw new Error('no south-east handle')
+    press(handle, 4)
+    press(handle, 5)
+    expect(view.queryByTestId('dv-canvas-node-editor')).toBeNull()
     await runtime.dispose()
   })
 
@@ -1031,8 +1060,6 @@ describe('the node card', () => {
     expect(box()).toEqual(['0px', '90px', '308px', '114px'])
     drag(500, 500, 3)
     expect(box()).toEqual(['188px', '144px', '120px', '60px'])
-    fireEvent.keyDown(window, { key: 'Escape' })
-    await waitFor(() => { expect(view.queryAllByTestId('dv-canvas-node-editor')).toHaveLength(0) })
     fireEvent.pointerDown(handle(), { button: 0, clientX: 0, clientY: 0, pointerId: 4 })
     fireEvent.pointerUp(canvasOf(), { pointerId: 4 })
     await settle()

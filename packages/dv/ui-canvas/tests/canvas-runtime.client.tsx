@@ -214,7 +214,7 @@ export interface MountedCanvas {
    */
   node: (id: string, surface?: Surface) => HTMLElement
   /**
-   * Click a node and wait for its editor.
+   * Double click a node and wait for its editor.
    * @param id - the node ID.
    * @param surface - the surface whose canvas draws it; the center by default.
    * @returns the editor panel.
@@ -291,8 +291,11 @@ export async function mountCanvas(options: MountOptions = {}): Promise<MountedCa
   }
   const open = async (id: string, surface: Surface = 'center'): Promise<HTMLElement> => {
     const card = await waitFor(() => node(id, surface))
-    fireEvent.pointerDown(card, { button: 0, clientX: 5, clientY: 5, pointerId: 1 })
-    fireEvent.pointerUp(canvasOf(surface), { pointerId: 1 })
+    // Two quick clicks on the card: the canvas opens the editor on the second.
+    for (const pointerId of [1, 2]) {
+      fireEvent.pointerDown(card, { button: 0, clientX: 5, clientY: 5, pointerId })
+      fireEvent.pointerUp(canvasOf(surface), { pointerId })
+    }
     return waitFor(() => {
       const editors = within(view.getByTestId(surface)).getAllByTestId('dv-canvas-node-editor')
       const editor = editors.find(panel => panel.getAttribute('aria-label') === card.getAttribute('aria-label'))
