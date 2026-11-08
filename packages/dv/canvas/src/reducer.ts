@@ -2,13 +2,15 @@
  * The reducer of the `canvas` slice. It reads every record of the chain, oldest first, and applies the first rule that
  * matches:
  * 1. a record whose `based_on` is a version of node N becomes the newest version of N, unless its operation is one of
- *    the canvas's own (`canvas.node_position`, `canvas.node_remove`), a placement's, or a maker's of another kind;
+ *    the canvas's own (`canvas.node_position`, `canvas.node_remove`, `canvas.node_rename`), a placement's, or a maker's
+ *    of another kind;
  * 2. a record of an operation that a {@link NodeMaker} names creates a node of its kind in the first free row of its
  *    column (a full column continues in a sub-column), with the default size;
  * 3. a finished `place` record of an {@link AssetPlacement} creates a node for each input asset that no node shows;
  * 4. a finished `canvas.node_remove` record deletes the nodes that its params name;
  * 5. a finished `canvas.node_position` record sets the fields of the node's position that its params give;
- * 6. every other record leaves the slice as it is.
+ * 6. a finished `canvas.node_rename` record sets the node's name, and an empty or null name clears it;
+ * 7. every other record leaves the slice as it is.
  * Rules 1 and 2 take records in any status, so a running or failed version shows its state. The slice follows the
  * records of the chain, so an undo of a move or a resize restores the earlier position, and an undo of a removal
  * restores the node with its name, versions and position.
@@ -23,8 +25,22 @@ import type { AssetPlacement, CanvasNode, CanvasState, NodeId, NodeMaker, NodePo
 export const NODE_POSITION = 'canvas.node_position'
 /** The operation that removes nodes from the canvas. */
 export const NODE_REMOVE = 'canvas.node_remove'
+/** The operation that names a node. */
+export const NODE_RENAME = 'canvas.node_rename'
 /** The canvas's own operations, which change nodes and never become a version of one. */
-const CANVAS_OPERATIONS: ReadonlySet<string> = new Set([NODE_POSITION, NODE_REMOVE])
+const CANVAS_OPERATIONS: ReadonlySet<string> = new Set([NODE_POSITION, NODE_REMOVE, NODE_RENAME])
+/** The longest node name, in characters. */
+export const NAME_MAX = 80
+
+/**
+ * The name that a `canvas.node_rename` param gives: trimmed, with each line break and the spaces around it as one space.
+ * @param value - the `name` param.
+ * @returns the name, or null for a null or empty name, which clears it.
+ */
+export function nodeName(value: unknown): string | null {
+  const name = typeof value === 'string' ? value.replace(/\s*[\r\n]+\s*/gu, ' ').trim() : ''
+  return name === '' ? null : name
+}
 
 /** The width of a layout column, in canvas units. */
 export const COLUMN = 240
@@ -148,6 +164,17 @@ function position(slice: CanvasState, record: ProjectRecord): CanvasState {
 }
 
 /**
+ * Rule 6: set the name of a node the slice has.
+ * @returns the slice after the record.
+ */
+function rename(slice: CanvasState, record: ProjectRecord): CanvasState {
+  const id = brandString<NodeId>(String(record.params['node']))
+  const node = slice.nodes[id]
+  if (node === undefined) return slice
+  return { ...slice, nodes: { ...slice.nodes, [id]: { ...node, name: nodeName(record.params['name']) } } }
+}
+
+/**
  * The `canvas` reducer.
  * @param registered - the makers and placements, read at every record.
  * @returns the reducer.
@@ -173,6 +200,7 @@ export function canvasReducer(registered: CanvasRegistrations): Reducer<'canvas'
       if (record.status !== 'done') return slice
       if (placement !== undefined) return place(slice, record, placement)
       if (operation === NODE_REMOVE) return remove(slice, record)
+      if (operation === NODE_RENAME) return rename(slice, record)
       return operation === NODE_POSITION ? position(slice, record) : slice
     },
     agentSummary: slice => ({

@@ -93,8 +93,8 @@ export interface CanvasServer {
   notify: () => void
   /** Answer the held layout reads of one project. */
   releaseLayout: (project: string) => void
-  /** Answer every held operation request. */
-  releaseOperations: () => void
+  /** Answer the held operation requests, oldest first: the first `count` of them, or every one. */
+  releaseOperations: (count?: number) => void
 }
 
 class ScriptedEventSource extends EventTarget {
@@ -113,8 +113,8 @@ class ScriptedEventSource extends EventTarget {
 
 /**
  * Apply an accepted canvas write to the canvas slice as the host's node list does: `canvas.node_position` sets the
- * fields its params give, `asset.place` adds an `asset` node per asset that no node shows, `canvas.node_remove` deletes
- * the nodes its params name.
+ * fields its params give, `canvas.node_rename` sets the name, `asset.place` adds an `asset` node per asset that no node
+ * shows, `canvas.node_remove` deletes the nodes its params name.
  * @param state - the served state.
  * @param request - the accepted request.
  * @param index - the request's position among the accepted writes, for the IDs of placement nodes.
@@ -130,6 +130,10 @@ function applyCanvasWrite(state: FixtureState, request: OperationRequest, index:
       const value = params[field]
       if (typeof value === 'number') node.position = { ...node.position, [field]: value }
     }
+  } else if (request.operation === 'canvas.node_rename') {
+    const params = request.params ?? {}
+    const node = canvas.nodes[String(params['node'])]
+    if (node !== undefined) node.name = typeof params['name'] === 'string' ? params['name'] : null
   } else if (request.operation === 'asset.place') {
     const id = `place${String(index + 1)}`
     state.components.proj.records.push(record({ id, operation: 'asset.place', inputs: assets.map(ref => ({ role: 'asset', ref: { asset: ref }, resolved_asset: ref })) }))
@@ -148,7 +152,7 @@ function applyCanvasWrite(state: FixtureState, request: OperationRequest, index:
 }
 
 /** The operations whose accepted writes change the served canvas slice. */
-const CANVAS_WRITES = new Set(['canvas.node_position', 'asset.place', 'canvas.node_remove'])
+const CANVAS_WRITES = new Set(['canvas.node_position', 'canvas.node_rename', 'asset.place', 'canvas.node_remove'])
 
 /**
  * Replace the global `fetch` and `EventSource` with a server of the fixture project and its `test_ref` noun. An
@@ -241,7 +245,7 @@ export function serveCanvas(options: ServerOptions = {}): CanvasServer {
   const releaseLayout = (project: string): void => {
     for (const held of heldLayouts.filter(each => each.project === project)) held.answer()
   }
-  const releaseOperations = (): void => { heldOperations.splice(0).forEach((answer) => { answer() }) }
+  const releaseOperations = (count = heldOperations.length): void => { heldOperations.splice(0, count).forEach((answer) => { answer() }) }
   vi.stubGlobal('fetch', fetchImpl)
   vi.stubGlobal('EventSource', ScriptedEventSource)
   return { writes: scripted.writes, layoutWrites, imports, positionWrites, notify, releaseLayout, releaseOperations }
