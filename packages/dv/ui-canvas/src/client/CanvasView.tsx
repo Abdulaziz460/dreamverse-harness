@@ -474,6 +474,7 @@ export function CanvasView(
    * @param resized - whether the size changed too.
    */
   const writePosition = useCallback((node: CanvasNode, box: NodePosition, resized: boolean) => {
+    answered.current.delete(node.id)
     positionsRef.current = { ...positionsRef.current, [node.id]: box }
     setPositions(all => ({ ...all, [node.id]: box }))
     setNotice(null)
@@ -483,7 +484,9 @@ export function CanvasView(
       project: projectId, operation: NODE_POSITION, surface: 'canvas', ...session === null ? {} : { session },
       params: resized ? { ...corner, width: box.width, height: box.height } : corner,
       intent: `${resized ? 'resize' : 'move'} ${node.title} on the canvas`,
-    }).then(() => { answered.current.set(node.id, graphRef.current?.state) }, (error: unknown) => {
+    }).then(() => {
+      if (positionsRef.current[node.id] === box) answered.current.set(node.id, graphRef.current?.state)
+    }, (error: unknown) => {
       setPositions(all => all[node.id] === box ? withoutProperties(all, [node.id]) : all)
       setNotice(t('error', { message: errorMessage(error) }))
     })

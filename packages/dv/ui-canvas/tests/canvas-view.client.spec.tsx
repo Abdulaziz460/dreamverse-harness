@@ -1141,6 +1141,23 @@ describe('refused position writes', () => {
     await runtime.dispose()
   })
 
+  it('keeps the box of a later move while the state shows only the earlier move that the server answered', async () => {
+    const { runtime, node, server, canvasOf } = await mountCanvas({ holdOperations: true })
+    await waitFor(() => { node('g2') })
+    for (const pointerId of [1, 2]) {
+      fireEvent.pointerDown(node('g2'), { button: 0, clientX: 0, clientY: 0, pointerId })
+      fireEvent.pointerMove(canvasOf(), { clientX: 50, clientY: 0, pointerId })
+      fireEvent.pointerUp(canvasOf(), { pointerId })
+    }
+    server.releaseOperations(1)
+    await settle()
+    expect(node('g2').style.left).toBe('580px')
+    server.releaseOperations()
+    await settle()
+    expect(node('g2').style.left).toBe('580px')
+    await runtime.dispose()
+  })
+
   it('draws a resized node back at its stored size when the server refuses the resize', async () => {
     const { runtime, view, node, open, canvasOf } = await mountCanvas({ refuse: refuseOperation('canvas.node_position', 'read-only project') })
     await open('g2')
