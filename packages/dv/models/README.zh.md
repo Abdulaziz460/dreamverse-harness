@@ -122,6 +122,10 @@ DreamVerse bundle [`@dv/bundle`](../../bundle/dv/README.zh.md) 以行 `dv-models
 
 本服务还为 agent 注册工具 `dv_models_list` 和 `dv_models_get`、skill `video-model-selection`，以及每个条目的提示词 skill。它不向系统提示词添加任何内容。
 
+当 `dvProject` 存在时，`dv_models_select` 通过项目操作 `models.select` 保存当前对话的视频模型默认值。`models.select`、`models.load` 和 `models.unload` 在撤销历史之外（`OperationSpec.outsideHistory`）：历史面板不列出它们，撤销和重做从不改变这个选择，撤销之后的调用保留重做可恢复的步骤及其渲染。provider 和 model 都为空字符串时选择 Auto。此后的 agent 生成必须使用该 provider/model，直到用户或 agent 更改选择；已有生成保留其记录中的模型和任务。输入框在操作员 LLM 选择器旁显示此默认值，因此用户无需每次生成都重新选择。可选的 `models` 状态按写入顺序从项目中每条成功的 `models.select` 记录重建选择，与当前位置无关，因此选择在重启后保留；旧项目从 Auto 开始。项目摘要以 `video_model` 给每个 agent 其所在对话的选择：`{provider, model}`，Auto 时为 null；其他对话的选择不列出。`models.select` 记录在项目更新中写作 "video model <model>, for the conversation that chose it only"，因此其他对话的 agent 不会把该选择当作自己的选择。
+
+条目可以提供 `runtime.status`、`runtime.load` 和 `runtime.unload`。对应的操作工具为 `dv_models_status`、`dv_models_load` 和 `dv_models_unload`，参数为条目的四个键字段。这些工具管理已安装权重的 GPU 驻留，不下载权重。托管 FastVideo 后端在生成时加载所请求的配置，将模型切换与生成串行执行，并且仅保留文件和加载设置匹配的共享组件。未提供生命周期控制的 provider 保持原有生成行为，并在显式调用生命周期工具时报告该功能不可用。
+
 ### 提供方插件负责的部分
 
 提供方插件把一个提供方连接到模型目录。[`@dv/fastvideo`](../fastvideo/README.zh.md) 是应遵循的示例。提供方插件负责以下部分：
@@ -185,6 +189,8 @@ DSH skill 注册表（`skills`）挂载期间，本服务从 `skills/video-model
 - [`@dv/bundle`](../../bundle/dv/README.zh.md)：行 `dv-models` 和 `dv-fastvideo`。
 
 -----
+
+按时长生成的云端提供方在 API 未公布时可省略 `frameSizes` 和 `numFramesByDurationSec`。它们提供精确 `durationsSec`；消费者传递 `durationSec`、`resolution` 和 `aspectRatio`，而不臆造帧数。原生提供方继续提供像素几何和帧数。
 
 <a id="model-experience"></a>
 ## 模型体验

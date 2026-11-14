@@ -100,6 +100,14 @@ API 归 FastVideo 所有；客户端使用其中两个路由。`GET /v1/model_in
 
 -----
 
+可选 `task` 字段选择原生 FastVideo 任务（如 `fl2va`）；省略时使用服务端默认任务。
+
+### 原生模型目录控制
+
+仅当后端实现 `/v1/model_state`、`/v1/models/load` 和 `/v1/models/unload` 时启用 `managed: true`。`loadModel`、`unloadModel` 和 `modelStatus` 调用这些路由，不会生成视频。`task` 区分共用模型别名的参考与关键帧管线；`displayName` 命名聊天选项。提供方仅为受管理条目暴露这些控制。
+
+受管理条目或启用 `asyncJobs: true` 的条目提交一个 `/v1/videos` 任务，以 `pollIntervalMs`（默认 1000）轮询其 ID，再读取规范内容路由。轮询不会重新提交生成。中止会删除该任务；原生 CUDA 工作可能忙碌到当前调用结束。普通固定服务保留已合并的 `/v1/videos/sync` 传输与共享 ffmpeg 提取。
+
 <a id="model-experience"></a>
 ## 模型体验
 
@@ -124,7 +132,7 @@ API 归 FastVideo 所有；客户端使用其中两个路由。`GET /v1/model_in
 - **模型事实从不刷新**——`model()` 在插件生命周期内只检查一次服务别名。若后端以另一个模型重启，harness 会一直保留配置的事实，直到插件重新加载。
 - **配置的模型事实**——FastVideo 不提供能力路由。操作者必须让配置的事实与部署的权重及采样设置一致。
 - **完整响应输出**——没有逐步预览；完整 MP4 保留在内存中。
-- **没有请求截止时间**——`GET /v1/model_info` 保留全局 dispatcher 的超时，且不接受中止信号。只有等待 `POST /v1/videos/sync` 的响应头没有截止时间；从不回答的后端会一直占用该请求，直到调用方中止它。
+- **无默认请求期限** — 调用接受可选中止信号。默认原生传输关闭长时间生成及模型加载请求的响应头超时；调用者负责操作期限。
 
 <a id="dev-note"></a>
 ### 开发备注

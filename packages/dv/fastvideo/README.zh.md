@@ -81,6 +81,8 @@ Pika H3 Flex 以 `pika-h3-flex` 注册 `t2v`、`i2v`、`l2v`、`fl2v` 和 `ref2v
 
 -----
 
+Pika H3 Flex 以 `pika-h3-flex` 注册 `t2v`、`i2v`、`l2v`、`fl2v` 和 `ref2v`。端点任务传递原生任务选择器以及有序的首尾图像。模型事实配置必须为两个端点预留足够图像位置；Ref2VA 使用参考管线。尾帧提取复用共享 `dvFfmpeg` 服务。
+
 <a id="model-experience"></a>
 ## 模型体验
 

@@ -122,6 +122,10 @@ A provider plugin calls `register`. A consumer calls the other methods.
 
 The service also registers the tools `dv_models_list` and `dv_models_get`, the skill `video-model-selection`, and the prompt skill of each entry for the agent. It adds nothing to the system prompt.
 
+When `dvProject` is present, `dv_models_select` saves the conversation's video-model default as a `models.select` project operation. `models.select`, `models.load` and `models.unload` are outside the undo history (`OperationSpec.outsideHistory`): the History panel does not list them, undo and redo never change the choice, and a call after an undo keeps the steps that redo restores and their renders. Empty provider and model strings choose Auto. Subsequent agent generations must use that provider/model until the user or agent changes it; existing renders keep their recorded model and task. The composer exposes this default beside the operator LLM selector, so users do not need to choose again for each generation. The optional `models` slice rebuilds choices from every successful `models.select` record of the project in write order, whatever the current position, so a choice survives a restart; older projects start in Auto. The project summary gives each agent its own conversation's choice as `video_model`: `{provider, model}`, or null for Auto; other conversations' choices are left out. A `models.select` record reads "video model <model>, for the conversation that chose it only" in project updates, so another conversation's agent does not take the choice as its own.
+
+Entries may provide `runtime.status`, `runtime.load`, and `runtime.unload`. Their operation tools are `dv_models_status`, `dv_models_load`, and `dv_models_unload`, with the entry's four key fields. These manage installed weights in GPU memory and never download weights. A managed FastVideo backend loads the requested profile when rendering, serializes model changes with generation, and retains only shared components whose files and loader settings match. Providers without lifecycle support keep their existing rendering behavior and report that explicit lifecycle controls are unavailable.
+
 ### What a provider plugin owns
 
 A provider plugin connects one provider to the catalog. [`@dv/fastvideo`](../fastvideo/README.md) is the example to follow. The provider plugin owns these parts:
@@ -185,6 +189,8 @@ While the DSH skill registry (`skills`) is mounted, the service registers the ru
 - [`@dv/bundle`](../../bundle/dv/README.md): the rows `dv-models` and `dv-fastvideo`.
 
 -----
+
+Duration-based cloud providers may omit `frameSizes` and `numFramesByDurationSec` when their API does not publish them. They supply exact `durationsSec`; consumers pass `durationSec`, `resolution`, and `aspectRatio` instead of inventing a frame count. Native providers continue to supply pixel geometry and frame counts.
 
 <a id="model-experience"></a>
 ## Model Experience

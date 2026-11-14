@@ -81,6 +81,8 @@ The table `SERVED` in `src/index.ts` maps each model that the plugin can serve t
 
 -----
 
+Pika H3 Flex is registered as `pika-h3-flex` for `t2v`, `i2v`, `l2v`, `fl2v`, and `ref2v`. Endpoint tasks pass native task selectors and ordered first/last image inputs. The configured model facts must reserve enough image slots for both endpoints; Ref2VA uses its reference pipeline. Frame extraction uses the shared `dvFfmpeg` service.
+
 <a id="model-experience"></a>
 ## Model Experience
 
