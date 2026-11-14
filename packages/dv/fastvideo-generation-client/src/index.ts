@@ -30,6 +30,8 @@ declare module '@deepseek-ai/cordis' {
 export interface Config {
   /** HTTP base URL of the generation backend, such as `http://127.0.0.1:8029`. */
   baseUrl: string
+  /** Optional task selector understood by the native FastVideo API. */
+  task?: string | null
   /** The facts of the served model, which FastVideo does not publish. */
   modelFacts: ModelFactsConfig
 }
@@ -73,6 +75,7 @@ function untimedDispatcher(): Dispatcher {
 export class DvFastvideoGeneration extends Service {
   static Config: z<Config> = z.object({
     baseUrl: z.string().required(),
+    task: z.union([z.const(null), z.string()]).default(null),
     modelFacts: modelFactsConfig.required(),
   })
 
@@ -87,7 +90,7 @@ export class DvFastvideoGeneration extends Service {
    * @param config - generation backend location and model facts.
    * @throws Error naming the inconsistency of the configured facts.
    */
-  constructor(ctx: Context, config: Config) {
+  constructor(ctx: Context, private readonly config: Config) {
     super(ctx, 'dvFastvideoGeneration')
     this.baseUrl = new URL(config.baseUrl)
     this.facts = deriveModelFacts(config.modelFacts)
@@ -141,7 +144,8 @@ export class DvFastvideoGeneration extends Service {
       return urls.length === 0 ? [] : [[field, urls]]
     }))
     const body = {
-      model: this.facts.modelId, prompt: request.prompt, width: request.frameWidth, height: request.frameHeight,
+      model: this.facts.modelId, ...this.config.task == null ? {} : { task: this.config.task },
+      prompt: request.prompt, width: request.frameWidth, height: request.frameHeight,
       num_frames: request.numFrames, ...request.seed === undefined ? {} : { seed: request.seed }, ...references,
     }
     try {

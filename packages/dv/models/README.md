@@ -50,7 +50,7 @@ A provider is a video generation system, such as FastVideo, fal, or SGLang. A se
 | Field | Meaning | Values in this package |
 | --- | --- | --- |
 | `modality` | The output that the task produces: the `modality` of the primitive that the task runs on. | `video` |
-| `task` | The generation task. `TaskMap` declares each task name and maps it to the primitive that it runs on. | `t2v`: a video from the prompt only. `ref2v`: a video from reference media and the prompt, with an optional first frame. |
+| `task` | The generation task. `TaskMap` declares each task name and maps it to the primitive that it runs on. | `t2v`: a video from the prompt only. `ref2v`: a video from reference media and the prompt, with an optional first frame. `i2v`: a video beginning at one image. `l2v`: a video ending at one image. `fl2v`: a video between first and last images. These endpoint tasks use a prompt and no reference media. |
 | `provider` | The name of the provider. The provider plugin sets this name. | Each provider plugin sets its own name, such as `fastvideo`. |
 | `model` | The name that the provider gives to the model. | Each provider plugin sets its own names, such as `fasth3`. |
 
@@ -78,12 +78,13 @@ A provider plugin implements one `ModelEntry` for each key. `ModelEntry<T>` take
 | `prompt` | The text prompt. |
 | `references` | The reference assets as asset IDs, in input order. The list is empty for a task without references. |
 | `firstFrame` | The asset ID of the image that the video starts from, or `null`. |
+| `lastFrame` | The asset ID of the image that the video ends at, or `null`. |
 | `frameWidth`, `frameHeight` | The frame size in pixels. A consumer takes it from `frameSizes` in the facts. |
 | `numFrames` | The frame count. A consumer takes it from `numFramesByDurationSec` in the facts. |
 | `seed` | The random seed. |
 | `extra` | The values of the model's own parameters. `schema()` describes them, and `validateGenerationRequest` checks them. |
 
-`references` and `firstFrame` carry the `reference` and `first_frame` inputs of `dv_shot_render`.
+`references`, `firstFrame` and `lastFrame` carry the distinct `reference`, `first_frame` and `last_frame` inputs of `dv_shot_render`. Providers opt into `fl2v` by registering a catalog entry for that task and validating both image endpoints. Existing records without a last-frame input resolve to `lastFrame: null`. The task does not require audio; sound depends on the selected model.
 
 | `RenderModelFacts` field | Meaning |
 | --- | --- |
@@ -160,7 +161,7 @@ The service keeps the entries in a `Map` by the formatted key. `register` refuse
 
 While the DSH tool registry (`tools`) is mounted, the service registers `dv_models_list` and `dv_models_get` as effects. `dv_models_list` filters the entries with its arguments and returns the key and the description of each entry, and `prompt_skill`, the name of its prompt skill, for an entry that has one. `dv_models_get` finds the entry with all four key fields and returns its key, its description and the JSON of its `schema()`. It does not read `facts()`. `@dv/shot-render` reads the facts to build the request.
 
-While the DSH skill registry (`skills`) is mounted, the service registers the runtime skill `video-model-selection` from `skills/video-model-selection.md`. The agent can load the skill. Users cannot call it from the composer. In the same registry, the service registers the `promptSkill` of each entry with the same invocation rule. It registers the skill when the entry or the registry arrives, and removes it when the entry or the registry leaves.
+While the DSH skill registry (`skills`) is mounted, the service registers the runtime skill `video-model-selection` from `skills/video-model-selection.md`. The agent can load the skill. Users cannot call it from the composer. In the same registry, the service registers the `promptSkill` of each entry with the same invocation rule. It registers the skill when the entry or the registry arrives, and removes it when the entry or the registry leaves. Entries that share a skill name share one registration, which stays until the last of those entries leaves.
 
 [`@dv/shot-render`](../shot-render/README.md) registers `shot.render` with `whileServing(['t2v', 'ref2v'], ...)` and gets the entry that a `dv_shot_render` call names with `resolve(['t2v', 'ref2v'], params)`. It builds a `RenderRequest` from the facts of the entry. It checks the request with `validateGenerationRequest`, and then renders the request.
 
