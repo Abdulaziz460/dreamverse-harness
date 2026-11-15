@@ -137,6 +137,7 @@ export function NodeCard(props: NodeCardProps): ReactNode {
   const status = node.nodeType.status
   const running = status?.running() ?? t('node.running')
   let marker: ReactNode = null
+  let failedText: string | undefined
   if (flags.rendering) {
     if (node.record.status === 'pending') marker = t('node.queued')
     else if (elapsed === null) marker = running
@@ -145,7 +146,8 @@ export function NodeCard(props: NodeCardProps): ReactNode {
   } else if (flags.failed) {
     const failedWords = status?.failed() ?? t('node.failed')
     const reason = node.record.error?.message
-    marker = reason === undefined || reason === '' ? failedWords : t('node.failedReason', { status: failedWords, reason })
+    failedText = reason === undefined || reason === '' ? failedWords : t('node.failedReason', { status: failedWords, reason })
+    marker = failedText
   }
   const count = node.versions.length
   const meta = [count > 1 ? t('node.version', { n: String(count) }) : '', node.meta ?? ''].filter(part => part !== '').join(' · ')
@@ -171,7 +173,7 @@ export function NodeCard(props: NodeCardProps): ReactNode {
     content = (
       <div style={{ ...CARD_SURFACE, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'flex-start', gap: 6, padding: '0 10px' }}>
         {/* oxlint-disable-next-line typescript/no-deprecated -- Browsers clamp lines only on a vertical -webkit-box. */}
-        <span style={{ ...text(12), display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 3, overflow: 'hidden', overflowWrap: 'anywhere', color: 'var(--dv-danger)' }}>{marker}</span>
+        <span title={failedText} style={{ ...text(12), display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 3, overflow: 'hidden', overflowWrap: 'anywhere', color: 'var(--dv-danger)' }}>{marker}</span>
         {props.failedActions.length === 0
           ? null
           : (
@@ -315,7 +317,7 @@ export function NodeMenu({ at, area, items, label, menuRef }: NodeMenuProps): Re
   return (
     <div
       ref={attach} role="menu" aria-label={label} data-testid="dv-canvas-node-menu"
-      style={{ position: 'absolute', left, top, zIndex: 12, minWidth: 180, padding: 6, boxSizing: 'border-box', background: 'var(--dv-surface-1)', boxShadow: '0 0 0 1px var(--dv-line-strong), var(--dv-shadow-2)', borderRadius: 'var(--dv-radius-menu)' }}
+      style={{ position: 'absolute', left, top, zIndex: 12, minWidth: 180, padding: 6, boxSizing: 'border-box', background: 'var(--dv-surface-1)', boxShadow: '0 0 0 1px var(--dv-line-strong), var(--dv-shadow-2)', outline: '1px solid transparent', borderRadius: 'var(--dv-radius-menu)' }}
       onPointerDown={(event) => { event.stopPropagation() }}
       onContextMenu={(event) => { event.preventDefault() }}
     >

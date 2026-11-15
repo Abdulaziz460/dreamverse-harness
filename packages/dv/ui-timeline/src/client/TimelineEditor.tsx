@@ -137,14 +137,15 @@ const palette = {
 // `.dv-tl-btn` element gets its transparent fill here, so its inline style must not set `background`.
 const EDITOR_CSS = `
 .dv-tl-editor .dv-tl-btn { background: transparent; transition: background-color 120ms var(--dv-ease); }
-.dv-tl-editor .dv-tl-btn:not(:disabled):hover { background: var(--dv-surface-3); }
+@media (hover: hover) { .dv-tl-editor .dv-tl-btn:not(:disabled):hover { background: var(--dv-surface-3); } }
 .dv-tl-editor :focus-visible { outline: 2px solid var(--dv-accent); outline-offset: 1px; }
 .dv-tl-editor .dv-tl-trim { background: var(--dv-line-strong); transition: background-color 120ms var(--dv-ease); }
-.dv-tl-editor .dv-tl-trim:hover { background: var(--dv-accent); }
+@media (hover: hover) { .dv-tl-editor .dv-tl-trim:hover { background: var(--dv-accent); } }
 .dv-tl-editor input[type="range"] { accent-color: var(--dv-accent); }
 .dv-tl-editor .dv-tl-resize { background: var(--dv-line); transition: background-color 120ms var(--dv-ease); }
 .dv-tl-editor .dv-tl-resize::before { content: ""; position: absolute; left: 0; right: 0; top: -4px; bottom: -4px; }
-.dv-tl-editor .dv-tl-resize:hover, .dv-tl-editor .dv-tl-resize[data-dragging="true"] { background: var(--dv-accent); }
+.dv-tl-editor .dv-tl-resize[data-dragging="true"] { background: var(--dv-accent); }
+@media (hover: hover) { .dv-tl-editor .dv-tl-resize:hover { background: var(--dv-accent); } }
 @media (prefers-reduced-motion: reduce) {
   .dv-tl-editor .dv-tl-btn, .dv-tl-editor .dv-tl-trim, .dv-tl-editor .dv-tl-resize { transition: none; }
 }
@@ -197,7 +198,7 @@ const ICON_PATHS = {
  */
 function Icon({ name }: { name: keyof typeof ICON_PATHS }): ReactNode {
   return (
-    <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.25} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <path d={ICON_PATHS[name]} />
     </svg>
   )
@@ -889,7 +890,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
           <span key={sec} style={{ position: 'absolute', left: sec * px, bottom: 0, width: 1, height: sec % steps.label === 0 ? 9 : 4, background: palette.lineStrong }} />
         ))}
         {ticks.filter(sec => sec % steps.label === 0).map(sec => (
-          <span key={`label-${String(sec)}`} style={{ position: 'absolute', left: sec * px, top: 3, marginLeft: 4, fontFamily: palette.mono, fontSize: 11, lineHeight: '14px', fontVariantNumeric: 'tabular-nums', color: palette.muted, whiteSpace: 'nowrap', pointerEvents: 'none' }}>
+          <span key={`label-${String(sec)}`} style={{ position: 'absolute', left: sec * px, top: 3, marginLeft: 4, fontFamily: palette.mono, fontSize: 12, lineHeight: '16px', fontVariantNumeric: 'tabular-nums', color: palette.muted, whiteSpace: 'nowrap', pointerEvents: 'none' }}>
             {timecode(sec).replace(/\.\d+$/, '')}
           </span>
         ))}

@@ -300,7 +300,7 @@ function DvPromptEditor(props: DvPromptComponentProps): ReactNode {
       </div>
       {catalog === null && modelsFailure !== null
         ? (
-          <p role="alert" data-testid="dv-composer-models-failed" title={modelsFailure} style={{ margin: 0, fontSize: 12, color: 'var(--dv-danger)' }}>
+          <p role="alert" data-testid="dv-composer-models-failed" title={modelsFailure} style={{ margin: 0, fontSize: 12, lineHeight: '16px', color: 'var(--dv-danger)' }}>
             {pick('模型列表加载失败', "Couldn't load the model list")}
             {' '}
             <button type="button" className="dv-canvas-btn" style={{ ...plain, color: 'var(--dv-accent-text)' }} onClick={props.reloadModels}>{pick('重试', 'Try again')}</button>
@@ -341,7 +341,7 @@ function Tile({ input, view, cited, renderFactorySlot, onOpen, onRemove, onPin }
       </button>
       {input.role === 'first_frame' || input.role === 'last_frame'
         ? <span>{input.role === 'first_frame' ? pick('首帧', 'First frame') : pick('尾帧', 'Last frame')}</span> : null}
-      {cited ? null : <span style={{ color: 'var(--dv-text-2)' }}>{pick('未引用', 'uncited')}</span>}
+      {cited ? null : <span style={{ color: 'var(--dv-text-2)' }}>{pick('未引用', 'Uncited')}</span>}
       {onPin === undefined || version === null || version.newest === version.sent
         ? null
         : <button type="button" style={{ ...plain, color: 'var(--dv-accent-text)' }} onClick={() => { onPin(version.newest) }}>{pick(`用 v${String(version.newest)}`, `Use v${String(version.newest)}`)}</button>}

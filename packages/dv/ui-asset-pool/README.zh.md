@@ -36,7 +36,7 @@ Host 半边不注册任何东西。浏览器半边注册 `dv-asset-pool` 标签�
 | 手势 | 请求或事件 |
 | --- | --- |
 | 打开面板、项目的任何变化 | 对项目的当前状态调用 `GET /api/dv/state`，每个 `/dv/events` 事件都重新拉取 |
-| 把图片或视频拖到拖放区，或点击它选择文件 | 每个图片或视频文件一次 `POST /api/dv/assets/import`，带 `surface=asset_pool` 和标签所在的对话；`asset.import` 记录是项目当前位置之后的一步。拖放区不导入其他文件，对每个这样的文件显示 「<name>」不是图片或视频，没有导入。 |
+| 把图片或视频拖到拖放区，点击它或按 Enter、Space 选择文件 | 每个图片或视频文件一次 `POST /api/dv/assets/import`，带 `surface=asset_pool` 和标签所在的对话；`asset.import` 记录是项目当前位置之后的一步。拖放区不导入其他文件，对每个这样的文件显示 「<name>」不是图片或视频，没有导入。 |
 | 拖动缩略图 | 以 `application/x-dv-asset` 携带素材 ID 的拖动；画布把素材的节点移到放下的位置，时间线在放下的位置插入片段 |
 | 在标签里点击缩略图 | 以项目、该素材和该缩略图调用 `dvMedia.preview`：`@dv/ui-media` 的素材预览，带 `dv.media.preview.action` 按钮，例如 `@dv/ui-timeline` 的 插入片段 和 `@dv/ui-composer` 的 让智能体使用；`dvMedia` 不存在时什么也不打开 |
 | 在画布素材选择窗口里点击缩略图 | 选择窗口的 `onOpen` 在选择窗口中切换该素材的选中状态；不打开预览 |
