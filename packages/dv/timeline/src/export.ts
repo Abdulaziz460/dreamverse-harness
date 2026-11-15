@@ -1,7 +1,8 @@
 /**
  * The `timeline.export` operation of the Timeline component: it reads the timeline's clips from the `timeline` slice of
- * the project state, trims each clip that has an in or out point with `dvFfmpeg`, joins all clips in playback order, and
- * imports the joined video into the asset pool as the record's output. An export of a timeline with a placeholder clip
+ * the project state, trims each clip that has an in or out point with `dvFfmpeg`, joins all clips in playback order
+ * (without their audio while the timeline's `video_muted` is on), and imports the joined video into the asset pool as
+ * the record's output. An export of a timeline with a placeholder clip
  * (a clip whose render is not done, so it has no asset) is refused before its record. The `timeline` reducer ignores
  * export records: an export changes no project state besides the asset it creates.
  *
@@ -47,7 +48,7 @@ function notReady(timeline: Timeline): string | null {
 
 /**
  * Export a timeline to one MP4 file: trim each clip with an in or out point to that range, then join all clips in
- * playback order.
+ * playback order; a timeline whose clips' own audio is muted gives a file without audio.
  * @param ctx - a context that injects `dvAssetPool` and `dvFfmpeg`.
  * @param timeline - the timeline with at least one clip, each of which has an asset.
  * @param dir - an existing directory for the trimmed clips and the joined file, usually the operation's `scratchDir`.
@@ -61,9 +62,9 @@ export async function exportTimeline(ctx: Context, timeline: Timeline, dir: stri
   if (reason !== null) throw new Error(reason)
   const paths: string[] = []
   for (const [index, { asset, ...clip }] of timeline.clips.entries()) {
-    if (asset !== null) paths.push(await clipFile(ctx, { ...clip, asset }, index, dir))
+    if (asset !== null) paths.push(await clipFile(ctx, { ...clip, asset }, index, dir, timeline.video_muted))
   }
-  return await joinClips(ctx, paths, dir)
+  return await joinClips(ctx, paths, dir, timeline.video_muted)
 }
 
 /**
@@ -73,9 +74,10 @@ export async function exportTimeline(ctx: Context, timeline: Timeline, dir: stri
  * @param clip - a clip with an asset.
  * @param index - the clip's index in the timeline, which names the trimmed file.
  * @param dir - the directory for the trimmed file.
+ * @param muted - whether to leave the clip's audio out of the trimmed file, because the export leaves it out anyway.
  * @returns the file path.
  */
-async function clipFile(ctx: Context, clip: Clip & { asset: AssetId }, index: number, dir: string): Promise<string> {
+async function clipFile(ctx: Context, clip: Clip & { asset: AssetId }, index: number, dir: string, muted: boolean): Promise<string> {
   const path = ctx.dvAssetPool.path(clip.asset)
   if (clip.in_sec === null && clip.out_sec === null) return path
   const name = `clip-${index + 1}.mp4`
@@ -83,7 +85,7 @@ async function clipFile(ctx: Context, clip: Clip & { asset: AssetId }, index: nu
   // The seek comes after `-i` so the decoder reads the frames before the trim and the trim lands on the exact frame.
   await ctx.dvFfmpeg.run({
     argv: [
-      'ffmpeg', '-y', '-loglevel', 'error', '-i', '{{in:0}}', '-ss', String(clip.in_sec ?? 0), ...end, ...ENCODE_ARGS, '-c:a', 'aac',
+      'ffmpeg', '-y', '-loglevel', 'error', '-i', '{{in:0}}', '-ss', String(clip.in_sec ?? 0), ...end, ...ENCODE_ARGS, ...muted ? ['-an'] : ['-c:a', 'aac'],
       '-movflags', '+faststart', `{{out:${name}}}`,
     ],
     inputs: [path], outputs: [name], dir,
@@ -93,17 +95,22 @@ async function clipFile(ctx: Context, clip: Clip & { asset: AssetId }, index: nu
 
 /**
  * Join clip files in order. Stream copy through the concat demuxer comes first; when the files disagree on codec or
- * geometry it fails, and the concat filter re-encodes the video of every file at the first file's frame size.
+ * geometry it fails, and the concat filter re-encodes the video of every file at the first file's frame size, without
+ * audio.
  * @param ctx - a context that injects `dvFfmpeg`.
  * @param paths - the clip files, in playback order.
  * @param dir - the directory for the joined file.
+ * @param muted - whether to leave the clips' audio out of the stream copy too.
  * @returns the path of the joined file.
  */
-async function joinClips(ctx: Context, paths: readonly string[], dir: string): Promise<string> {
+async function joinClips(ctx: Context, paths: readonly string[], dir: string, muted: boolean): Promise<string> {
   const ffmpeg = ctx.dvFfmpeg
   try {
     await ffmpeg.run({
-      argv: ['ffmpeg', '-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', 'list.txt', '-c', 'copy', '-movflags', '+faststart', '{{out:timeline.mp4}}'],
+      argv: [
+        'ffmpeg', '-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', 'list.txt', '-c', 'copy', ...muted ? ['-an'] : [],
+        '-movflags', '+faststart', '{{out:timeline.mp4}}',
+      ],
       inputs: paths, outputs: ['timeline.mp4'], dir,
       files: [{ name: 'list.txt', content: paths.map((_path, index) => `file '{{in:${index}}}'`).join('\n') }],
     })
@@ -140,7 +147,7 @@ export function exportOperation(ctx: Context): OperationSpec {
     version: '1',
     label: { zh: '导出时间线', en: 'Export timeline' },
     description: 'Export a timeline to one video: each clip with an in or out point is trimmed to that range, and all clips are '
-      + 'joined in timeline order.',
+      + 'joined in timeline order. While the timeline\'s video audio is muted (dv_timeline_mute), the video has no audio.',
     inputs: {},
     params: { timeline: { type: 'string', description: 'The ID of the timeline to export, such as `t1`; default: the first timeline.' } },
     outputs: [{ role: 'video', type: 'video' }],
