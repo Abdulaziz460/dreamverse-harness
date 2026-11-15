@@ -72,6 +72,7 @@ Host 半边不注册任何东西。浏览器半边提供客户端服务 `dvCente
 | [`src/client/actions.ts`](src/client/actions.ts) | `ShellActions`：新建、打开、重命名和删除项目与对话，首页，以及右侧面板标签 |
 | [`src/client/store.ts`](src/client/store.ts) | 共享状态（打开的项目、视图、中间区域字段、所显示视图的请求、主会话、项目列表）、`dvCenter.show` 和视图的 `note`、URL hash 同步，以及会话 → 项目查找 |
 | [`src/client/Center.tsx`](src/client/Center.tsx) | 中间区域：URL 恢复、首页、模板标签、最近项目、工作区顶栏、所显示的中间区域视图及其请求和中间区域字段，以及后退、前进和 hash 修改的监听 |
+| [`src/client/notice.tsx`](src/client/notice.tsx) | `runAction` 运行导航器、会话切换器或最近项目的一个 shell 操作，并记录失败；`ActionFailureToast` 是 `shell.overlay` 的条目 `dv.shell.failure`，把失败消息显示为 Toast，发起操作的界面卸载后也会显示。Toast 停留 6 秒后淡出；失败之后开始的一个操作成功或插件卸载时，Toast 提前消失；插件卸载后才结束的操作不显示 Toast |
 | [`src/client/SessionSwitcher.tsx`](src/client/SessionSwitcher.tsx) | 工作区顶栏的会话切换按钮和菜单 |
 | [`src/client/cover.tsx`](src/client/cover.tsx) | 从 `/api/dv/projects/summary` 读取的项目封面和最后编辑时间；通过 `dv.media` 绘制的封面素材 |
 | [`src/client/sessions.ts`](src/client/sessions.ts) | 一个项目的对话，导航和会话切换器共用 |
@@ -79,7 +80,7 @@ Host 半边不注册任何东西。浏览器半边提供客户端服务 `dvCente
 | [`src/client/right-panel.ts`](src/client/right-panel.ts) | 右侧面板 448 px 的默认宽度 |
 | [`src/client/theme.ts`](src/client/theme.ts) | DreamVerse 主题样式表：`--dv-*` 变量（其中有每个画布节点类型各取一个位置的节点色板 `--dv-node-1` 到 `--dv-node-8`，以及波形颜色）和 DSH 别名映射 |
 | [`src/client/icons.tsx`](src/client/icons.tsx) | 外壳的 16 px 线条图标 |
-| [`src/client/Navigator.tsx`](src/client/Navigator.tsx) | 左侧导航和品牌名 |
+| [`src/client/Navigator.tsx`](src/client/Navigator.tsx) | 左侧导航和品牌名；树中的折叠箭头、项目标题和对话行也响应 Enter 和 Space |
 | [`src/client/panels.ts`](src/client/panels.ts) | DSH 侧栏页面入口，为导航镜像一份 |
 | [`src/client/slot-tabs.ts`](src/client/slot-tabs.ts) | 从 `dv.explore` 和 `dv.center.view` 条目同步的 探索 标签和视图切换标签 |
 | [`src/client/tabs.tsx`](src/client/tabs.tsx) | 对话 和 轨迹 的标签类型与主体 |

@@ -25,6 +25,7 @@ import type { WireProject, WireProjectSummary } from '@dv/ui-kit/types.ts'
 import type { ShellActions } from './actions.ts'
 import { CoverFrame, editedText, useProjectSummaries } from './cover.tsx'
 import { SidebarRightIcon } from './icons.tsx'
+import { runAction } from './notice.tsx'
 import { SessionSwitcher } from './SessionSwitcher.tsx'
 import { useSlotTabs } from './slot-tabs.ts'
 import type { ShellLocation } from './store.ts'
@@ -56,7 +57,7 @@ const RECENT_COUNT = 2
 let restored = false
 
 /**
- * Run an action and log its failure; navigation failures leave the page as it was.
+ * Run a location-restore action and log its failure; a failed restore leaves the page as it was.
  * @param work - the action.
  */
 function run(work: () => Promise<void>): void {
@@ -320,7 +321,7 @@ function ProjectCard(
   const t = useText()
   const meta = editedText(summary?.edited_at ?? createdAt, t)
   return (
-    <button type="button" className={css.card} onClick={() => { run(() => shell.openProject(projectId)) }}>
+    <button type="button" className={css.card} onClick={() => { runAction(() => shell.openProject(projectId)) }}>
       <CoverFrame cover={summary?.cover ?? null} purpose="card" className={css.cardCover} renderFactorySlot={renderFactorySlot} />
       <span className={css.cardText}>
         <span className={css.cardTitle}>{title}</span>

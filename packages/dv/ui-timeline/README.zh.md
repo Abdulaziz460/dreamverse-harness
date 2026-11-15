@@ -49,7 +49,7 @@ Host 半边不注册任何东西。浏览器半边注册 `dv-timeline` 标签类
 | 对选中的声音按 Delete 或 Backspace、点工具栏的 删除声音 / Delete sound，或在其右键菜单中选 删除 / Delete | `timeline.sound_remove {sound}`（`sound` 是声音 ID） |
 | 重命名音轨 | `timeline.sound_track_rename {timeline, track, name}`；名称为空或未改变时不发送 |
 | 删除音轨 / Delete track | `timeline.sound_track_remove {timeline, track}`；只在本视图中显示的空音轨直接消失，不写记录 |
-| 导出 | 一次 `timeline.export {timeline}` 调用；链接打开导出的视频 |
+| 导出 | 一次 `timeline.export {timeline}` 调用；链接打开导出的视频。片段正在渲染时导出保持禁用，工具栏会提示尚未就绪；片段失败时，工具栏使用危险色和 `dv-timeline-export-failed` 标记，提示重新渲染或移除片段 |
 | 对选中的过期片段点"仍然保留" | 对创建该片段素材的记录调用 `POST /api/dv/stale/accept`（`proj.stale_accept`） |
 
 每条记录都带 `surface: 'timeline'`、视图旁边的对话（存为记录的 `session`；记录是项目当前位置之后的一步），以及一句用 DSH 界面语言说明手势的意图。`TimelineView` 显示打开项目的中间区域字段 `timeline` 指定的时间线，否则显示第一条时间线；用户在那里选中或新建的时间线经所有者属性 `note` 设置该字段，因此 shell 把它写进 URL，会话切换器的封面也跟随它。标签主体为每个项目保留自己的所选时间线，不影响中间区域。`TimelineView` 通过 `@dv/ui-kit/locale.ts` 跟随 `<html lang>`；切换时间线标签会停止播放，并重置预览和播放头。点一个片段会选中它，不发送任何请求。＋ 的选择窗口打开时获得焦点。用关闭按钮、焦点在窗口里、在 ＋ 上或在包含窗口的元素上时按 Esc、点击窗口外面或用 Tab 移出窗口来关闭它时，不插入素材。添加声音 / Add sound 对话框打开时同样获得焦点，用同样的方式关闭，不添加声音。素材没有时长时片段按五秒画；声音的素材没有时长时，按其 `<audio>` 元素测出的时长画，测不出时按五秒画。轨道延伸到最后一个片段或声音的结束处，取较晚者。

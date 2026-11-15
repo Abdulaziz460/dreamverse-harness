@@ -17,7 +17,7 @@
  *
  * @module @dv/ui-composer/DvPrompt
  */
-import { useEffect, useReducer, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useReducer, useRef, type CSSProperties, type ReactNode } from 'react'
 import type { PromptHostModel } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { FactoryComponentPropsOf, RenderFactorySlot } from '@deepseek-ai/dsh-client-ui-slots'
 import { parsePromptCitations } from '@dv/project/grammar'
@@ -25,8 +25,9 @@ import { errorMessage } from '@dv/ui-kit/api.ts'
 import { useText } from '@dv/ui-kit/locale.ts'
 import type { WireModelEntry, WireOperation } from '@dv/ui-kit/types.ts'
 import type {} from '@dv/ui-media/contract'
-import type { CallInput, CandidateFilter, ParamBar, ParamChip, PromptCopy, PromptFaceContext, PromptHost, ReferenceView } from './contract/index.ts'
-import { draftOf, reduceDraft } from './draft.ts'
+import type { CallInput, CandidateFilter, ParamBar, ParamChip, PromptCall, PromptCopy, PromptFaceContext, PromptHost, ReferenceView } from './contract/index.ts'
+import { draftOf, reduceDraft, startOf } from './draft.ts'
+import { clearDraft, draftKey, readDraft, writeDraft } from './drafts.ts'
 import { MENTION_SOURCE } from './mention.ts'
 import { paramChips, typedValue } from './param-chips.ts'
 import { callOf, documentViews, faceOf, type ResolveContext } from './reference-model.ts'
@@ -61,7 +62,13 @@ function modelOf(models: readonly WireModelEntry[], params: Readonly<Record<stri
  * @returns the composer.
  */
 export function DvPrompt(props: DvPromptComponentProps): ReactNode {
-  return props.readOnly ? <DvPromptView {...props} /> : <DvPromptEditor {...props} />
+  return props.readOnly ? <DvPromptView {...props} /> : <DvPromptEditor key={props.projectId} {...props} />
+}
+
+/** A call as JSON with its params in key order, so that two calls that differ only in that order give one key. */
+function sortedCallKey(call: PromptCall): string {
+  const params = Object.entries(call.params).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)
+  return JSON.stringify([call.operation, params, call.inputs])
 }
 
 /** The faces of a document's chips, as its views resolve them. */
@@ -96,7 +103,7 @@ function DvPromptView({ call, state, host, renderFactorySlot, useVersionKinds }:
   const versions = useVersionKinds(known => known) ?? []
   const [draft, dispatch] = useReducer(reduceDraft, call, draftOf)
   const callKey = JSON.stringify(call)
-  if (draft.callKey !== callKey) dispatch({ type: 'callLent', call })
+  if (draft.callKey !== callKey) dispatch({ type: 'callLent', call, stored: undefined })
   const views = documentViews(draft.document, { state, versions, inputs: null, filter: null })
   const model: PromptHostModel = {
     content: draft.content, readOnly: true, sources: [], sourceContext: null, faceContext: facesOf(views.atoms), onChange: () => {},
@@ -123,7 +130,7 @@ function DvPromptView({ call, state, host, renderFactorySlot, useVersionKinds }:
  * @returns the editor.
  */
 function DvPromptEditor(props: DvPromptComponentProps): ReactNode {
-  const { projectId, call, state, host, onSubmit, surface, renderFactorySlot } = props
+  const { projectId, draftId, call, state, host, onSubmit, surface, renderFactorySlot } = props
   const pick = useText()
   // Null until the composer knows the canvas's version kinds; until then the editor is read-only, because the inputs
   // follow its edits by the kinds' rules.
@@ -131,13 +138,18 @@ function DvPromptEditor(props: DvPromptComponentProps): ReactNode {
   const versions = kinds ?? []
   // Null until the catalog loads; until then the composer knows no model's references and offers none.
   const catalog = props.useModels(loaded => loaded)
+  const modelsFailure = props.useModelsFailure(failed => failed)
   const models = catalog ?? []
   const bar = props.useParamBars(bars => bars.find(candidate => candidate.operation === call.operation) ?? null)
   const operation = props.operations.find(candidate => candidate.name === call.operation) ?? null
-  const [draft, dispatch] = useReducer(reduceDraft, call, draftOf)
   const callKey = JSON.stringify(call)
-  if (draft.callKey !== callKey) dispatch({ type: 'callLent', call })
+  // An unsent draft of this project, draft id and call, kept when the editor last closed, replaces the call's own draft.
+  const storeKey = draftKey(projectId, draftId, callKey)
+  const [draft, dispatch] = useReducer(reduceDraft, call, lent => startOf(lent, readDraft(storeKey)))
+  if (draft.callKey !== callKey) dispatch({ type: 'callLent', call, stored: readDraft(storeKey) })
   const { document, params, sending } = draft
+  // The call whose send succeeded: its draft stays out of the store until an edit changes the call.
+  const sentKey = useRef<string | null>(null)
 
   const edited = callOf(document, { ...call, params })
   const entry = modelOf(models, params)
@@ -155,6 +167,19 @@ function DvPromptEditor(props: DvPromptComponentProps): ReactNode {
   // An answer or a failure of another call does not count for the edited call.
   const checked = draft.checked?.key === editedKey ? draft.checked.answer : null
   const failure = draft.failure?.key === editedKey ? draft.failure.message : null
+  // A text chip whose text its param cannot take blocks the send, so the field never shows a value that the call lacks.
+  const typing = operation === null ? [] : Object.entries(draft.texts).flatMap(([key, text]) => {
+    const typed = typedValue(operation, key, text)
+    return 'problem' in typed ? [typed.problem] : []
+  })
+  useEffect(() => {
+    if (sentKey.current === editedKey) return
+    // A draft whose call is the lent call, with no chip text that its param cannot take, holds no edit.
+    const unedited = typing.length === 0 && sortedCallKey(edited) === sortedCallKey(callOf(draftOf(call).document, call))
+    if (unedited) clearDraft(storeKey)
+    else writeDraft(storeKey, draft)
+    // The store follows the draft, which holds every edit; `call` is read only to tell an edited draft from its start.
+  }, [draft])
   useEffect(() => {
     let live = true
     const timer = setTimeout(() => {
@@ -170,18 +195,20 @@ function DvPromptEditor(props: DvPromptComponentProps): ReactNode {
 
   const ctx: ResolveContext = { state, versions, inputs: null, filter: null }
   const views = documentViews(document, { ...ctx, filter })
-  // A text chip whose text its param cannot take blocks the send, so the field never shows a value that the call lacks.
-  const typing = operation === null ? [] : Object.entries(draft.texts).flatMap(([key, text]) => {
-    const typed = typedValue(operation, key, text)
-    return 'problem' in typed ? [typed.problem] : []
-  })
   const refused = failure === null ? [] : [pick(`失败：${failure}`, `Failed: ${failure}`)]
   const problems = typing.length > 0 ? typing : [...refused, ...checked?.problems ?? []]
   const blocked = typing.length > 0 || checked === null || checked.problems.length > 0
   const send = (): void => {
     if (onSubmit === undefined || sending || blocked) return
     dispatch({ type: 'sending' })
-    onSubmit(edited).then(() => { dispatch({ type: 'sent', key: editedKey, failure: null }) }, (error: unknown) => {
+    onSubmit(edited).then(() => {
+      sentKey.current = editedKey
+      // An editor reopened while the send ran may have stored newer edits, so only a stored draft of the sent call goes.
+      const stored = readDraft(storeKey)
+      const storedKey = stored === undefined ? null : JSON.stringify(callOf(stored.document, { ...call, params: stored.params }))
+      if (storedKey === editedKey) clearDraft(storeKey)
+      dispatch({ type: 'sent', key: editedKey, failure: null })
+    }, (error: unknown) => {
       dispatch({ type: 'sent', key: editedKey, failure: errorMessage(error) })
     })
   }
@@ -271,6 +298,15 @@ function DvPromptEditor(props: DvPromptComponentProps): ReactNode {
           {sending ? pick(...copy.sending) : pick(...copy.send)}
         </button>
       </div>
+      {catalog === null && modelsFailure !== null
+        ? (
+          <p role="alert" data-testid="dv-composer-models-failed" title={modelsFailure} style={{ margin: 0, fontSize: 12, color: 'var(--dv-danger)' }}>
+            {pick('模型列表加载失败', "Couldn't load the model list")}
+            {' '}
+            <button type="button" className="dv-canvas-btn" style={{ ...plain, color: 'var(--dv-accent-text)' }} onClick={props.reloadModels}>{pick('重试', 'Try again')}</button>
+          </p>
+        )
+        : null}
       {problems.length === 0
         ? null
         : <p role="alert" style={{ margin: 0, fontSize: 12, color: 'var(--dv-danger)' }}>{problems.join(' ')}</p>}
