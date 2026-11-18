@@ -104,6 +104,12 @@ const TEXT_FACTS: ModelFactsConfig = {
   maxReferences: 0, referenceMediaTypes: {},
 }
 
+/** The `video_output_capabilities` that a fake server started with `capabilities` extends. */
+const CAPABILITIES = {
+  schema_version: 1, fps: 24, duration_seconds: { min: 5, max: 6 }, num_frames_by_duration_seconds: { 5: 124, 6: 158 },
+  recommended_frame_sizes: { '16:9': { '720p': [1344, 768] } },
+}
+
 const cleanups: Array<() => Promise<void>> = []
 
 afterEach(async () => {
@@ -126,7 +132,8 @@ interface FakeServer {
  * `POST /v1/videos/sync` with `video`.
  * @param facts - the facts of the served model.
  * @param options - `video` is the MP4 it answers with; `hold` holds each render answer until it is released; `failure`
- *   answers each render with that HTTP status and an OpenAI error envelope instead; `port` is the port to listen on.
+ *   answers each render with that HTTP status and an OpenAI error envelope instead; `port` is the port to listen on;
+ *   `capabilities` is the published `video_output_capabilities`, left out when absent.
  * @returns the task config of the server and the render request bodies.
  */
 async function startFakeServer(facts: ModelFactsConfig, options: {
@@ -134,6 +141,7 @@ async function startFakeServer(facts: ModelFactsConfig, options: {
   hold?: boolean
   failure?: { status: number; message: string }
   port?: number
+  capabilities?: Record<string, unknown>
 } = {}): Promise<FakeServer> {
   const requests: Record<string, unknown>[] = []
   let arrived!: (value: { release: () => void; closed: Promise<void> }) => void
@@ -141,7 +149,8 @@ async function startFakeServer(facts: ModelFactsConfig, options: {
   const server: Server = createServer((request: IncomingMessage, response: ServerResponse) => {
     if (request.method !== 'POST') {
       response.writeHead(200, { 'content-type': 'application/json', connection: 'close' })
-      response.end(JSON.stringify({ model_path: '/weights', served_model_name: facts.modelId, lora: null }))
+      response.end(JSON.stringify({ model_path: '/weights', served_model_name: facts.modelId, lora: null,
+        ...options.capabilities === undefined ? {} : { video_output_capabilities: options.capabilities } }))
       return
     }
     const parts: Buffer[] = []
@@ -331,6 +340,50 @@ describe('dv-fastvideo', () => {
     expect(await check(referenceTask, [image], video)).toEqual([`Its first_frame input takes assets of type image; asset ${video} is of type video.`])
     expect(await check(textTask, [], null)).toEqual([])
     expect(await check(textTask, [image], video)).toEqual(['It takes no reference input; this shot has 1.', 'It takes no first_frame input; this shot has 1.'])
+  })
+
+  it('checks the tasks and reference limits that the server publishes', async () => {
+    const capabilities = (extra: Record<string, unknown>) => ({ ...CAPABILITIES, ...extra })
+    const [reference, text] = await Promise.all([
+      startFakeServer(REFERENCE_FACTS, { capabilities: capabilities({
+        tasks: [{ task: 't2va' }, { task: 'fl2va', image_references: 2, anchors: ['first', 'last'] }],
+        reference_limits: { images: 1, videos: 2, audios: 2, total: 2, continuation_video: true },
+      }) }),
+      startFakeServer(TEXT_FACTS, { capabilities: capabilities({ tasks: [{ task: 't2v' }] }) }),
+    ])
+    const discover = { discoverOutputCapabilities: true }
+    const ctx = await start({ ref2v: { ...reference.server, ...discover }, t2v: { ...text.server, ...discover } })
+    const asset = (bytes: string, mime: string) => importAsset(ctx, Buffer.from(bytes), mime)
+    const [video, image, otherImage] = [asset('VID1', 'video/mp4'), asset('IMG1', 'image/png'), asset('IMG2', 'image/png')]
+    // The configured facts allow the media; the server publishes tighter limits, counting the frames, and no ref2va.
+    expect(await fasth3(ctx, 'ref2v').validateGenerationRequest({ ...request([video], image),
+      lastFrame: otherImage, prompt: '@[first frame](dv:input/first_frame) smiles' })).toEqual([
+      'The server for fasth3 ref2v serves t2va, fl2va; it does not serve ref2va.',
+      'The server takes at most 2 references; this shot has 3.',
+      'The server takes at most 1 of type image; this shot has 2.',
+      'It takes no last_frame input; this shot has 1.',
+    ])
+    expect(await fasth3(ctx, 'ref2v').validateGenerationRequest(request([video, image, otherImage], null))).toEqual([
+      'The server for fasth3 ref2v serves t2va, fl2va; it does not serve ref2va.',
+      'The server takes at most 2 references; this shot has 3.',
+      'The server takes at most 1 of type image; this shot has 2.',
+    ])
+    // The server's t2v alias is its t2va task.
+    expect(await fasth3(ctx, 't2v').validateGenerationRequest(request([], null))).toEqual([])
+    expect(await fasth3(ctx, 't2v').schema()).toMatchObject({ server_tasks: ['t2v'] })
+    // The server reads a configured task in any case and with its aliases, and publishes only canonical tasks.
+    const published = capabilities({ tasks: [{ task: 't2va' }, { task: 'ref2va' }] })
+    const [alias, upper] = await Promise.all([startFakeServer(TEXT_FACTS, { capabilities: published }),
+      startFakeServer(TEXT_FACTS, { capabilities: published })])
+    const aliasCtx = await start({ t2v: { ...alias.server, ...discover, task: 't2v' } })
+    const upperCtx = await start({ t2v: { ...upper.server, ...discover, task: 'T2VA' } })
+    expect(await fasth3(aliasCtx, 't2v').validateGenerationRequest(request([], null))).toEqual([])
+    expect(await fasth3(upperCtx, 't2v').validateGenerationRequest(request([], null))).toEqual([])
+    // Without discovery the entry keeps the configured facts and ignores the published tasks.
+    const configured = await startFakeServer(TEXT_FACTS, { capabilities: capabilities({ tasks: [{ task: 'ref2va' }] }) })
+    const configuredCtx = await start({ t2v: configured.server })
+    expect(await fasth3(configuredCtx, 't2v').validateGenerationRequest(request([], null))).toEqual([])
+    expect(await fasth3(configuredCtx, 't2v').schema()).not.toHaveProperty('server_tasks')
   })
 
   it('refuses a shot whose only media are audio, because FastVideo pairs audio with an image or a video', async () => {
