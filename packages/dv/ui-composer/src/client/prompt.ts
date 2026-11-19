@@ -23,7 +23,7 @@ import type { DvComposer, DvPromptInjected, ParamBar, ReferenceFaceInjected } fr
 import { DvPrompt } from './DvPrompt.tsx'
 import { MENTION_SOURCE } from './mention.ts'
 import { ReferenceFace } from './ReferenceFace.tsx'
-import { VideoModelPicker } from './VideoModelPicker.tsx'
+import { ModelPickers } from './ModelPicker.tsx'
 
 const REFETCH_DELAY_MS = 150
 
@@ -100,14 +100,26 @@ export interface CatalogSource extends HostObservable<readonly WireModelEntry[] 
  * The model catalog: null until the first load answers. Each subscription and each `reload()` starts a load unless one
  * is in flight, so an occurrence that opens reads the catalog as it is then, such as after a backend that was down comes
  * back, even while another consumer stays subscribed. A failed load keeps the catalog it had and records its message in
- * `failure` until the next load starts.
+ * `failure` until the next load starts. While it has a consumer, it also loads again after each burst of changes that
+ * `follow` reports, such as a model added in Settings; a burst that arrives while a load is in flight loads once more
+ * after that load settles.
  * @param load - reads the catalog.
+ * @param follow - calls its argument after each change of the catalog and returns the function that stops; omitted, the
+ *   catalog loads only on a subscription or a `reload()`.
  * @returns the source.
  */
-export function catalogSource(load: () => Promise<readonly WireModelEntry[]>): CatalogSource {
+export function catalogSource(
+  load: () => Promise<readonly WireModelEntry[]>,
+  follow?: (onChange: () => void) => () => void,
+): CatalogSource {
   const store = createSnapshotStore<readonly WireModelEntry[] | null>(null)
   const failure = createSnapshotStore<string | null>(null)
   let loading = false
+  // Set by a catalog change during a load, whose answer may predate the change.
+  let changedWhileLoading = false
+  let consumers = 0
+  let stop: (() => void) | null = null
+  let timer: ReturnType<typeof setTimeout> | null = null
   const reload = (): void => {
     if (loading) return
     loading = true
@@ -116,14 +128,38 @@ export function catalogSource(load: () => Promise<readonly WireModelEntry[]>): C
     load().then((catalog) => { store.set(catalog) }, (error: unknown) => {
       console.error('[dv-composer] models failed:', error)
       failure.set(errorMessage(error))
-    }).finally(() => { loading = false })
+    }).finally(() => {
+      loading = false
+      if (!changedWhileLoading) return
+      changedWhileLoading = false
+      reload()
+    })
   }
   return {
     getSnapshot: () => store.getSnapshot(),
     subscribe: (listener) => {
       const off = store.subscribe(listener)
+      consumers += 1
       reload()
-      return off
+      if (consumers === 1) {
+        stop = follow?.(() => {
+          if (timer !== null) clearTimeout(timer)
+          timer = setTimeout(() => {
+            timer = null
+            if (loading) changedWhileLoading = true
+            else reload()
+          }, REFETCH_DELAY_MS)
+        }) ?? null
+      }
+      return () => {
+        off()
+        consumers -= 1
+        if (consumers > 0) return
+        stop?.()
+        stop = null
+        if (timer !== null) clearTimeout(timer)
+        timer = null
+      }
     },
     failure: { getSnapshot: () => failure.getSnapshot(), subscribe: listener => failure.subscribe(listener) },
     reload,
@@ -138,9 +174,23 @@ export function applyPrompt(ctx: ClientContext): void {
   const composer: DvComposer = { paramBars: createRegistry<ParamBar>(bar => [bar.operation], bar => bar.owner) }
   ctx.reflect.provide('dvComposer', composer)
   const client = new DvClient()
-  const models = catalogSource(() => client.listModels())
-  const states = projectStates(client)
   const currentProject = createSnapshotStore<string | null>(getCurrentProject())
+  // The catalog's changes arrive on the open project's event stream, so following them opens no other connection.
+  const models = catalogSource(() => client.listModels(), (onChange) => {
+    let leave = (): void => {}
+    const join = (): void => {
+      leave()
+      const project = currentProject.getSnapshot()
+      leave = project === null ? () => {} : client.subscribeModels(project, onChange)
+    }
+    join()
+    const off = currentProject.subscribe(join)
+    return () => {
+      off()
+      leave()
+    }
+  })
+  const states = projectStates(client)
   // The version kinds that the canvas holds, which the components read through their hooks; null without the canvas.
   const versionKinds = createSnapshotStore<readonly VersionKind[] | null>(null)
   ctx.inject(['dvCanvas'], (scope) => {
@@ -159,18 +209,18 @@ export function applyPrompt(ctx: ClientContext): void {
     window.addEventListener(DV_CURRENT_PROJECT_EVENT, follow)
     return () => { window.removeEventListener(DV_CURRENT_PROJECT_EVENT, follow) }
   }, 'dv-composer: open project')
-  function ConversationVideoModel({ sessionId }: { sessionId: string }) {
+  function ConversationModels({ sessionId }: { sessionId: string }) {
     const projectId = useSyncExternalStore(currentProject.subscribe, currentProject.getSnapshot)
-    return createElement(VideoModelPicker, {
+    return createElement(ModelPickers, {
       key: `${projectId ?? ''}:${sessionId}`, sessionId, state: states(projectId ?? ''), models, reloadModels: models.reload,
-      save: selection => projectId === null ? Promise.reject(new Error('Open a project to choose its video model.'))
-        : client.runOperation({ project: projectId, session: sessionId, surface: 'chat',
-          operation: 'models.select', params: selection === null ? { provider: '', model: '' } : { ...selection } }),
+      save: (modality, selection) => projectId === null ? Promise.reject(new Error('Open a project to choose its models.'))
+        : client.runOperation({ project: projectId, session: sessionId, surface: 'chat', operation: 'models.select',
+          params: { modality, ...selection === null ? { provider: '', model: '' } : selection } }),
     })
   }
   ctx.effect(() => ctx.slots.inject('conversation.input.left', () => ctx.slots.register(
-    { name: 'conversation.input.left', id: 'dv-video-model', order: 40 }, ConversationVideoModel,
-  )), 'dv-composer: video model choice')
+    { name: 'conversation.input.left', id: 'dv-model-choices', order: 40 }, ConversationModels,
+  )), 'dv-composer: model choices')
   const injected: DvPromptInjected = {
     check: request => client.checkOperation(request),
     reloadModels: models.reload,

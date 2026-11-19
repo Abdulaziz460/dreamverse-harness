@@ -30,6 +30,12 @@
       "path": "../ffmpeg"
     },
     {
+      "path": "../image-generate"
+    },
+    {
+      "path": "../audio-generate"
+    },
+    {
       "path": "../models"
     },
     {

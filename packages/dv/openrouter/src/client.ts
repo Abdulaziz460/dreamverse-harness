@@ -1,9 +1,34 @@
-/** OpenRouter asynchronous video API. It never resubmits a job or follows provider-returned URLs. */
+/**
+ * OpenRouter's asynchronous video API, its image API and its speech API. It never resubmits a paid request or follows
+ * provider-returned URLs.
+ */
 import { setTimeout as delay } from 'node:timers/promises'
-import { videoCatalog } from './catalog.ts'
-import type { VideoModel } from './types.ts'
+import { imageCatalog, speechCatalog, videoCatalog, videoReferences } from './catalog.ts'
+import type { ImageModel, ReferenceMedia, SpeechModel, VideoModel } from './types.ts'
 
-export class OpenRouterVideos {
+/** One generated image as OpenRouter returns it. */
+export interface OpenRouterImage { bytes: Buffer; mime: string }
+
+/** One spoken clip as OpenRouter returns it: MP3 (`audio/mpeg`) or raw PCM (`audio/pcm`). */
+export interface OpenRouterSpeech { bytes: Buffer; mime: string }
+
+/** Characters of OpenRouter's error message an HTTP failure quotes. */
+const REASON_LIMIT = 300
+
+/**
+ * The `error.message` of a failed response's JSON body, single-line, without the API key, cut to `REASON_LIMIT`
+ * characters; null when the body is not that JSON.
+ */
+async function errorReason(response: Response, key: string): Promise<string | null> {
+  let body: { error?: { message?: unknown } } | null
+  try { body = await response.json() as { error?: { message?: unknown } } | null } catch { return null } // not JSON: no reason to quote
+  const message = body?.error?.message
+  if (typeof message !== 'string' || message.trim() === '') return null
+  const text = message.split(key).join('[key]').replace(/\s+/g, ' ').trim().replace(/\.$/, '')
+  return text.length > REASON_LIMIT ? `${text.slice(0, REASON_LIMIT)}…` : text
+}
+
+export class OpenRouterApi {
   private readonly base: URL
   constructor(baseUrl: string, private readonly resolveKey: () => Promise<string>, private readonly pollMs: number,
     private readonly fetcher: typeof globalThis.fetch = globalThis.fetch) {
@@ -19,18 +44,89 @@ export class OpenRouterVideos {
     headers.set('authorization', `Bearer ${key}`)
     const response = await this.fetcher(new URL(path, this.base), { ...init, headers, redirect: 'error' })
     if (!response.ok) {
-      await response.body?.cancel()
-      throw new Error(`OpenRouter video API returned HTTP ${response.status}. Check the key, credit balance, and selected model.`)
+      const reason = await errorReason(response, key)
+      throw new Error(`OpenRouter API returned HTTP ${response.status}${reason === null ? '' : `: ${reason}`}. `
+        + 'Check the key, credit balance, and selected model.')
     }
     return response
   }
 
-  /** Read current choices. Metadata lookups are bounded; generation follows the operation lifetime. */
-  async catalog(signal?: AbortSignal): Promise<VideoModel[]> {
+  /** The JSON of a catalog route. Metadata lookups are bounded to 10 seconds; generation follows the operation lifetime. */
+  private async catalogJson(path: string, signal?: AbortSignal): Promise<unknown> {
     const deadline = AbortSignal.timeout(10_000)
-    return videoCatalog(await (await this.call('videos/models', {
-      signal: signal === undefined ? deadline : AbortSignal.any([signal, deadline]),
-    })).json())
+    return (await this.call(path, { signal: signal === undefined ? deadline : AbortSignal.any([signal, deadline]) })).json()
+  }
+
+  /**
+   * Read current video choices from `videos/models`, with each model's reference media from the models catalog filtered
+   * to video output.
+   * @param signal - aborts both requests.
+   * @returns the usable video models; every model has no reference media when only the models catalog fails.
+   * @throws Error when `videos/models` fails or answers an invalid catalog; the signal's reason on abort.
+   */
+  async catalog(signal?: AbortSignal): Promise<VideoModel[]> {
+    const [models, references] = await Promise.all([
+      this.catalogJson('videos/models', signal),
+      this.catalogJson('models?output_modalities=video', signal).then(videoReferences).catch((error: unknown) => {
+        // A failed models catalog removes only task ref2v; the generation choices come from videos/models.
+        if (signal?.aborted === true) throw error
+        return new Map<string, ReferenceMedia[]>()
+      }),
+    ])
+    return videoCatalog(models, references)
+  }
+
+  /** Read current image choices. */
+  async imageCatalog(signal?: AbortSignal): Promise<ImageModel[]> {
+    return imageCatalog(await this.catalogJson('images/models', signal))
+  }
+
+  /** Read current speech choices from the models catalog filtered to speech output. */
+  async speechCatalog(signal?: AbortSignal): Promise<SpeechModel[]> {
+    return speechCatalog(await this.catalogJson('models?output_modalities=speech', signal))
+  }
+
+  /**
+   * Speak once with `POST /audio/speech`, submitted once. The answer is the audio itself, typed by its content type.
+   * @param body - the request body.
+   * @param signal - aborts the request.
+   * @returns the audio bytes and media type.
+   * @throws Error for an HTTP failure or an answer that is not audio; the signal's reason on abort.
+   */
+  async speak(body: Record<string, unknown>, signal?: AbortSignal): Promise<OpenRouterSpeech> {
+    signal?.throwIfAborted()
+    const response = await this.call('audio/speech', { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body), ...signal === undefined ? {} : { signal } })
+    const mime = (response.headers.get('content-type') ?? '').split(';')[0]?.trim().toLowerCase() ?? ''
+    const bytes = Buffer.from(await response.arrayBuffer())
+    if (bytes.length === 0 || !mime.startsWith('audio/')) {
+      throw new Error('OpenRouter returned no audio; do not automatically resubmit this paid request.')
+    }
+    return { bytes, mime }
+  }
+
+  /**
+   * Generate one image with `POST /images`, submitted once. The answer's first `data` row carries the image as raw
+   * base64 in `b64_json` and its type in `media_type`.
+   * @param body - the request body.
+   * @param signal - aborts the request.
+   * @returns the image bytes and media type.
+   * @throws Error for an HTTP failure or an answer without an image; the signal's reason on abort.
+   */
+  async generateImage(body: Record<string, unknown>, signal?: AbortSignal): Promise<OpenRouterImage> {
+    signal?.throwIfAborted()
+    const answer: unknown = await (await this.call('images', { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body), ...signal === undefined ? {} : { signal } })).json()
+    const rows = typeof answer === 'object' && answer !== null && 'data' in answer && Array.isArray(answer.data) ? answer.data : []
+    const first: unknown = rows[0]
+    const b64 = typeof first === 'object' && first !== null && 'b64_json' in first ? first.b64_json : undefined
+    const mime = typeof first === 'object' && first !== null && 'media_type' in first && typeof first.media_type === 'string'
+      ? first.media_type : 'image/png'
+    const bytes = typeof b64 === 'string' ? Buffer.from(b64, 'base64') : Buffer.alloc(0)
+    if (bytes.length === 0 || !mime.startsWith('image/')) {
+      throw new Error('OpenRouter returned no image; do not automatically resubmit this paid request.')
+    }
+    return { bytes, mime }
   }
 
   /** Submit once and monitor to completion. An abort stops monitoring; OpenRouter documents no cancellation route. */
@@ -53,7 +149,12 @@ export class OpenRouterVideos {
           if (!mime.startsWith('video/')) { await response.body?.cancel(); throw new Error('OpenRouter returned no video content.') }
           return { video: Buffer.from(await response.arrayBuffer()), mime }
         }
-        if (state.status === 'failed') throw new Error('OpenRouter video generation failed. Check the provider job before retrying.')
+        if (state.status === 'failed' || state.status === 'cancelled' || state.status === 'expired') {
+          // OpenRouter reports the reason as a top-level `error` string; it can be absent or null.
+          const reason = 'error' in state && typeof state.error === 'string' && state.error.trim() !== '' ? state.error.trim().slice(0, 500) : null
+          throw new Error(`OpenRouter video generation ${state.status}${reason === null ? '' : `: ${reason}`}. `
+            + 'Check the provider job before retrying.')
+        }
         if (state.status !== 'pending' && state.status !== 'in_progress') throw new Error('Unknown OpenRouter video job status.')
         await delay(this.pollMs, undefined, options)
       }

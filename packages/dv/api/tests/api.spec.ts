@@ -506,7 +506,7 @@ describe('dvApi', () => {
     }
   })
 
-  it('streams project changes as server-sent events and refuses rejected or unknown requests', async () => {
+  it('streams project changes and model catalog changes as server-sent events, and refuses rejected or unknown requests', async () => {
     const fixture = await start()
     const projectId = await fixture.newProject('demo')
     const base = await fixture.web.listen()
@@ -542,6 +542,8 @@ describe('dvApi', () => {
     await readUntil('event: update')
     expect(text).toContain('event: record\ndata: {"kind":"record"')
     expect(text).not.toContain('event: branch')
+    fixture.context.effect(() => fixture.context.dvModels.register(new FakeModel()))
+    await readUntil('event: models\ndata: {}\n\n')
     await readUntil(': keepalive')
     controller.abort()
     await new Promise(resolve => setTimeout(resolve, 20))

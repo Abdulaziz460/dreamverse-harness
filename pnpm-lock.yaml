@@ -7768,9 +7768,15 @@ importers:
       '@dv/asset-pool':
         specifier: workspace:*
         version: link:../asset-pool
+      '@dv/audio-generate':
+        specifier: workspace:*
+        version: link:../audio-generate
       '@dv/ffmpeg':
         specifier: workspace:*
         version: link:../ffmpeg
+      '@dv/image-generate':
+        specifier: workspace:*
+        version: link:../image-generate
       '@dv/models':
         specifier: workspace:*
         version: link:../models
