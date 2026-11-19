@@ -107,8 +107,8 @@ export function placeClips(state: WireState, timeline: Timeline | null): { clips
   const clips = stored.map(clip => placed.get(clip.id) as PlacedClip)
   // The same count as the reducer's `videoTrackCount`, which a browser package cannot import.
   const tracks = Math.max(
-    0, (timeline?.track_order ?? []).filter(kind => kind === 'video').length,
-    ...clips.map(clip => clip.track + 1), ...(timeline?.muted_video_tracks ?? []).map(track => track + 1),
+    0, (timeline?.track_order ?? []).filter(kind => kind === 'video').length, ...clips.map(clip => clip.track + 1),
+    ...[...timeline?.muted_video_tracks ?? [], ...quietedTracks(timeline?.video_track_volumes ?? [])].map(track => track + 1),
   )
   return { clips, tracks, end: Math.max(0, ...clips.map(clip => clip.startSec + clip.seconds)) }
 }
@@ -148,6 +148,23 @@ export function coveredAbove(clips: readonly PlacedClip[], clip: PlacedClip): bo
   return false
 }
 
+/** The most characters of a name that a clip block shows before the `…` of a cut name. */
+const CLIP_NAME_CHARS = 8
+
+/** Splits a name into whole characters as the user reads them, so an emoji or a letter with a combining mark stays whole. */
+const CHARACTERS = new Intl.Segmenter()
+
+/**
+ * A name as a clip block shows it, so a long file name does not fill the block: the first `CLIP_NAME_CHARS` characters
+ * and then `…`. A name of up to one character more shows whole, since the cut would not make it shorter.
+ * @param name - the name.
+ * @returns the name, cut when the cut makes it shorter.
+ */
+export function shortName(name: string): string {
+  const characters = Array.from(CHARACTERS.segment(name), part => part.segment)
+  return characters.length <= CLIP_NAME_CHARS + 1 ? name : `${characters.slice(0, CLIP_NAME_CHARS).join('')}…`
+}
+
 /**
  * The clips that never show, since the clips of the tracks with lower numbers cover their whole span. The editor works
  * this out once per change of the clips, not on every frame of playback.
@@ -178,6 +195,48 @@ export function trackRows(order: readonly TrackKind[], videoTracks: number, soun
   const rest = (kind: TrackKind, count: number): TrackRow[] =>
     Array.from({ length: Math.max(0, count - next[kind]) }, (_, index) => ({ kind, track: next[kind] + index }))
   return [...rows, ...rest('video', videoTracks), ...rest('sound', soundTracks)]
+}
+
+/**
+ * Where a dragged block of `seconds` starts when the pointer puts its start at `start`: when its start or its end comes
+ * within `tolerance` of a target, the block moves so that this edge sits on the nearest target; otherwise it starts at
+ * `start`. A snap that would put the start before 0 is skipped.
+ * @param start - the start that the pointer gives, in seconds, 0 or more.
+ * @param seconds - the block's length.
+ * @param targets - the times an edge may snap to, such as the edges of the other blocks, the playhead, and 0.
+ * @param tolerance - the largest distance, in seconds, at which an edge snaps.
+ * @returns the block's start in seconds.
+ */
+export function snapStart(start: number, seconds: number, targets: readonly number[], tolerance: number): number {
+  let best = start
+  let distance = tolerance
+  for (const target of targets) {
+    for (const candidate of [target, target - seconds]) {
+      const gap = Math.abs(candidate - start)
+      if (candidate >= 0 && gap <= distance) {
+        best = candidate
+        distance = gap
+      }
+    }
+  }
+  return best
+}
+
+/**
+ * @param volumes - track volumes in dB by track number.
+ * @returns each track number that has a volume below 0 dB; such a track counts as stored, as a muted track does.
+ */
+export function quietedTracks(volumes: readonly number[]): number[] {
+  return volumes.flatMap((volume, track) => volume === 0 ? [] : [track])
+}
+
+/**
+ * The playback volume of a track volume, as `HTMLMediaElement.volume` takes it.
+ * @param volumeDb - the track's volume in dB, 0 or less.
+ * @returns the amplitude factor, 1 at 0 dB.
+ */
+export function trackGain(volumeDb: number): number {
+  return 10 ** (volumeDb / 20)
 }
 
 /**

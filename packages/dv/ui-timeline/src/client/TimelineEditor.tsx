@@ -10,9 +10,12 @@
  * top. Where a track has a clip, it covers every track under it; a gap shows the track under it, and the preview shows
  * and plays the clip of the track with the lowest number at the playhead. A clip moves in time by a drag, to another
  * video track by a drag up or down, and its edges trim it; the other clips keep their times, so nothing closes a gap,
- * and the server refuses a clip that would overlap another clip of its track. Each video track header mutes the own
+ * and the server refuses a clip that would overlap another clip of its track. A dragged clip or sound snaps when its
+ * start or end comes within `SNAP_PX` of the edge of another clip or sound, the playhead, or 0 s. Each video track header mutes the own
  * audio of its clips, deletes the track, adds a video after its last clip, and its 上移 / 下移 change which track covers
- * which (`timeline.video_track_move`). Each sound track header mutes, renames or deletes its track. A sound moves in
+ * which (`timeline.video_track_move`). Each sound track header mutes, renames or deletes its track. Beside each mute
+ * button, the volume button opens a slider that sets the track's volume from `MIN_VOLUME_DB` to 0 dB, which the preview
+ * plays while the slider moves and which one `timeline.volume` stores when the pointer or the key lets go. A sound moves in
  * time and to another sound track by a drag, its edges trim it, and it splits at the playhead. The preview plays muted
  * audio silent.
  *
@@ -33,9 +36,9 @@ import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { CSSProperties, DragEvent, FocusEvent, KeyboardEvent, MouseEvent, PointerEvent, ReactNode, RefObject, UIEvent } from 'react'
 import type { Translate } from '@deepseek-ai/dsh-client-ui-slots'
-import type { Timeline, TrackKind } from '@dv/timeline/types'
+import type { MinVolumeDb, Timeline, TrackKind } from '@dv/timeline/types'
 import { assetUrl } from '@dv/ui-kit/api.ts'
-import { assetLabel } from '@dv/ui-kit/canvas-nodes.ts'
+import { assetLabel, assetLabelParts } from '@dv/ui-kit/canvas-nodes.ts'
 import { mediaTypeOf } from '@dv/ui-kit/media-type.ts'
 import type { DvClient } from '@dv/ui-kit/api.ts'
 import { readStored, writeStored } from '@dv/ui-kit/storage.ts'
@@ -49,7 +52,8 @@ import { clipPeaks, useAudioEnvelope } from '@dv/ui-kit/waveform.ts'
 import { useSoundPlayback } from './sound-playback.ts'
 import { clipStalled, trackClipPreload, useTrackClipPlayback } from './track-clip-playback.ts'
 import {
-  audioAssets, coveredClips, nextTimelineId, placeClips, placeSounds, timecode, timelinesOf, topClipAt, trackRows, videoAssets,
+  audioAssets, coveredClips, nextTimelineId, placeClips, placeSounds, quietedTracks, shortName, snapStart, timecode, timelinesOf,
+  topClipAt, trackGain, trackRows, videoAssets,
 } from './timelines.ts'
 import type { PlacedClip, TrackSound } from './timelines.ts'
 import type { DvTimelineKey } from './locales.ts'
@@ -159,6 +163,23 @@ const MIN_PREVIEW_HEIGHT = 160
 const RESIZE_STEP = 16
 /** `localStorage` key of the track area's height in pixels, remembered per browser. */
 const TRACK_HEIGHT_KEY = 'dv-timeline-track-height'
+/** Pixels within which the start or end of a dragged clip or sound snaps to another block's edge, the playhead, or 0 s. */
+const SNAP_PX = 8
+/** The lowest track volume, in dB, that `timeline.volume` takes; 0 dB plays the audio as recorded. */
+const MIN_VOLUME_DB: MinVolumeDb = -40
+/** Pixels a pointer may move from its press before the press counts as a drag, and sideways before a drag moves a block in time. */
+const DRAG_PX = 3
+
+/**
+ * The open volume slider of a track: the volume it shows while the user moves it, and the volume it last wrote or found
+ * stored when it opened.
+ */
+interface VolumeSlider {
+  kind: 'video' | 'sound'
+  track: number
+  db: number
+  written: number
+}
 /** Seconds the skip-back and skip-forward buttons (and J, L, Shift+←, Shift+→) move the playhead. */
 const SKIP_SECONDS = 5
 /** Playback speeds the speed button cycles through. */
@@ -264,6 +285,7 @@ const ICON_PATHS = {
   film: 'M4 4h16v16H4zM8 4v16M16 4v16M4 9h4M4 15h4M16 9h4M16 15h4',
   music: 'M9 18V5l12-2v13M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0M21 16a3 3 0 1 1-6 0 3 3 0 0 1 6 0',
   layers: 'M12 3 2 8l10 5 10-5zM2 16l10 5 10-5M2 12l10 5 10-5',
+  volume: 'M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3M14 2v4M8 10v4M16 18v4',
   up: 'm18 15-6-6-6 6',
   down: 'm6 9 6 6 6-6',
 }
@@ -479,6 +501,11 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   // asset that the project no longer has shows its ID.
   const labels = useMemo(() => new Map(state.assets.map(asset => [asset.id, assetLabel(state, asset)])), [state])
   const labelOf = (id: string): string => labels.get(id) ?? id
+  // The name a clip block shows: each part of the asset's name cut short on its own, so the block of an earlier take
+  // of a named node still shows the start of the take's own name after the node's.
+  const shortLabels = useMemo(
+    () => new Map(state.assets.map(asset => [asset.id, assetLabelParts(state, asset).map(shortName).join(' · ')])), [state],
+  )
   // Every ready clip shows its video's frames across its width once they are read (`clipPicture`).
   const videoUrls = [...new Set(clips.flatMap(clip => clip.assetId === null ? [] : [assetUrl(clip.assetId)]))]
   const strips = useFilmstrips(videoUrls)
@@ -508,9 +535,25 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   }
   // In a card, the elements that take their own presses carry the canvas's marks; a press anywhere else moves the node.
   const owned = card === undefined ? {} : { 'data-node-interactive': '' }
+  // The track whose volume slider is open, with the volume the slider shows while the user moves it and the volume it
+  // last wrote or found stored when it opened, which a write compares with because the stored state arrives later.
+  const [volumeSlider, setVolumeSlider] = useState<VolumeSlider | null>(null)
+  const volumeRef = useRef<HTMLDivElement | null>(null)
+  const volumeButton = useRef<HTMLButtonElement | null>(null)
+  useDismissOnOutsidePress(volumeSlider !== null, [volumeRef, volumeButton], () => { setVolumeSlider(null) })
+  /**
+   * @param kind - a video track or a sound track.
+   * @param track - its number.
+   * @returns its volume in dB: the open slider's while it is this track's, else the stored one.
+   */
+  const volumeDb = (kind: 'video' | 'sound', track: number): number => volumeSlider?.kind === kind && volumeSlider.track === track
+    ? volumeSlider.db
+    : (kind === 'video' ? timeline?.video_track_volumes : timeline?.sound_track_volumes)?.[track] ?? 0
   const soundBox = useRef<HTMLDivElement | null>(null)
-  useSoundPlayback(soundBox, sounds, player.position, player.playing, playbackRate)
-  useTrackClipPlayback(frame, clips, player.position, player.playing, playbackRate, topClip?.clip ?? null)
+  // The preview plays each track at its volume, and at the slider's while the user moves it.
+  useTrackClipPlayback(
+    frame, clips, player.position, player.playing, playbackRate, topClip?.clip ?? null, track => trackGain(volumeDb('video', track)),
+  )
   const mutedVideoTracks = timeline?.muted_video_tracks ?? []
   // The kinds of the stored tracks, top to bottom; without a timeline, one video track and one sound track.
   const trackOrder = timeline?.track_order ?? ['video', 'sound']
@@ -529,15 +572,20 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   const soundPickerRef = useRef<HTMLDivElement | null>(null)
   // The sound track ＋ that opened the sound dialog; each track has its own ＋.
   const soundAddRef = useRef<HTMLButtonElement | null>(null)
-  // Sound tracks: the tracks the timeline stores, up to the last track with a sound, a name, or a mute, and the empty
-  // tracks `track_order` lists; the same count as the reducer's `soundTrackCount`.
+  // Sound tracks: the tracks the timeline stores, up to the last track with a sound, a name, a mute, or a volume below
+  // 0 dB, and the empty tracks `track_order` lists; the same count as the reducer's `soundTrackCount`.
   const trackNames = timeline?.sound_track_names ?? []
   const mutedTracks = timeline?.muted_sound_tracks ?? []
   const trackCount = Math.max(
-    trackNames.length, ...sounds.map(sound => sound.track + 1), ...mutedTracks.map(track => track + 1),
+    trackNames.length, ...sounds.map(sound => sound.track + 1),
+    ...[...mutedTracks, ...quietedTracks(timeline?.sound_track_volumes ?? [])].map(track => track + 1),
     trackOrder.filter(kind => kind === 'sound').length,
   )
   const trackName = (track: number): string => trackNames[track] || t('track.soundN', { n: track + 1 })
+  useSoundPlayback(
+    soundBox, sounds, player.position, player.playing, playbackRate,
+    Array.from({ length: trackCount }, (_, track) => trackGain(volumeDb('sound', track))),
+  )
   const [renamingTrack, setRenamingTrack] = useState<{ track: number; name: string } | null>(null)
   // The rows top to bottom, and the top of each in pixels from the first row's top.
   const shownRows = trackRows(trackOrder, videoTrackCount, trackCount)
@@ -637,7 +685,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   useEffect(() => {
     setChosenClip(null); setPicking(false); setPickingSound(false); setExported(null); setMenu(null); setRenaming(null)
     setChosenSound(null); setTrackMenu(null); setRenamingTrack(null)
-    setPickTrack(0); setPickAt(null); setToolPopover(null)
+    setPickTrack(0); setPickAt(null); setToolPopover(null); setVolumeSlider(null)
     soundAdds.current += 1; setPendingSound(null)
   }, [timelineId])
 
@@ -753,6 +801,24 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
     return () => { window.removeEventListener('keydown', onKeyDown, true) }
   }, [pickingSound])
 
+  // The open volume slider takes focus. Escape closes it while focus is in it or on its button, and returns focus to
+  // the button.
+  const volumeOpen = volumeSlider === null ? null : `${volumeSlider.kind} ${String(volumeSlider.track)}`
+  useEffect(() => {
+    if (volumeOpen === null) return
+    volumeRef.current?.querySelector('input')?.focus()
+    const owned = (focused: Element | null): boolean => [volumeRef, volumeButton].some(ref => ref.current?.contains(focused) === true)
+    const onKeyDown = (event: globalThis.KeyboardEvent): void => {
+      if (event.key !== 'Escape' || event.isComposing || !owned(document.activeElement)) return
+      event.preventDefault()
+      event.stopPropagation()
+      setVolumeSlider(null)
+      volumeButton.current?.focus()
+    }
+    window.addEventListener('keydown', onKeyDown, true)
+    return () => { window.removeEventListener('keydown', onKeyDown, true) }
+  }, [volumeOpen])
+
   // A timeline without a stored name shows the numbered default name of its ID in the interface language.
   const numbered = (n: number): string => t('tabs.defaultTitle', { n })
   const nameOf = (entry: Timeline): string => timelineName(entry, numbered)
@@ -762,7 +828,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   const runOperation = (operation: string, params: Record<string, unknown>, intent: string): Promise<boolean> => {
     const named = [
       'timeline.clip_add', 'timeline.sound_track_remove', 'timeline.sound_track_rename', 'timeline.mute',
-      'timeline.video_track_remove', 'timeline.track_add', 'timeline.video_track_move',
+      'timeline.volume', 'timeline.video_track_remove', 'timeline.track_add', 'timeline.video_track_move',
     ].includes(operation)
     const scoped = timeline === null || !named ? params : { timeline: timeline.id, ...params }
     return run(() => client.runOperation(request(project, session, { operation, params: scoped, intent })))
@@ -844,6 +910,19 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
     const muted = !mutedVideoTracks.includes(track)
     const name = videoTrackName(track)
     headerWrite(runOperation('timeline.mute', { target: 'video_track', track, muted }, t(muted ? 'intent.muteTrack' : 'intent.unmuteTrack', { name })))
+  }
+  /**
+   * Write one `timeline.volume` when the slider lets go at a volume other than the one it last wrote or found stored.
+   * @param slider - the open slider.
+   */
+  const storeVolume = (slider: VolumeSlider): void => {
+    const { kind, track, db } = slider
+    if (db === slider.written) return
+    setVolumeSlider({ ...slider, written: db })
+    const name = kind === 'video' ? videoTrackName(track) : trackName(track)
+    headerWrite(runOperation(
+      'timeline.volume', { target: kind === 'video' ? 'video_track' : 'sound', track, volume_db: db }, t('intent.volume', { name, db: String(db) }),
+    ))
   }
   // A video track is deleted with its clips and its mute, and the tracks with higher numbers move up.
   const removeVideoTrack = (track: number): void => {
@@ -1005,18 +1084,34 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
     player.seek((event.clientX - event.currentTarget.getBoundingClientRect().left) / screenScale() / px)
   }
 
+  /**
+   * Where a block dragged in time starts: the pointer's offset added to its start, no earlier than 0 s, snapped to the
+   * edges of every other clip and sound, the playhead, and 0 s within `SNAP_PX`. A drag that moved the pointer no more
+   * than `DRAG_PX` sideways, such as a press or a move to another track, keeps the start.
+   * @param block - the dragged clip or sound.
+   * @param id - its clip ID or sound ID, whose own edges are no targets.
+   * @param dx - the pixels the pointer moved.
+   * @returns the start in seconds.
+   */
+  const movedStart = (block: { startSec: number; seconds: number }, id: string, dx: number): number => {
+    if (Math.abs(dx) <= DRAG_PX) return block.startSec
+    const edges = [...clips.filter(clip => clip.clip !== id), ...sounds.filter(sound => sound.sound !== id)]
+      .flatMap(other => [other.startSec, other.startSec + other.seconds])
+    return snapStart(Math.max(0, block.startSec + dx / px), block.seconds, [0, player.position, ...edges], SNAP_PX / px)
+  }
+
   // A pointer-up ends a clip drag: a body drag moves the clip in time and to the video track nearest the row it ends on
   // (or selects it when it did not move); an edge drag trims, and a start trim moves the clip's start by the same amount.
   const finishClipDrag = (clip: PlacedClip, current: BlockDrag): void => {
     setTrackDrag(null)
-    const moved = Math.abs(current.dx) > 3 || Math.abs(current.dy) > 3
+    const moved = Math.abs(current.dx) > DRAG_PX || Math.abs(current.dy) > DRAG_PX
     if (!moved) {
       if (current.kind === 'move') { chooseClip(clip.clip); root.current?.focus() }
       return
     }
     const deltaSec = current.dx / px
     if (current.kind === 'move') {
-      const startSec = round(Math.max(0, clip.startSec + deltaSec))
+      const startSec = round(movedStart(clip, clip.clip, current.dx))
       const track = nearestVideoRow(clip.track, current.dy)
       // A drag that ends where it started, on the same row at the same time, writes nothing.
       if (track === clip.track && startSec === round(clip.startSec)) return
@@ -1073,9 +1168,9 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   const soundHandlers = (sound: TrackSound, kind: BlockDrag['kind']) =>
     blockDragHandlers(sound.sound, kind, soundDrag, setSoundDrag, (drag) => { finishSoundDrag(sound, drag) })
   /**
-   * One clip block or one sound block, with the live offset of its drag applied: a
-   * body drag follows the pointer, a start trim stops at the asset's start and the timeline's start, and an end trim at the
-   * asset's end.
+   * One clip block or one sound block, with the live offset of its drag applied: a body drag follows the pointer and
+   * shows the snap that the drop will make (`movedStart`), a start trim stops at the asset's start and the timeline's
+   * start, and an end trim at the asset's end.
    * @param block - the placed clip or sound.
    * @param drag - the drag in progress on this block, or null.
    * @returns the block's position and size.
@@ -1086,7 +1181,10 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
     let left = block.startSec * px
     let width = block.seconds * px
     let transform: string | undefined
-    if (drag?.kind === 'move') transform = `translate(${String(Math.max(-left, drag.dx))}px, ${String(drag.dy)}px)`
+    if (drag?.kind === 'move') {
+      const dx = (movedStart(block, drag.id, drag.dx) - block.startSec) * px
+      transform = `translate(${String(dx)}px, ${String(drag.dy)}px)`
+    }
     if (drag?.kind === 'trimStart') {
       const dx = Math.max(-Math.min(block.inSec, block.startSec) * px, Math.min(drag.dx, width - 4))
       left += dx
@@ -1101,10 +1199,10 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   // click to select it.
   const finishSoundDrag = (sound: TrackSound, current: BlockDrag): void => {
     setSoundDrag(null)
-    if (Math.abs(current.dx) <= 3 && Math.abs(current.dy) <= 3) return
+    if (Math.abs(current.dx) <= DRAG_PX && Math.abs(current.dy) <= DRAG_PX) return
     const deltaSec = current.dx / px
     if (current.kind === 'move') {
-      const startSec = round(Math.max(0, sound.startSec + deltaSec))
+      const startSec = round(movedStart(sound, sound.sound, current.dx))
       const track = nearestSoundTrack(sound.track, current.dy)
       if (track === sound.track && startSec === round(sound.startSec)) return
       const params = { sound: sound.sound, start_sec: startSec, ...track === sound.track ? {} : { track } }
@@ -1613,7 +1711,6 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
       >
         <Icon name="export" />{exporting ? t('tool.exporting') : t('tool.export')}
       </button>
-      {sounds.length > 0 ? <span data-testid="dv-timeline-export-no-sounds" style={{ color: palette.muted, fontSize: 12, lineHeight: '16px', marginLeft: 6 }}>{t('tool.exportNoSounds')}</span> : null}
       {exported !== null ? <a href={assetUrl(exported)} target="_blank" rel="noreferrer" data-testid="dv-timeline-exported" style={{ color: palette.accentFg, marginLeft: 6 }}>{t('tool.exported')}</a> : null}
       <span style={{ width: 1, height: 18, background: palette.lineStrong, margin: '0 6px' }} />
       <label style={{ display: 'flex', gap: 8, alignItems: 'center', color: palette.muted, fontSize: 12, lineHeight: '16px' }}>
@@ -1641,6 +1738,21 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   const muteButton = (muted: boolean, name: string, toggle: (() => void) | null): ReactNode => (
     <TrackButton icon={muted ? 'soundOff' : 'sound'} label={t('track.mute', { name })} pressed={muted} onClick={toggle} />
   )
+  // The volume button opens the track's volume slider beside it, or closes it when it is open.
+  const volumeButtonOf = (kind: 'video' | 'sound', track: number, name: string): ReactNode => {
+    const open = volumeSlider?.kind === kind && volumeSlider.track === track
+    return (
+      <TrackButton
+        icon="volume" label={t('track.volume', { name, db: String(volumeDb(kind, track)) })} expanded={open}
+        onClick={timeline === null || headerBusy ? null : (event) => {
+          volumeButton.current = event.currentTarget
+          anchorBeside(event.currentTarget)
+          const db = volumeDb(kind, track)
+          setVolumeSlider(open ? null : { kind, track, db, written: db })
+        }}
+      />
+    )
+  }
   // The video tracks by number: each header mutes the own audio of its clips or deletes its track and has a ＋ that adds a
   // video after the track's last clip, right of the delete button as on every track, and each lane takes a dropped video.
   const videoTrackRows = Array.from({ length: videoTrackCount }, (_, track) => {
@@ -1655,6 +1767,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
         {trackHeader(palette.take, name, (
           <>
             {muteButton(muted, name, timeline === null || headerBusy ? null : () => { toggleVideoTrackMute(track) })}
+            {volumeButtonOf('video', track, name)}
             <TrackButton icon="delete" label={t('track.deleteVideoTrack', { name })} onClick={timeline === null || headerBusy ? null : () => { removeVideoTrack(track) }} />
             <TrackButton
               icon="add" label={t('track.addToTrack', { name })} expanded={picking && pickTrack === track}
@@ -1681,9 +1794,11 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
           // Trim handles take at most a quarter of the clip each, so a short clip keeps a body to select and drag.
           const handle = Math.max(2, Math.min(7, Math.floor(clip.seconds * px / 4)))
           const isSelected = clip.clip === selectedClip?.clip
-          // The caption and the visible label both name any state that changes what the clip can do.
+          // The caption and the visible label both name any state that changes what the clip can do. The block shows a
+          // long asset name cut short; the caption and the accessible name keep all of it.
           const states = clip.stale ? [t('track.stale')] : []
           const label = [assetName, ...states].join(' · ')
+          const shown = [clip.assetId === null ? statusText : shortLabels.get(clip.assetId) ?? shortName(assetName), ...states].join(' · ')
           const caption = [`${assetName} · ${clip.seconds.toFixed(1)}s`, ...states].join(' · ')
           // A placeholder clip is striped, in the danger color when its render failed.
           const placeholderFill = `repeating-linear-gradient(135deg, ${clip.status === 'failed' ? palette.dangerSoft : palette.lineStrong} 0 8px, ${palette.fill} 8px 16px)`
@@ -1705,7 +1820,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
               {picture.tiles}
               <span style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 3, background: clip.status === 'failed' ? palette.danger : palette.take, pointerEvents: 'none' }} />
               <span style={{ position: 'absolute', left: handle + 3, bottom: 4, maxWidth: `calc(100% - ${String(handle * 2 + 6)}px)`, boxSizing: 'border-box', padding: '0 5px', borderRadius: 4, background: palette.panel, color: palette.fg, fontSize: 12, lineHeight: '16px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', pointerEvents: 'none' }}>
-                {label}
+                {shown}
               </span>
               {ready ? (
                 <>
@@ -1746,6 +1861,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
           {muteButton(
             mutedTracks.includes(track), trackName(track), timeline === null || headerBusy ? null : () => { toggleTrackMute(track) },
           )}
+          {volumeButtonOf('sound', track, trackName(track))}
           <TrackButton icon="delete" label={t('track.deleteNamed', { name: trackName(track) })} onClick={timeline === null || headerBusy ? null : () => { removeTrack(track) }} />
           <TrackButton
             icon="add" label={t('track.addSound')} expanded={pickingSound && soundTrack === track}
@@ -1865,6 +1981,33 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
       {toolbar}
       <div ref={pickArea} data-testid="dv-timeline-track-area" onBlur={closeOnFocusOut} style={{ flex: '1 1 auto', minHeight: 0, display: 'flex', flexDirection: 'column', position: 'relative' }}>
         {tracks}
+        {volumeSlider === null ? null : (() => {
+          const name = volumeSlider.kind === 'video' ? videoTrackName(volumeSlider.track) : trackName(volumeSlider.track)
+          return (
+            <div
+              ref={volumeRef} role="dialog" aria-label={t('track.volumeSlider', { name })}
+              style={{
+                ...pickerPlace(80), width: 220, boxSizing: 'border-box', padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 6,
+                background: palette.panel, border: `1px solid ${palette.line}`, borderRadius: 'var(--dv-radius-lg)', boxShadow: 'var(--dv-shadow-2)', zIndex: 5,
+              }}
+            >
+              <span style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12, lineHeight: '16px' }}>
+                <span style={{ minWidth: 0, color: palette.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t('track.volumeSlider', { name })}</span>
+                <span style={{ fontFamily: palette.mono }}>{t('track.volumeDb', { db: String(volumeSlider.db) })}</span>
+              </span>
+              <input
+                type="range" min={MIN_VOLUME_DB} max={0} step={1} value={volumeSlider.db} aria-label={t('track.volumeSlider', { name })}
+                onChange={(event) => { setVolumeSlider({ ...volumeSlider, db: Number(event.target.value) }) }}
+                onPointerUp={() => { storeVolume(volumeSlider) }} onKeyUp={() => { storeVolume(volumeSlider) }}
+                style={{ width: '100%', margin: 0, accentColor: palette.accent }}
+              />
+              <span style={{ display: 'flex', justifyContent: 'space-between', fontFamily: palette.mono, fontSize: 11, lineHeight: '14px', color: palette.muted }}>
+                <span>{t('track.volumeDb', { db: String(MIN_VOLUME_DB) })}</span>
+                <span>{t('track.volumeMax')}</span>
+              </span>
+            </div>
+          )
+        })()}
         {pickingSound ? (
           <div
             ref={soundPickerRef} role="dialog" aria-label={t('track.addSound')}

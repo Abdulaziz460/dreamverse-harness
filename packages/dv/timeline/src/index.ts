@@ -4,7 +4,7 @@
  * points on a numbered video track, from a start time) and sounds (an audio asset on a numbered sound track, from a
  * start time). Every video track works the same way: where a clip of a track with a lower number plays, it covers the
  * tracks with higher numbers, picture and audio, and a gap shows the track under it. Every track the user or the agent
- * adds goes at the bottom of the editor. It owns twenty-one edit operations, which change only records and never create
+ * adds goes at the bottom of the editor. It owns twenty-two edit operations, which change only records and never create
  * a file:
  * - `timeline.create`, `timeline.update`, `timeline.rename`, `timeline.delete` act on a whole timeline;
  * - `timeline.clip_add`, `timeline.clip_move`, `timeline.clip_remove`, `timeline.clip_split`, `timeline.clip_trim`,
@@ -14,10 +14,12 @@
  *   `timeline.sound_track_remove`, `timeline.sound_track_rename` act on one sound track;
  * - `timeline.track_add` adds an empty video track or sound track, `timeline.video_track_move` moves a video track to
  *   another number, which sets which track covers which, and `timeline.video_track_remove` deletes one;
- * - `timeline.mute` mutes or unmutes the own audio of one video track's clips, or one sound track.
+ * - `timeline.mute` mutes or unmutes the own audio of one video track's clips, or one sound track, and `timeline.volume`
+ *   sets the volume of either.
  *
- * Its twenty-second operation, `timeline.export`, writes a timeline to one video file with `dvFfmpeg` and imports the
- * file into the asset pool (see `export.ts`), without the sounds and without the audio of muted video tracks.
+ * Its twenty-third operation, `timeline.export`, writes a timeline to one video file with `dvFfmpeg` and imports the
+ * file into the asset pool (see `export.ts`), with the sounds of the sound tracks mixed in, each track at its volume, and
+ * without the audio of muted video tracks and muted sound tracks.
  * While `@dv/canvas` is loaded, `timeline.place` puts one timeline on the canvas as a node of kind `timeline` (see
  * `place.ts`).
  *
@@ -41,8 +43,8 @@ import type { AssetId, OperationContext, OperationResult, OperationSpec, Project
 import { exportOperation, exportTimeline } from './export.ts'
 import { placeOperation, TIMELINE_NODE_MAKER } from './place.ts'
 import {
-  addedClipCount, afterCall, clipLength, clipProblem, laidOutStarts, namedTimeline, NEW_CLIP, OPERATIONS, overlapProblem, reportedClips,
-  reportedSounds, soundLengthProblem, timelineReducer,
+  addedClipCount, afterCall, clipLength, clipProblem, laidOutStarts, MIN_VOLUME_DB, namedTimeline, NEW_CLIP, OPERATIONS, overlapProblem,
+  reportedClips, reportedSounds, soundLengthProblem, timelineReducer,
 } from './reducer.ts'
 import type { Clip, ClipId, SoundId, Timeline } from './types.ts'
 
@@ -115,7 +117,7 @@ function clipOf(record: ProjectRecord): string {
   return id === undefined ? '' : `${id} `
 }
 
-/** What a `timeline.mute` record mutes, for its summary: `video track 1` or `sound track 0`. */
+/** The track of a `timeline.mute` or `timeline.volume` record, for its summary: `video track 1` or `sound track 0`. */
 function muteTarget(record: ProjectRecord): string {
   return `${record.params['target'] === 'video_track' ? 'video' : 'sound'} track ${shown(record.params['track'])}`
 }
@@ -153,7 +155,7 @@ const VIDEO_TRACK_PARAM = {
     + 'dv_proj_state).',
 } as const
 
-/** The Timeline service: the reducer, the twenty-one edit operations and the export operation. */
+/** The Timeline service: the reducer, the twenty-two edit operations and the export operation. */
 export default class DvTimeline extends Service {
   static inject = ['dvProject', 'dvAssetPool', 'dvFfmpeg']
   static Config = Config
@@ -181,13 +183,14 @@ export default class DvTimeline extends Service {
   }
 
   /**
-   * Export a timeline to one MP4 file, every clip at its time and the track with the lowest number on top (see
-   * `export.ts`).
+   * Export a timeline to one MP4 file, every clip at its time and the track with the lowest number on top, with the
+   * sounds of the sound tracks that are not muted mixed in up to the end of the last clip (see `export.ts`).
    * @param timeline - the timeline with at least one clip, each of which has an asset.
    * @param dir - an existing directory for the trimmed clips and the result, usually the operation's `scratchDir`.
    * @returns the path of the result inside `dir`.
-   * @throws Error for a timeline without clips or with a placeholder clip; FfmpegError when ffmpeg cannot trim, join or
-   *   draw the clips.
+   * @throws Error for a timeline without clips or with a placeholder clip, for a sound of a sound track that is not
+   *   muted whose file has no audio that ffprobe can read, and for sounds to mix into a video whose length ffprobe
+   *   cannot tell; FfmpegError when ffmpeg cannot trim, join, draw or mix.
    */
   exportTimeline(timeline: Timeline, dir: string): Promise<string> {
     return exportTimeline(this.ctx, timeline, dir)
@@ -279,7 +282,7 @@ export default class DvTimeline extends Service {
     return Promise.resolve({ outputs: [], report: laysOut ? { clips, starts: laidOutStarts(call, durationOf, records) } : { clips } })
   }
 
-  /** The twenty-one edit operations, in the order the agent's tool list shows them. */
+  /** The twenty-two edit operations, in the order the agent's tool list shows them. */
   private operations(): OperationSpec[] {
     const execute = (context: OperationContext): Promise<OperationResult> => this.execute(context)
     return [
@@ -405,7 +408,8 @@ export default class DvTimeline extends Service {
         label: { zh: '添加声音', en: 'Add sound' },
         version: '1',
         description: 'Add an audio asset to a sound track of a timeline, starting start_sec seconds after the timeline\'s start. '
-          + 'It may overlap clips and other sounds and gets a new sound ID. The exported video does not include sounds yet.',
+          + 'It may overlap clips and other sounds and gets a new sound ID. The exported video plays it over the clips\' audio, up to the end '
+          + 'of the last clip.',
         params: {
           timeline: { type: 'string', required: true, description: 'The timeline, such as t1.' },
           asset: { type: 'string', required: true, description: 'The audio asset ID.' },
@@ -495,7 +499,7 @@ export default class DvTimeline extends Service {
         description: 'Mute or unmute audio of a timeline. Target `video_track` is the own audio of the clips of one video track: '
           + 'while it is muted, the user hears those clips silent when playing the timeline, and the exported video leaves their '
           + 'audio out. Target `sound` is one sound track: while it is muted, the user does not hear its sounds when playing the '
-          + 'timeline (the exported video does not include sounds yet).',
+          + 'timeline, and the exported video leaves them out.',
         params: {
           timeline: { type: 'string', required: true, description: 'The timeline, such as t1.' },
           target: {
@@ -505,11 +509,38 @@ export default class DvTimeline extends Service {
           track: {
             type: 'integer', required: true,
             description: 'The video track (0 for 视频 1; see `video_tracks` in dv_proj_state) or the sound track (0 for the first; '
-              + 'see `sound_tracks`); an existing track or the one after the last.',
+              + 'see `sound_tracks`); an existing track, or the one after the last, which this adds.',
           },
           muted: { type: 'boolean', required: true, description: 'true mutes, false unmutes.' },
         },
         summarize: record => `${prefix(record)}${muteTarget(record)} ${record.params['muted'] === true ? 'muted' : 'unmuted'}`,
+      }, execute),
+      edit({
+        name: OPERATIONS.volume,
+        label: { zh: '调整音量', en: 'Set volume' },
+        version: '1',
+        description: 'Set the volume of one track of a timeline, such as music turned down under a narration. Target `video_track` is '
+          + 'the own audio of the clips of one video track, target `sound` is one sound track. The user hears the track at this '
+          + 'volume when playing the timeline, and the exported video mixes it at this volume. 0 dB plays the audio as recorded; '
+          + 'a track cannot be made louder than that. To silence a track, call dv_timeline_mute instead.',
+        params: {
+          timeline: { type: 'string', required: true, description: 'The timeline, such as t1.' },
+          target: {
+            type: 'string', enum: ['video_track', 'sound'], required: true,
+            description: '`video_track` for the own audio of one video track\'s clips, `sound` for one sound track.',
+          },
+          track: {
+            type: 'integer', required: true,
+            description: 'The video track (0 for 视频 1; see `video_tracks` in dv_proj_state) or the sound track (0 for the first; '
+              + 'see `sound_tracks`); an existing track, or the one after the last, which this adds.',
+          },
+          volume_db: {
+            type: 'number', required: true,
+            description: `The volume in decibels, from ${String(MIN_VOLUME_DB)} to 0; 0 is the audio as recorded. Music under a narration `
+              + 'usually sits at -18 to -12.',
+          },
+        },
+        summarize: record => `${prefix(record)}${muteTarget(record)} volume ${shown(record.params['volume_db'])} dB`,
       }, execute),
       edit({
         name: OPERATIONS.trackAdd,
@@ -539,7 +570,7 @@ export default class DvTimeline extends Service {
         name: OPERATIONS.videoTrackMove,
         label: { zh: '移动视频轨', en: 'Move video track' },
         version: '2',
-        description: 'Move one video track to another number, with its clips and its mute. A track with a lower number covers the '
+        description: 'Move one video track to another number, with its clips, its mute and its volume. A track with a lower number covers the '
           + 'tracks with higher numbers where it has a clip; the tracks between the two numbers move one number toward the old one.',
         params: {
           timeline: { type: 'string', required: true, description: 'The timeline, such as t1.' },

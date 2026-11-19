@@ -32,7 +32,7 @@ const shownTabs = (view: { getAllByRole: (role: string) => HTMLElement[] }): Arr
 function twoTimelines(): FixtureState {
   const state = fixtureState()
   state.assets.push(asset('imported.mp4', 'video/mp4', null, 3))
-  state.components.timeline.timelines.push({ id: 't2' as TimelineId, name: '片尾', sounds: [], sound_track_names: [], muted_sound_tracks: [], muted_video_tracks: [], track_order: ['video', 'sound'], clips: [{ id: 'cl3' as ClipId, asset: 'imported.mp4' as AssetId, source: null, in_sec: null, out_sec: null, start_sec: 0, track: 0 }] })
+  state.components.timeline.timelines.push({ id: 't2' as TimelineId, name: '片尾', sounds: [], sound_track_names: [], muted_sound_tracks: [], video_track_volumes: [], sound_track_volumes: [], muted_video_tracks: [], track_order: ['video', 'sound'], clips: [{ id: 'cl3' as ClipId, asset: 'imported.mp4' as AssetId, source: null, in_sec: null, out_sec: null, start_sec: 0, track: 0 }] })
   return state
 }
 
@@ -64,6 +64,24 @@ describe('TimelineView', () => {
     expect(view.container.querySelectorAll('[data-clip]')).toHaveLength(1)
   })
 
+  it('cuts each part of a long name on a clip block to eight characters, and keeps the whole name in the tooltip', async () => {
+    const { clip, track } = mount({
+      state: () => {
+        const state = twoTimelines()
+        // The node g1 is named, and the second clip plays an earlier take of it.
+        const shot = state.components.canvas.nodes['g1']
+        if (shot !== undefined) shot.name = 'Opening scene'
+        state.assets.push(asset('earlier-take.mp4', 'video/mp4', 'g1', 4))
+        const second = state.components.timeline.timelines[0]?.clips[1]
+        if (second !== undefined) second.asset = 'earlier-take.mp4' as AssetId
+        return state
+      },
+    })
+    await track()
+    expect([clip(1).textContent, clip(2).textContent]).toEqual(['Opening …', 'Opening … · earlier-…'])
+    expect([clip(1).getAttribute('title'), clip(2).getAttribute('title')]).toEqual(['Opening scene · 4.0s', 'Opening scene · earlier-take.mp4 · 3.0s'])
+  })
+
   it('shows a clip and the asset list under the name the user gave the asset\'s canvas node', async () => {
     const { view, clip, track } = mount({
       state: () => {
@@ -75,6 +93,7 @@ describe('TimelineView', () => {
     })
     await track()
     expect([clip(1).getAttribute('title'), clip(2).getAttribute('title')]).toEqual(['雨夜 · 4.0s', expect.stringContaining('shot2.mp4 · 3.0s')])
+    expect([clip(1).textContent, clip(2).textContent]).toEqual(['雨夜', expect.stringContaining('shot2.mp4')])
     expect(within(clip(1)).getByLabelText('拖动裁剪 雨夜 的开头')).toBeTruthy()
     fireEvent.click(view.getByLabelText('添加片段到 视频'))
     const picker = within(view.getByRole('dialog'))
@@ -145,7 +164,7 @@ describe('TimelineView', () => {
     const { fetch } = scriptedFetch({
       state: () => {
         const state = twoTimelines()
-        state.components.timeline.timelines.push({ id: 't3' as TimelineId, name: '', sounds: [], sound_track_names: [], muted_sound_tracks: [], muted_video_tracks: [], track_order: ['video', 'sound'], clips: [] })
+        state.components.timeline.timelines.push({ id: 't3' as TimelineId, name: '', sounds: [], sound_track_names: [], muted_sound_tracks: [], video_track_volumes: [], sound_track_volumes: [], muted_video_tracks: [], track_order: ['video', 'sound'], clips: [] })
         return state
       },
     })
@@ -622,7 +641,7 @@ describe('timeline editor gestures', () => {
     const { view, track } = mount({
       state: () => {
         const state = twoTimelines()
-        if (created) state.components.timeline.timelines.push({ id: 't3' as TimelineId, name: '', sounds: [], sound_track_names: [], muted_sound_tracks: [], muted_video_tracks: [], track_order: ['video', 'sound'], clips: [] })
+        if (created) state.components.timeline.timelines.push({ id: 't3' as TimelineId, name: '', sounds: [], sound_track_names: [], muted_sound_tracks: [], video_track_volumes: [], sound_track_volumes: [], muted_video_tracks: [], track_order: ['video', 'sound'], clips: [] })
         return state
       },
       post: () => { created = true; return { status: 200, body: record({ id: 'n1', operation: 'timeline.create' }) } },
@@ -639,7 +658,7 @@ describe('timeline editor gestures', () => {
     expect((empty.view.getByRole('button', { name: '添加片段到 视频' }) as HTMLButtonElement).disabled).toBe(true)
     empty.view.unmount()
     const state = fixtureState()
-    state.components.timeline.timelines = [{ id: 't2' as TimelineId, name: '', sounds: [], sound_track_names: [], muted_sound_tracks: [], muted_video_tracks: [], track_order: ['video', 'sound'], clips: [] }]
+    state.components.timeline.timelines = [{ id: 't2' as TimelineId, name: '', sounds: [], sound_track_names: [], muted_sound_tracks: [], video_track_volumes: [], sound_track_volumes: [], muted_video_tracks: [], track_order: ['video', 'sound'], clips: [] }]
     const { view, requests } = mount({ state })
     await waitFor(() => { expect(view.getAllByRole('tab').map(tab => tab.textContent)).toEqual(['时间线 2']) })
     fireEvent.click(view.getByText('＋ 新建'))
