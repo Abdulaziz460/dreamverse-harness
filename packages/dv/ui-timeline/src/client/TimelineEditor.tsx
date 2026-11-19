@@ -15,6 +15,7 @@
  * playback skips it, and export waits until every clip is ready.
  */
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { CSSProperties, DragEvent, FocusEvent, KeyboardEvent, PointerEvent, ReactNode, RefObject } from 'react'
 import type { Translate } from '@deepseek-ai/dsh-client-ui-slots'
 import type { Timeline } from '@dv/timeline/types'
@@ -52,12 +53,28 @@ export interface TimelineEditorProps {
    * while the selection names none or a timeline that the project lost.
    */
   selected: string | null
-  /** Select the timeline that the user picked or created, or the one shown before a create that failed. */
-  select: (timelineId: string | null) => void
+  /**
+   * Select the timeline that the user picked or created, or the one shown before a create that failed. Absent in a card,
+   * whose editor shows no timeline tabs.
+   */
+  select?: (timelineId: string | null) => void
   /** The clip that the editor selects and seeks to once it shows the clip's timeline, or null. */
   clipFocus?: { timelineId: string; clipId: string } | null
   /** Drop {@link TimelineEditorProps.clipFocus} once the editor took it. */
   takeClipFocus?: () => void
+  /**
+   * Draw the editor inside a canvas card instead of a panel; absent for the panel of the 时间线 tab and center view. A
+   * card has no timeline tabs and no track-area resize, and its track area fills the editor and scrolls both ways
+   * without a scrollbar, by wheel or touchpad. The preview renders into `viewer` (none while it is null), centered on
+   * it and `previewWidth` wide (default: as wide as `viewer`), with the first ready clip's aspect ratio and a progress
+   * bar that a press moves the playhead along. The editor and the preview draw everything `scale` times larger
+   * (default 1) while still filling their boxes, so their text grows with the node. The menus open inside the editor,
+   * pointer positions are divided by the canvas zoom that scales the editor, and the toolbar ends with 打开编辑器 /
+   * Open editor, which calls `open`. The editor marks its root and the preview `data-node-keys`, and its ruler, clips,
+   * sounds and sound track headers `data-node-interactive`, so the canvas leaves their keys and presses to it and
+   * moves the node on a press anywhere else.
+   */
+  card?: { viewer: HTMLElement | null; open: () => void; previewWidth?: number; scale?: number }
 }
 
 /** The fields of an operation request a gesture fills in. */
@@ -144,6 +161,8 @@ const palette = {
 // Hover fills, focus rings, and the trim-handle highlight need pseudo-classes, which inline styles cannot express. A
 // `.dv-tl-btn` element gets its transparent fill here, so its inline style must not set `background`.
 const EDITOR_CSS = `
+.dv-tl-editor .dv-tl-no-scrollbar { scrollbar-width: none; }
+.dv-tl-editor .dv-tl-no-scrollbar::-webkit-scrollbar { display: none; }
 .dv-tl-editor .dv-tl-btn { background: transparent; transition: background-color 120ms var(--dv-ease); }
 @media (hover: hover) { .dv-tl-editor .dv-tl-btn:not(:disabled):hover { background: var(--dv-surface-3); } }
 .dv-tl-editor :focus-visible { outline: 2px solid var(--dv-accent); outline-offset: 1px; }
@@ -412,7 +431,7 @@ function rulerSteps(px: number): { tick: number; label: number } {
  * @returns the element.
  */
 export function TimelineEditor(props: TimelineEditorProps): ReactNode {
-  const { client, t, project, session = null, state, run, selected: activeId, select, clipFocus = null, takeClipFocus } = props
+  const { client, t, project, session = null, state, run, selected: activeId, select, clipFocus = null, takeClipFocus, card } = props
   const timelines = useMemo(() => timelinesOf(state), [state])
   const timeline = timelines.find(entry => entry.id === activeId) ?? timelines[0] ?? null
   const { clips, total } = useMemo(() => placeTimeline(state, timeline), [state, timeline])
@@ -429,6 +448,17 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   const timelineId = timeline?.id ?? null
   const [playbackRate, setPlaybackRate] = useState(readPlaybackRate)
   const player = useTimelinePlayer(timelineId, clips, total, playbackRate)
+  // A card's preview mounts its video elements when the node is selected; they show the frame at the playhead then.
+  const cardViewer = card?.viewer ?? null
+  const cardScale = card?.scale ?? 1
+  // A press on the card preview's progress bar moves the playhead to the same share of the timeline.
+  const seekAlong = (event: PointerEvent<HTMLElement>): void => {
+    const box = event.currentTarget.getBoundingClientRect()
+    player.seek((event.clientX - box.left) / Math.max(box.width, 1) * total)
+  }
+  // In a card, the elements that take their own presses carry the canvas's marks; a press anywhere else moves the node.
+  const owned = card === undefined ? {} : { 'data-node-interactive': '' }
+  useEffect(() => { if (cardViewer !== null) player.seek(player.position) }, [cardViewer])
   const soundBox = useRef<HTMLDivElement | null>(null)
   useSoundPlayback(soundBox, sounds, player.position, player.playing, playbackRate)
   const [pickingSound, setPickingSound] = useState(false)
@@ -487,6 +517,19 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   const frame = useRef<HTMLDivElement | null>(null)
   const scrubbing = useRef(false)
   const root = useRef<HTMLDivElement | null>(null)
+  // A transform, such as the canvas zoom around a card, scales the editor on screen; pointer distances are divided by it.
+  const screenScale = (): number => {
+    const element = root.current as HTMLDivElement
+    return element.offsetWidth > 0 ? element.getBoundingClientRect().width / element.offsetWidth : 1
+  }
+  // Where a menu opens for a right click: at the pointer on screen in the panel, inside the editor in a card, where an
+  // ancestor's transform would misplace a fixed menu.
+  const menuPoint = (event: { clientX: number; clientY: number }): { x: number; y: number } => {
+    if (card === undefined) return { x: event.clientX, y: event.clientY }
+    const box = (root.current as HTMLDivElement).getBoundingClientRect()
+    const scale = screenScale()
+    return { x: (event.clientX - box.left) / scale, y: (event.clientY - box.top) / scale }
+  }
   const viewerBox = useRef<HTMLElement | null>(null)
   const panel = useRef<HTMLDivElement | null>(null)
   const rows = useRef<HTMLDivElement | null>(null)
@@ -723,7 +766,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
       return
     }
     if (timeline === null || pendingSound !== null) return
-    const at = round(Math.max(0, (event.clientX - event.currentTarget.getBoundingClientRect().left) / px))
+    const at = round(Math.max(0, (event.clientX - event.currentTarget.getBoundingClientRect().left) / screenScale() / px))
     addingSound(() => writeSound(dropped.id, at, track))
   }
   const uploadSound = (file: File): void => {
@@ -739,11 +782,11 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   const createTimeline = (): void => {
     const id = nextTimelineId(timelines)
     const name = timelineName({ id, name: '' }, numbered)
-    select(id)
+    select?.(id)
     void run(() => client.runOperation(request(project, session, { operation: 'timeline.create', params: { timeline: id, assets: [] }, intent: t('intent.create', { name }) })))
       .then((ok) => {
         if (ok) return
-        select(timelineId)
+        select?.(timelineId)
       })
   }
   const startRename = (entry: Timeline): void => {
@@ -808,7 +851,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
 
   // The ruler is the lane, so its own box gives the time under the pointer.
   const seekFromPointer = (event: PointerEvent<HTMLElement>): void => {
-    player.seek((event.clientX - event.currentTarget.getBoundingClientRect().left) / px)
+    player.seek((event.clientX - event.currentTarget.getBoundingClientRect().left) / screenScale() / px)
   }
 
   // A pointer-up ends a clip drag: a body drag reorders (or selects when it did not move); an edge drag trims.
@@ -844,12 +887,12 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
     },
     onPointerMove: (event: PointerEvent<HTMLElement>) => {
       if (drag === null || drag.position !== clip.position || drag.kind !== kind) return
-      setDrag({ ...drag, dx: event.clientX - drag.startX })
+      setDrag({ ...drag, dx: (event.clientX - drag.startX) / screenScale() })
     },
     onPointerUp: (event: PointerEvent<HTMLElement>) => {
       if (drag === null || drag.position !== clip.position || drag.kind !== kind) return
       event.stopPropagation()
-      finishDrag(clip, { ...drag, dx: event.clientX - drag.startX })
+      finishDrag(clip, { ...drag, dx: (event.clientX - drag.startX) / screenScale() })
     },
   })
 
@@ -910,7 +953,9 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
     return height
   }
   // A remembered or dragged height is clamped again whenever the editor resizes, so a shorter window keeps the preview.
+  // A card has no track-area resize.
   useEffect(() => {
+    if (card !== undefined) return undefined
     const observer = new ResizeObserver(() => {
       const bounds = resizeBounds()
       if (bounds !== null) setTrackHeight(height => height === null ? null : clampTrackHeight(height, bounds.available, bounds.minTrack))
@@ -1011,7 +1056,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
       ) : (
         <button
           key={entry.id} type="button" role="tab" aria-selected={entry === timeline} data-timeline={entry.id}
-          onClick={() => { select(entry.id) }}
+          onClick={() => { select?.(entry.id) }}
           onDoubleClick={() => { startRename(entry) }}
           onContextMenu={(event) => {
             event.preventDefault()
@@ -1040,12 +1085,32 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   // The preview fills the height the tracks leave: a 16:9 frame at full height, narrowed to the available width, on the
   // media surround, with the play button, the timecode, and the full-screen button under it.
   const canPlay = clips.some(clip => clip.status === 'ready')
+  // In a card the preview sits above the node: as wide as the node, its picture at the first ready clip's aspect ratio.
+  const firstReady = clips.find(clip => clip.assetId !== null)
+  const firstAsset = firstReady?.assetId === null || firstReady === undefined ? undefined : assets.get(firstReady.assetId)
+  const cardRatio = firstAsset !== undefined && firstAsset.width !== null && firstAsset.height !== null && firstAsset.height > 0
+    ? `${String(firstAsset.width)} / ${String(firstAsset.height)}`
+    : '16 / 9'
+  const viewerStyle: CSSProperties = card === undefined
+    ? { flex: '1 1 auto', minHeight: 140, display: 'flex', flexDirection: 'column', gap: 10, padding: '16px 24px 12px', background: palette.media }
+    : {
+      display: 'flex', flexDirection: 'column', gap: 6, padding: 8, marginBottom: 8, boxSizing: 'border-box', borderRadius: 'var(--dv-radius-lg)',
+      background: palette.media, boxShadow: `0 0 0 1px ${palette.line}, var(--dv-shadow-2)`,
+      // Laid out `scale` times narrower and drawn `scale` times larger, growing up from the node's top edge.
+      width: card.previewWidth === undefined ? `${String(100 / cardScale)}%` : card.previewWidth / cardScale,
+      marginLeft: '50%', transform: `translateX(-50%) scale(${String(cardScale)})`, transformOrigin: 'bottom center',
+    }
+  const frameStyle: CSSProperties = card === undefined ? { height: '100%', maxWidth: '100%', aspectRatio: '16 / 9' } : { width: '100%', aspectRatio: cardRatio }
   const viewer = (
-    <section ref={viewerBox} aria-label={t('viewer.aria')} style={{ flex: '1 1 auto', minHeight: 140, display: 'flex', flexDirection: 'column', gap: 10, padding: '16px 24px 12px', background: palette.media }}>
+    <section
+      ref={viewerBox} aria-label={t('viewer.aria')} data-testid="dv-timeline-preview" style={viewerStyle}
+      // The portaled preview of a card sits outside the editor's root, so it carries the class and the key mark itself.
+      {...card === undefined ? {} : { className: 'dv-tl-editor', 'data-node-keys': '' }}
+    >
       <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div
           ref={frame} data-testid="dv-timeline-viewer"
-          style={{ position: 'relative', height: '100%', maxWidth: '100%', aspectRatio: '16 / 9', borderRadius: 'var(--dv-radius-md)', overflow: 'hidden', background: palette.media, boxShadow: `0 0 0 1px ${palette.line}, var(--dv-shadow-1)` }}
+          style={{ position: 'relative', ...frameStyle, borderRadius: 'var(--dv-radius-md)', overflow: 'hidden', background: palette.media, boxShadow: `0 0 0 1px ${palette.line}, var(--dv-shadow-1)` }}
         >
           {[0, 1].map(which => (
             <video
@@ -1061,6 +1126,16 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
           ) : null}
         </div>
       </div>
+      {card === undefined ? null : (
+        <div
+          role="slider" aria-label={t('viewer.progress')} aria-valuemin={0} aria-valuemax={Math.round(total)} aria-valuenow={Math.round(player.position)}
+          data-testid="dv-timeline-progress" onPointerDown={seekAlong}
+          style={{ flex: 'none', position: 'relative', height: 14, display: 'flex', alignItems: 'center', cursor: 'pointer' }}
+        >
+          <span style={{ position: 'absolute', left: 0, right: 0, height: 4, borderRadius: 2, background: 'rgba(255, 255, 255, 0.25)' }} />
+          <span style={{ position: 'absolute', left: 0, width: `${String(total > 0 ? Math.min(1, player.position / total) * 100 : 0)}%`, height: 4, borderRadius: 2, background: palette.accent }} />
+        </div>
+      )}
       {/* Three columns keep the transport group centered whatever the widths of the timecode and the right group. */}
       <div style={{ flex: 'none', display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', gap: 12, color: palette.fg }}>
         <span data-testid="dv-timeline-time" style={{ justifySelf: 'start', fontFamily: palette.mono, fontSize: 13, lineHeight: '20px', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
@@ -1121,6 +1196,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
         <input type="range" min={5} max={200} value={px} onChange={(event) => { autoFit.current = false; setPx(Number(event.target.value)) }} style={{ width: 110 }} />
       </label>
       <button type="button" className="dv-tl-btn" style={{ ...button, ...textButton }} onClick={() => { autoFit.current = true; fit() }}>{t('tool.fit')}</button>
+      {card === undefined ? null : <button type="button" className="dv-tl-btn" style={{ ...button, ...textButton }} onClick={card.open}>{t('tool.openEditor')}</button>}
     </div>
   )
 
@@ -1143,11 +1219,14 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
     <TrackButton icon={muted ? 'soundOff' : 'sound'} label={t('track.mute', { name })} pressed={muted} onClick={toggle} />
   )
   const tracks = (
-    <div ref={scroller} style={{ flex: '1 1 auto', minHeight: 0, overflowX: 'auto', overflowY: 'hidden', position: 'relative', paddingBottom: TRACK_PADDING }}>
+    <div
+      ref={scroller} {...card === undefined ? {} : { 'data-dv-scroll-island': '', className: 'dv-tl-no-scrollbar' }}
+      style={{ flex: '1 1 auto', minHeight: 0, overflowX: 'auto', overflowY: card === undefined ? 'hidden' : 'auto', position: 'relative', paddingBottom: TRACK_PADDING }}
+    >
       <div ref={rows} style={{ display: 'grid', gridTemplateColumns: `${String(GUTTER)}px ${String(laneWidth)}px`, gridTemplateRows: [RULER_HEIGHT, ROW_HEIGHT, AUDIO_HEIGHT, ...Array.from({ length: trackCount }, () => ROW_HEIGHT), ADD_TRACK_HEIGHT].map(height => `${String(height)}px`).join(' '), rowGap: ROW_GAP, minWidth: GUTTER + laneWidth }}>
         <span />
         <div
-          ref={lane} data-testid="dv-timeline-ruler" style={{ position: 'relative', borderBottom: `1px solid ${palette.line}`, cursor: 'ew-resize' }}
+          ref={lane} data-testid="dv-timeline-ruler" {...owned} style={{ position: 'relative', borderBottom: `1px solid ${palette.line}`, cursor: 'ew-resize' }}
           onPointerDown={(event) => { capture(event); scrubbing.current = true; seekFromPointer(event) }}
           onPointerMove={(event) => { if (scrubbing.current) seekFromPointer(event) }}
           onPointerUp={() => { scrubbing.current = false }}
@@ -1166,7 +1245,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
               return
             }
             const box = (lane.current as HTMLDivElement).getBoundingClientRect()
-            insert(dropPosition(clips, (event.clientX - box.left) / px, null), dropped.id)
+            insert(dropPosition(clips, (event.clientX - box.left) / screenScale() / px, null), dropped.id)
           }}
         >
           {clips.map((clip) => {
@@ -1187,7 +1266,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
             const clipFrame = clip.thumbnail !== null ? assetUrl(clip.thumbnail) : firstFrame
             return (
               <div
-                key={clip.clip} role="listitem" aria-label={t('track.clipAria', { position: clip.position, name })} aria-pressed={isSelected}
+                key={clip.clip} role="listitem" {...owned} aria-label={t('track.clipAria', { position: clip.position, name })} aria-pressed={isSelected}
                 data-clip={clip.clip} data-clip-position={clip.position} data-clip-status={clip.status} data-clip-stale={clip.stale} title={caption} {...clipHandlers(clip, 'move')}
                 style={{
                   ...isSelected ? { zIndex: 1 } : {}, ...blockGeometry(clip), boxSizing: 'border-box', borderRadius: 'var(--dv-radius-sm)', overflow: 'hidden', cursor: 'grab', touchAction: 'none',
@@ -1239,9 +1318,9 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
         </div>
         {Array.from({ length: trackCount }, (_, track) => [
           <span
-            key={`head-${String(track)}`} data-sound-track-head={track} style={{ display: 'flex', alignItems: 'center', minWidth: 0 }}
+            key={`head-${String(track)}`} data-sound-track-head={track} {...owned} style={{ display: 'flex', alignItems: 'center', minWidth: 0 }}
             onDoubleClick={() => { startTrackRename(track) }}
-            onContextMenu={(event) => { event.preventDefault(); setSoundMenu({ kind: 'track', track, x: event.clientX, y: event.clientY }) }}
+            onContextMenu={(event) => { event.preventDefault(); setSoundMenu({ kind: 'track', track, ...menuPoint(event) }) }}
           >
             {renamingTrack?.track === track ? (
               <input
@@ -1286,11 +1365,11 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
             )}
             {sounds.filter(sound => sound.track === track).map(sound => (
               <div
-                key={sound.sound} data-sound={sound.sound} title={t('track.soundItem', { name: sound.name })} aria-pressed={sound.sound === chosenSound}
+                key={sound.sound} data-sound={sound.sound} {...owned} title={t('track.soundItem', { name: sound.name })} aria-pressed={sound.sound === chosenSound}
                 onClick={(event) => { event.stopPropagation(); setChosenClip(null); setChosenSound(sound.sound); root.current?.focus() }}
                 onContextMenu={(event) => {
                   event.preventDefault(); setChosenClip(null); setChosenSound(sound.sound)
-                  setSoundMenu({ kind: 'sound', sound, x: event.clientX, y: event.clientY })
+                  setSoundMenu({ kind: 'sound', sound, ...menuPoint(event) })
                 }}
                 style={{
                   position: 'absolute', top: 0, bottom: 0, left: sound.startSec * px, width: sound.seconds * px, boxSizing: 'border-box', cursor: 'pointer',
@@ -1340,7 +1419,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   // scrolls, so its title and close button stay in view. Focus that leaves the picker and ＋ closes it. A
   // resized panel gives its extra height to the scrolling track rows, which keep their own heights at the top.
   const editPanel = (
-    <div ref={panel} style={{ flex: 'none', ...trackHeight === null ? {} : { height: trackHeight }, display: 'flex', flexDirection: 'column', background: palette.panel }}>
+    <div ref={panel} style={{ ...card === undefined ? { flex: 'none', ...trackHeight === null ? {} : { height: trackHeight } } : { flex: '1 1 auto', minHeight: 0 }, display: 'flex', flexDirection: 'column', background: palette.panel }}>
       {toolbar}
       <div onBlur={closeOnFocusOut} style={{ flex: '1 1 auto', minHeight: 0, display: 'flex', flexDirection: 'column', position: 'relative' }}>
         {tracks}
@@ -1403,7 +1482,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
         ))}
       </div>
       {soundMenu !== null ? (
-        <div ref={soundMenuRef} role="menu" style={{ position: 'fixed', left: soundMenu.x, top: soundMenu.y, zIndex: 20, background: palette.panel, border: `1px solid ${palette.line}`, borderRadius: 'var(--dv-radius-menu)', padding: 6, boxShadow: 'var(--dv-shadow-2)', minWidth: 140 }}>
+        <div ref={soundMenuRef} role="menu" style={{ position: card === undefined ? 'fixed' : 'absolute', left: soundMenu.x, top: soundMenu.y, zIndex: 20, background: palette.panel, border: `1px solid ${palette.line}`, borderRadius: 'var(--dv-radius-menu)', padding: 6, boxShadow: 'var(--dv-shadow-2)', minWidth: 140 }}>
           {soundMenu.kind === 'sound'
             ? <button type="button" role="menuitem" className="dv-tl-btn" onClick={() => { removeSound(soundMenu.sound) }} style={{ ...menuItem, color: palette.danger }}>{t('menu.delete')}</button>
             : (
@@ -1437,14 +1516,21 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   return (
     <div
       onDragEnter={holdDrag} onDragOver={holdDrag} onDrop={dropOutside}
-      ref={root} tabIndex={0} onKeyDown={onKeyDown} data-testid="dv-timeline-editor" className="dv-tl-editor"
-      style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, background: palette.bg, color: palette.fg, fontFamily: 'var(--dv-font-sans)', fontSize: 13, lineHeight: '20px', outline: 'none' }}
+      ref={root} tabIndex={0} onKeyDown={onKeyDown} data-testid="dv-timeline-editor" className="dv-tl-editor" {...card === undefined ? {} : { 'data-node-keys': '' }}
+      style={{
+        display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, position: 'relative', background: palette.bg,
+        // A card lays the editor out `scale` times smaller than its box and draws it `scale` times larger, filling the box.
+        ...card === undefined
+          ? {}
+          : { width: `${String(100 / cardScale)}%`, height: `${String(100 / cardScale)}%`, transform: `scale(${String(cardScale)})`, transformOrigin: '0 0' },
+        color: palette.fg, fontFamily: 'var(--dv-font-sans)', fontSize: 13, lineHeight: '20px', outline: 'none',
+      }}
     >
       <style>{EDITOR_CSS}</style>
-      {tabs}
+      {card === undefined ? tabs : null}
       {dropNotice !== null ? <p role="status" style={{ margin: 0, padding: '4px 12px', color: palette.muted, fontSize: 12, lineHeight: '16px' }}>{t(dropNotice.text)}</p> : null}
-      {viewer}
-      {resizeHandle}
+      {card === undefined ? viewer : card.viewer === null ? null : createPortal(viewer, card.viewer)}
+      {card === undefined ? resizeHandle : null}
       {editPanel}
     </div>
   )

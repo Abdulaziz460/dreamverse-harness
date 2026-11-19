@@ -9,7 +9,7 @@ import { usePinnedBrowserLanguages } from '@deepseek-ai/dsh-client-test-runtime'
 import { DV_ASSET_DRAG_TYPE } from '@dv/ui-kit/workspace-events.ts'
 import { asset, canvasNode, PROJECT, record } from '../../ui-kit/tests/fixture.client.tsx'
 import type { FixtureState } from '../../ui-kit/tests/fixture.client.tsx'
-import type { NodeAction, NodeType, NodeView } from '../src/client/contract/index.ts'
+import type { AddMenuSection, NodeAction, NodeType, NodeView } from '../src/client/contract/index.ts'
 import { CanvasViews, httpLink } from '../src/client/agent-canvas.ts'
 import type { StreamListener } from '../src/client/agent-canvas.ts'
 import type { CanvasDrawn } from '../src/types.ts'
@@ -146,6 +146,13 @@ const halfNode = (position: { x: number; y: number; width: number | null; height
   canvas.order.unshift('h1')
 }
 
+/**
+ * @param card - a node's card.
+ * @returns its left, top, width and frame height as drawn.
+ */
+const boxOfCard = (card: HTMLElement): string[] =>
+  [card.style.left, card.style.top, card.style.width, card.querySelector<HTMLElement>('[data-node-frame]')?.style.height ?? '']
+
 describe('the canvas over the real kinds', () => {
   it('draws each node at its stored position, shows a reported badge, and writes one canvas.node_position per drag end', async () => {
     const { runtime, node, server, canvasOf } = await mountCanvas()
@@ -229,7 +236,8 @@ describe('the canvas over the real kinds', () => {
     }
     press(node('g1'), 1)
     expect([node('g1').getAttribute('data-node-selected'), view.queryByTestId('dv-canvas-node-editor')]).toEqual(['true', null])
-    expect(node('g1').querySelectorAll('[data-node-handle]')).toHaveLength(4)
+    // Four corner handles and four edge strips.
+    expect(node('g1').querySelectorAll('[data-node-handle]')).toHaveLength(8)
     // A second click after the double-click pause is another single click.
     vi.setSystemTime(Date.now() + 401)
     press(node('g1'), 2)
@@ -255,6 +263,34 @@ describe('the canvas over the real kinds', () => {
     expect(node('g1').getAttribute('data-node-selected')).toBe('true')
     clickEmpty(canvasOf())
     expect(node('g1').getAttribute('data-node-selected')).toBeNull()
+    await runtime.dispose()
+  })
+
+  it('plays the video of a selected node\'s card, pauses it while the node\'s editor is open, and plays it again once the editor closes', async () => {
+    const calls: string[] = []
+    // Each play or pause of a card video, as `<node> play` or `<node> pause`.
+    const log = (video: HTMLMediaElement, action: string): void => {
+      const card = video.closest('[data-node-id]')
+      if (card !== null && video.closest('[data-testid="dv-canvas-node-editor"]') === null) calls.push(`${card.getAttribute('data-node-id') ?? ''} ${action}`)
+    }
+    vi.spyOn(HTMLMediaElement.prototype, 'play').mockImplementation(function (this: HTMLMediaElement) {
+      log(this, 'play')
+      return Promise.resolve()
+    })
+    vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(function (this: HTMLMediaElement) { log(this, 'pause') })
+    const { runtime, view, open } = await mountCanvas({
+      edit: (state) => {
+        state.assets.push(asset('clip.mp4', 'video/mp4', 'u2', 4, 'asset.import'))
+        state.components.proj.records.push(record({ id: 'u2', operation: 'asset.import', params: { name: 'clip.mp4' }, outputs: ['clip.mp4'] }))
+        state.components.proj.created_by['clip.mp4'] = 'u2'
+        addNode(state, 'u2', canvasNode('asset', ['u2'], 0, 400, { asset: 'clip.mp4' }))
+        state.components.canvas.assets['clip.mp4'] = 'u2'
+      },
+    })
+    await open('u2')
+    expect(calls).toEqual(['u2 pause', 'u2 play', 'u2 pause'])
+    fireEvent.click(view.getByRole('button', { name: zh['editor.close'] }))
+    expect(calls.at(-1)).toBe('u2 play')
     await runtime.dispose()
   })
 
@@ -461,20 +497,44 @@ describe('the canvas over the real kinds', () => {
     await runtime.dispose()
   })
 
-  it('a wheel over the open editor leaves the canvas viewport alone; a wheel over empty canvas zooms it', async () => {
+  it('a wheel over the open editor, a ctrl or meta wheel too, leaves the canvas viewport alone; a wheel over empty canvas zooms it', async () => {
     const { runtime, open, canvasOf } = await mountCanvas()
     const editor = await open('g1')
     const canvas = canvasOf()
     const transform = (): string => (canvas.querySelector('div[style*="transform"]') as HTMLElement).style.transform
     const before = transform()
-    const overEditor = new WheelEvent('wheel', { deltaY: 120, bubbles: true, cancelable: true })
-    act(() => { (editor.querySelector('li') ?? editor).dispatchEvent(overEditor) })
-    expect(overEditor.defaultPrevented).toBe(false)
-    expect(transform()).toBe(before)
+    for (const modifier of [{}, { ctrlKey: true }, { metaKey: true }]) {
+      const overEditor = new WheelEvent('wheel', { deltaY: 120, bubbles: true, cancelable: true, ...modifier })
+      act(() => { (editor.querySelector('li') ?? editor).dispatchEvent(overEditor) })
+      expect(overEditor.defaultPrevented).toBe(false)
+      expect(transform()).toBe(before)
+    }
     const overCanvas = new WheelEvent('wheel', { deltaY: 120, bubbles: true, cancelable: true })
     act(() => { canvas.dispatchEvent(overCanvas) })
     expect(overCanvas.defaultPrevented).toBe(true)
     expect(transform()).not.toBe(before)
+    await runtime.dispose()
+  })
+
+  it('a ctrl or meta wheel inside a scroll island, such as a touchpad pinch over a card\'s track area, zooms the canvas', async () => {
+    const { runtime, node, canvasOf } = await mountCanvas()
+    await waitFor(() => { node('g1') })
+    const canvas = canvasOf()
+    const transform = (): string => (canvas.querySelector('div[style*="transform"]') as HTMLElement).style.transform
+    const island = document.createElement('div')
+    island.setAttribute('data-dv-scroll-island', '')
+    node('g1').append(island)
+    const before = transform()
+    const plain = new WheelEvent('wheel', { deltaY: 120, bubbles: true, cancelable: true })
+    act(() => { island.dispatchEvent(plain) })
+    expect([plain.defaultPrevented, transform()]).toEqual([false, before])
+    for (const modifier of [{ ctrlKey: true }, { metaKey: true }]) {
+      const zoomed = transform()
+      const pinch = new WheelEvent('wheel', { deltaY: 10, bubbles: true, cancelable: true, ...modifier })
+      act(() => { island.dispatchEvent(pinch) })
+      expect(pinch.defaultPrevented).toBe(true)
+      expect(transform()).not.toBe(zoomed)
+    }
     await runtime.dispose()
   })
 
@@ -781,6 +841,114 @@ describe('removing a node', () => {
     await waitFor(() => { expect(view.getByRole('alert').textContent).toContain('Nothing was removed.') })
     expect(node('g1')).toBeTruthy()
     await runtime.dispose()
+  })
+})
+
+/** A node type `tl` that uses the shot assets of g1 and g2 and opens through `open` instead of the editor. */
+const usingType = (open: (node: NodeView) => void): NodeType => ({
+  id: '@dv/ui-test-uses', type: 'tl', label: () => 'Uses', color: 'var(--dv-node-3)', open,
+  entry: () => ({
+    title: 'Cut', sizing: { kind: 'window', defaultSize: { width: 208, height: 117 }, minSize: { width: 104, height: 59 } },
+    uses: { assets: ['shot1.mp4', 'shot2.mp4'], records: ['missing'] },
+  }),
+})
+
+/** @returns a state edit that adds the `tl` node t9 of the record t9 at (900, 0). */
+const usingNode = (state: FixtureState): void => {
+  state.components.proj.records.push(record({ id: 't9', operation: 'test.place', params: { item: 'one' } }))
+  addNode(state, 't9', canvasNode('tl', ['t9'], 900, 0))
+}
+
+describe('nodes that use other nodes, and the add menu', () => {
+  it('draws an edge from each used node, outlines the used nodes while the node is selected, and runs the type\'s open on a double click', async () => {
+    const open = vi.fn()
+    const { runtime, node, canvasOf, view } = await mountCanvas({ edit: usingNode })
+    await mountDescriptors(runtime, { nodeType: usingType(open) })
+    await waitFor(() => { expect(canvasOf().querySelectorAll('[data-edge$=">t9"]')).toHaveLength(2) })
+    expect(canvasOf().querySelector('[data-edge="g1>t9"]')).not.toBeNull()
+    expect(canvasOf().querySelector('[data-edge="g2>t9"]')).not.toBeNull()
+    const used = (): string[] => [...canvasOf().querySelectorAll('[data-node-used="true"]')].map(card => card.getAttribute('data-node-id') ?? '')
+    expect(used()).toEqual([])
+    for (const pointerId of [1, 2]) {
+      fireEvent.pointerDown(node('t9'), { button: 0, clientX: 5, clientY: 5, pointerId })
+      fireEvent.pointerUp(canvasOf(), { pointerId })
+    }
+    expect(node('t9').getAttribute('data-node-selected')).toBe('true')
+    expect(used()).toEqual(['g1', 'g2'])
+    // Every other node and edge fades while t9 is selected; its own edges stay in the accent color.
+    const dimmed = (): string[] => [...canvasOf().querySelectorAll('[data-node-dimmed="true"]')].map(card => card.getAttribute('data-node-id') ?? '')
+    expect(dimmed()).toEqual(['e1'])
+    expect([node('e1').style.opacity, node('g1').style.opacity, node('t9').style.opacity]).toEqual(['0.3', '1', '1'])
+    const edgeOpacity = (id: string): string | undefined => canvasOf().querySelector<SVGPathElement>(`[data-edge="${id}"]`)?.style.strokeOpacity
+    expect([edgeOpacity('g1>t9'), edgeOpacity('e1>g1')]).toEqual(['0.9', String(0.6 * 0.3)])
+    expect(node('g1').querySelector<HTMLElement>('[data-node-frame]')?.style.boxShadow).toContain('16px 3px')
+    expect(open).toHaveBeenCalledTimes(1)
+    expect(open.mock.calls[0]?.[0]).toMatchObject({ id: 't9', type: 'tl', title: 'Cut' })
+    expect(view.queryByTestId('dv-canvas-node-editor')).toBeNull()
+    fireEvent.pointerDown(node('g1'), { button: 0, clientX: 5, clientY: 5, pointerId: 3 })
+    fireEvent.pointerUp(canvasOf(), { pointerId: 3 })
+    expect([used(), dimmed(), edgeOpacity('e1>g1')]).toEqual([[], [], '0.9'])
+  })
+
+  it('lists the add menu sections; an item already on the canvas selects its node, and another item writes its request and selects its new node', async () => {
+    let placed = false
+    const { runtime, node, canvasOf, view, server } = await mountCanvas({
+      edit: (state) => {
+        if (!placed) return
+        state.components.proj.records.push(record({ id: 'new-1', operation: 'test.place', params: { item: 'two' } }))
+        addNode(state, 'new-1', canvasNode('tl', ['new-1'], 900, 300))
+      },
+    })
+    const section: AddMenuSection = {
+      id: '@dv/ui-test-uses', order: 1, label: () => '项目',
+      items: state => [
+        { key: 'one', label: '第一项', node: state.components.canvas.nodes['g1'] === undefined ? null : 'g1', request: { operation: 'test.place', params: { item: 'one' } } },
+        { key: 'two', label: '第二项', node: state.components.canvas.nodes['new-1'] === undefined ? null : 'new-1', request: { operation: 'test.place', params: { item: 'two' }, intent: 'place two' } },
+      ],
+    }
+    const empty: AddMenuSection = { id: '@dv/ui-test-empty', order: 2, label: () => '空', items: () => [] }
+    await mountDescriptors(runtime, { nodeType: usingType(() => undefined), addMenu: section })
+    await mountDescriptors(runtime, { addMenu: empty })
+    await waitFor(() => { node('g1') })
+    const button = within(canvasOf()).getByRole('button', { name: zh['add.button'] })
+    expect(button.getAttribute('aria-expanded')).toBe('false')
+    fireEvent.click(button)
+    const menu = view.getByTestId('dv-canvas-add-menu')
+    expect(menu.getAttribute('aria-label')).toBe(zh['add.label'])
+    expect([...menu.querySelectorAll('[role="group"]')].map(group => group.getAttribute('aria-label'))).toEqual(['项目', '空'])
+    expect(within(menu).getAllByRole('menuitem').map(item => item.textContent)).toEqual([`第一项${zh['add.placed']}`, '第二项'])
+    expect(within(menu).getByText(zh['add.empty'])).toBeTruthy()
+    fireEvent.click(within(menu).getByRole('menuitem', { name: `第一项${zh['add.placed']}` }))
+    expect(view.queryByTestId('dv-canvas-add-menu')).toBeNull()
+    expect(node('g1').getAttribute('data-node-selected')).toBe('true')
+    expect(server.writes.filter(write => write.path === '/api/dv/operation')).toEqual([])
+    fireEvent.click(button)
+    // Another key, a press and a right click inside the menu keep it open.
+    fireEvent.keyDown(window, { key: 'a' })
+    fireEvent.pointerDown(view.getByTestId('dv-canvas-add-menu'), { button: 0, pointerId: 8 })
+    expect(fireEvent.contextMenu(view.getByTestId('dv-canvas-add-menu'))).toBe(false)
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(view.queryByTestId('dv-canvas-add-menu')).toBeNull()
+    fireEvent.click(button)
+    placed = true
+    fireEvent.click(within(view.getByTestId('dv-canvas-add-menu')).getByRole('menuitem', { name: '第二项' }))
+    await waitFor(() => { expect(server.writes.filter(write => write.path === '/api/dv/operation')).toHaveLength(1) })
+    expect(server.writes.find(write => write.path === '/api/dv/operation')?.body).toMatchObject({
+      project: 'p1', operation: 'test.place', params: { item: 'two' }, intent: 'place two', surface: 'canvas', session: 's5',
+    })
+    act(() => { server.notify() })
+    await waitFor(() => { expect(node('new-1').getAttribute('data-node-selected')).toBe('true') })
+    // A press outside the menu closes it.
+    fireEvent.click(button)
+    fireEvent.pointerDown(canvasOf(), { button: 2, pointerId: 9 })
+    expect(view.queryByTestId('dv-canvas-add-menu')).toBeNull()
+  })
+
+  it('shows the empty words in an add menu without sections', async () => {
+    const { canvasOf, view, node } = await mountCanvas()
+    await waitFor(() => { node('g1') })
+    fireEvent.click(within(canvasOf()).getByRole('button', { name: zh['add.button'] }))
+    expect(within(view.getByTestId('dv-canvas-add-menu')).getByText(zh['add.empty'])).toBeTruthy()
   })
 })
 
@@ -1375,7 +1543,8 @@ describe('the node card', () => {
     expect(box()).toEqual(['10px', '20px', '312px', '90px'])
     expect(node('g1').querySelector('[data-node-handle]')).toBeNull()
     await open('g1')
-    expect(node('g1').querySelectorAll('[data-node-handle]')).toHaveLength(4)
+    // Four corner handles and four edge strips.
+    expect(node('g1').querySelectorAll('[data-node-handle]')).toHaveLength(8)
     const handle = node('g1').querySelector('[data-node-handle="se"]')
     if (handle === null) throw new Error('no south-east handle')
     fireEvent.pointerDown(handle, { button: 0, clientX: 0, clientY: 0, pointerId: 2 })
@@ -1408,9 +1577,7 @@ describe('the node card', () => {
       if (found === null) throw new Error('no north-west handle')
       return found
     }
-    const box = (): string[] => [
-      node('h1').style.left, node('h1').style.top, node('h1').style.width, node('h1').querySelector<HTMLElement>('[data-node-frame]')?.style.height ?? '',
-    ]
+    const box = (): string[] => boxOfCard(node('h1'))
     const drag = (dx: number, dy: number, pointerId: number, button = 0): void => {
       fireEvent.pointerDown(handle(), { button, clientX: 0, clientY: 0, pointerId })
       fireEvent.pointerMove(canvasOf(), { clientX: dx, clientY: dy, pointerId })
@@ -1427,6 +1594,31 @@ describe('the node card', () => {
     expect([node('h1').getAttribute('data-node-selected'), view.queryAllByTestId('dv-canvas-node-editor')]).toEqual(['true', []])
     drag(-300, 0, 5, 2)
     expect(box()).toEqual(['188px', '144px', '120px', '60px'])
+    await runtime.dispose()
+  })
+
+  it('an east edge resizes a window node in width only, and a north edge in height only with its bottom edge in place', async () => {
+    const { runtime, node, canvasOf, server } = await mountCanvas({ edit: halfNode({ x: 100, y: 100, width: 208, height: 104 }) })
+    await mountDescriptors(runtime, { nodeType: halfType({ width: 208, height: 104, minWidth: 120, minHeight: 60 }) })
+    await waitFor(() => { expect(node('h1').getAttribute('aria-label')).toBe('Half') })
+    fireEvent.pointerDown(node('h1'), { button: 0, clientX: 5, clientY: 5, pointerId: 1 })
+    fireEvent.pointerUp(canvasOf(), { pointerId: 1 })
+    await waitFor(() => { expect(node('h1').getAttribute('data-node-selected')).toBe('true') })
+    const box = (): string[] => boxOfCard(node('h1'))
+    const drag = (edge: string, dx: number, dy: number, pointerId: number): void => {
+      fireEvent.pointerDown(node('h1').querySelector(`[data-node-handle="${edge}"]`) as Element, { button: 0, clientX: 0, clientY: 0, pointerId })
+      fireEvent.pointerMove(canvasOf(), { clientX: dx, clientY: dy, pointerId })
+      fireEvent.pointerUp(canvasOf(), { pointerId })
+    }
+    drag('e', 50, 30, 2)
+    expect(box()).toEqual(['100px', '100px', '258px', '104px'])
+    drag('n', 40, -20, 3)
+    expect(box()).toEqual(['100px', '80px', '258px', '124px'])
+    await waitFor(() => {
+      expect(server.positionWrites).toEqual([
+        { node: 'h1', x: 100, y: 100, width: 258, height: 104 }, { node: 'h1', x: 100, y: 80, width: 258, height: 124 },
+      ])
+    })
     await runtime.dispose()
   })
 
