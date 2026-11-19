@@ -13,7 +13,7 @@
  * @module @dv/ui-shell/Center
  */
 import type { ReactNode } from 'react'
-import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { ConversationViewsProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
@@ -30,7 +30,7 @@ import { SessionSwitcher } from './SessionSwitcher.tsx'
 import { useSlotTabs } from './slot-tabs.ts'
 import type { ShellLocation } from './store.ts'
 import {
-  applyingLocation, formatLocation, getShell, locationOf, NO_PROJECTS, noteInCenter, parseLocation, projectOfWorkspace,
+  applyingLocation, formatLocation, getShell, initialLocation, locationOf, NO_PROJECTS, noteInCenter, parseLocation, projectOfWorkspace,
   setShell, shellClient, showLocation, startUrlMirror, useShell,
 } from './store.ts'
 import css from './shell.module.css'
@@ -41,7 +41,7 @@ export interface ShellInjected {
 }
 
 /** Props of the center entry. */
-export type CenterProps = PropsRuntime<'main.conversation'> & PropsRenderFactories & PropsRenderSlots<'dv.explore' | 'dv.center.view'>
+export type CenterProps = PropsRuntime<'main.conversation'> & PropsRenderFactories & PropsRenderSlots<'dv.templates' | 'dv.explore' | 'dv.center.view'>
   & ShellInjected
 
 /** The one client the shell's own reads share. */
@@ -126,7 +126,9 @@ export function CenterPanel(props: CenterProps): ReactNode {
     restored = true
     previousProject.current = sessionProject
     startUrlMirror()
-    applyLocation(shell, projects, parseLocation(window.location.hash), true)
+    const current = getShell()
+    const target = current.projectId !== initialLocation.projectId ? locationOf(current) : parseLocation(window.location.hash)
+    applyLocation(shell, projects, target, true)
   }, [projects, workspacesReady, sessionsReady, sessionId, sessionProject, shell, restoreTimedOut])
   useEffect(() => {
     const timer = setTimeout(() => { setRestoreTimedOut(true) }, DSH_RESTORE_WAIT_MS)
@@ -210,26 +212,9 @@ function EntryPage(props: CenterProps): ReactNode {
           slots: { views: ChatOnlyView, widthControls: NoWidthControls },
         })}
       </div>
-      {blank && <TemplateChips />}
+      {blank && <div className={css.templates}>{props.renderSlot('dv.templates', {})}</div>}
       {blank && <RecentProjects shell={shell} renderFactorySlot={renderFactorySlot} />}
       {blank && <Explore renderSlot={props.renderSlot} />}
-    </div>
-  )
-}
-
-/** The 从模板开始 row: four template chips, inert until templates exist; `aria-disabled` keeps them focusable and described by the tag. */
-function TemplateChips(): ReactNode {
-  const t = useText()
-  const templates = [t('直播高光', 'Stream highlight'), t('产品发布会', 'Product launch'), t('角色短剧', 'Character drama'), t('音乐 MV', 'Music video')]
-  const soon = t('即将推出', 'Coming soon')
-  const soonId = useId()
-  return (
-    <div className={css.templates}>
-      <span className={css.templatesLabel}>{t('从模板开始', 'Start from a template')}</span>
-      <span id={soonId} className={css.soonTag}>{soon}</span>
-      {templates.map(name => (
-        <button key={name} type="button" className={css.templateChip} aria-disabled="true" aria-describedby={soonId} title={soon}>{name}</button>
-      ))}
     </div>
   )
 }

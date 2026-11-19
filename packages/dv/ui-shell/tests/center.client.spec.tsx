@@ -240,10 +240,13 @@ async function mountCenter(options: MountOptions = {}): Promise<Bench> {
       )), 'test: chat')
       ctx.effect(() => ctx.slots.register({
         name: 'main.conversation', priority: -1, inject: () => ({ shell: stand.shell }),
-        children: { 'dv.explore': { kind: 'list', scope: 'root' }, 'dv.center.view': { kind: 'list', scope: 'root' } },
+        children: { 'dv.templates': { kind: 'list', scope: 'root' }, 'dv.explore': { kind: 'list', scope: 'root' }, 'dv.center.view': { kind: 'list', scope: 'root' } },
       }, CenterPanel), 'test: center')
       ctx.effect(() => ctx.slots.register({ name: 'shell.overlay', id: 'dv.shell.failure' }, ActionFailureToast), 'test: failure toast')
       if (options.entries !== false) {
+        ctx.effect(() => ctx.slots.inject('dv.templates', () => ctx.slots.register(
+          { name: 'dv.templates', id: 'third-party' }, () => <button type="button">plugin template</button>,
+        )), 'test: plugin templates')
         ctx.effect(() => ctx.slots.inject('dv.center.view', function* () {
           yield ctx.slots.register({ name: 'dv.center.view', id: 'canvas', order: 0, label: () => 'Canvas' }, CenterViewStandIn)
           yield ctx.slots.register({ name: 'dv.center.view', id: 'timeline', order: 1, label: () => 'Timeline' }, CenterViewStandIn)
@@ -345,11 +348,8 @@ describe('the entry page', () => {
     expect(page.queryByTestId('width-handles')).toBeNull()
     expect(bench.stand.calls).toContain('restoreSidebar()')
 
-    const chips = page.getAllByRole('button', { name: /Stream highlight|Product launch|Character drama|Music video$/u })
-      .filter(chip => chip.title === 'Coming soon')
-    expect(chips.map(chip => [chip.textContent, chip.getAttribute('aria-disabled'), chip.getAttribute('aria-describedby') === page.getByText('Coming soon', { selector: 'span' }).id]))
-      .toEqual([['Stream highlight', 'true', true], ['Product launch', 'true', true], ['Character drama', 'true', true], ['Music video', 'true', true]])
-    expect(chips.every(chip => !(chip as HTMLButtonElement).disabled)).toBe(true)
+    expect(page.getByRole('button', { name: 'plugin template' })).toBeTruthy()
+    expect(page.queryByText('Coming soon')).toBeNull()
 
     const recent = within(page.getByRole('region', { name: 'Recent projects' }))
     const cards = (): string[] => recent.getAllByRole('button').map(button => button.textContent ?? '')
@@ -422,9 +422,11 @@ describe('the entry page', () => {
 
   it('has no recent projects or explore section without projects and entries', async () => {
     const bench = await mountCenter({ main: 's0', entries: false, projects: [] })
-    expect(bench.view.view.queryByRole('region')).toBeNull()
+    expect(bench.view.view.queryByRole('region', { name: 'Recent projects' })).toBeNull()
+    expect(bench.view.view.queryByRole('region', { name: 'Explore' })).toBeNull()
     await bench.refreshProjects()
-    expect(bench.view.view.queryByRole('region')).toBeNull()
+    expect(bench.view.view.queryByRole('region', { name: 'Recent projects' })).toBeNull()
+    expect(bench.view.view.queryByRole('region', { name: 'Explore' })).toBeNull()
     expect(bench.view.view.getByRole('heading', { level: 1 })).toBeDefined()
   })
 

@@ -1,0 +1,33 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "lib/types",
+    "tsBuildInfoFile": "lib/tsconfig.host.tsbuildinfo"
+  },
+  "include": [
+    "src/index.ts",
+    "src/catalog.ts",
+    "src/types.ts"
+  ],
+  "references": [
+    {
+      "path": "../../../vendor/cordis"
+    },
+    {
+      "path": "../../../vendor/schemastery"
+    },
+    {
+      "path": "../../skill/skill"
+    },
+    {
+      "path": "../../skill/skill-filesystem"
+    },
+    {
+      "path": "../../core/tools"
+    },
+    {
+      "path": "../../client/connection/tsconfig.host.json"
+    }
+  ]
+}

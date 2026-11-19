@@ -1,5 +1,6 @@
 /* DreamVerse shell: center workspace, entry page, left navigator, and right-panel tab bodies. */
 .center {
+  container-type: inline-size;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -52,45 +53,11 @@
   text-wrap: balance;
 }
 
+.templates:empty { display: none; }
+
 .templates {
-  display: flex;
   flex: none;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  margin-top: 12px;
-}
-
-.templatesLabel {
-  font-size: 12px;
-  line-height: 16px;
-  color: var(--dv-text-2);
-}
-
-.soonTag {
-  display: inline-flex;
-  align-items: center;
-  height: 18px;
-  padding: 0 6px;
-  border-radius: var(--dv-radius-sm);
-  background: var(--dv-surface-3);
-  color: var(--dv-text-2);
-  font-size: 12px;
-  line-height: 16px;
-}
-
-.templateChip {
-  height: 28px;
-  padding: 0 12px;
-  border: 1px solid var(--dv-line);
-  border-radius: 9999px;
-  background: transparent;
-  color: var(--dv-text-2);
-  font: inherit;
-  font-size: 13px;
-  line-height: 20px;
-  cursor: default;
+  margin-top: 24px;
 }
 
 .recent {
@@ -203,6 +170,20 @@
   align-items: center;
   gap: 4px;
   min-width: 0;
+}
+
+@container (max-width: 620px) {
+  .topbar {
+    grid-template-columns: minmax(0, 1fr) auto;
+    height: auto;
+    min-height: 88px;
+    padding-block: 8px;
+    gap: 4px 8px;
+  }
+  .barStart { grid-column: 1; grid-row: 1; flex-wrap: wrap; }
+  .barStart .switcherRoot { flex: 1 1 100%; max-width: 100%; }
+  .topbar .toggle { grid-column: 1 / -1; grid-row: 2; justify-self: center; }
+  .topbar .barEnd { grid-column: 2; grid-row: 1; align-self: start; }
 }
 
 .iconButton {

@@ -76,9 +76,9 @@ export interface ShellActions {
   /** Expand DSH's left sidebar when the shell collapsed it and the user has not folded or unfolded it from DSH's rail since. */
   restoreSidebar(): void
   /** The session whose right-panel seat is mounted, observed by the center. */
-  mountedSeat: { getSnapshot(): SessionId | undefined; subscribe(fn: () => void): () => void }
+  mountedSeat: { getSnapshot(this: void): SessionId | undefined; subscribe(this: void, fn: () => void): () => void }
   /** Whether the right panel is expanded, observed by the center to show its open button only while it is hidden. */
-  panelExpanded: { getSnapshot(): boolean; subscribe(fn: () => void): () => void }
+  panelExpanded: { getSnapshot(this: void): boolean; subscribe(this: void, fn: () => void): () => void }
 }
 
 /**
